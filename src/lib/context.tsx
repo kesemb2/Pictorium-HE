@@ -320,6 +320,7 @@ export function usePictorium(): PictoriumCtx {
     rankingBadgeStyle, setRankingBadgeStyle,
     customBadge, setCustomBadge,
     networkLogo, setNetworkLogo,
+    accentDominant, setAccentDominant,
     ribbonSide,
     // Defaults
     defaultBadgeStyle,
@@ -339,6 +340,7 @@ export function usePictorium(): PictoriumCtx {
     defaultGradientHeight,
     defaultAutoRotateClean,
     defaultNetworkLogo,
+    defaultAccentDominant,
     loadDefaultsToState,
     // Blur
     blurEnabled, setBlurEnabled,
@@ -582,10 +584,10 @@ export function usePictorium(): PictoriumCtx {
     setUrlPattern(buildUrlPattern({
       globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle,
       badgeGenre, badgeYear, badgeRating, badgeQuality, ratingSources,
-      customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, networkLogo, ribbonSide,
+      customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, networkLogo, accentDominant, ribbonSide,
       tmdbKey, lang, mdblistApiKey,
     }))
-  }, [globalBadges, rankingBadges, badgeGenre, badgeYear, badgeRating, badgeQuality, ratingSources, networkLogo, ribbonSide, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, badgeStyle, rankingBadgeStyle, tmdbKey, lang, mdblistApiKey]) // eslint-disable-line react-hooks/exhaustive-deps -- customBadge intentionally excluded to avoid loop
+  }, [globalBadges, rankingBadges, badgeGenre, badgeYear, badgeRating, badgeQuality, ratingSources, networkLogo, ribbonSide, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, accentDominant, badgeStyle, rankingBadgeStyle, tmdbKey, lang, mdblistApiKey]) // eslint-disable-line react-hooks/exhaustive-deps -- customBadge intentionally excluded to avoid loop
 
   // --- Preview URL ---
   const buildPreviewUrlCb = useCallback(() => {
@@ -600,13 +602,13 @@ export function usePictorium(): PictoriumCtx {
         metaInfo, trendRank, mdblistAnimeList: trending.mdblistAnimeList,
         topEdgeColor, accentColor, lang, tmdbKey,
       },
-      { globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality, ratingSources, customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, networkLogo, ribbonSide }
+      { globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality, ratingSources, customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, networkLogo, accentDominant, ribbonSide }
     )
     setPreviewUrl(url)
   }, [navigation.selected, navigation.previewPoster, navigation.selectedLogo, selectedBackdrop,
     logoScale, logoOffsetX, logoOffsetY, backdropScale, backdropOffsetX, backdropOffsetY,
     metaInfo, trendRank, trending.mdblistAnimeList, topEdgeColor, accentColor, lang, tmdbKey,
-    globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality, ratingSources, customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, networkLogo, ribbonSide])
+    globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality, ratingSources, customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, networkLogo, accentDominant, ribbonSide])
 
   useEffect(() => {
     if (!navigation.selected) { setPreviewUrl(""); return }
@@ -770,6 +772,7 @@ export function usePictorium(): PictoriumCtx {
       setBadgeRating(existing.badgeRating ?? defaultBadgeRating)
       setBadgeQuality(existing.badgeQuality ?? defaultBadgeQuality)
       setNetworkLogo(existing.networkLogo ?? defaultNetworkLogo)
+      setAccentDominant(existing.accentDominant ?? defaultAccentDominant)
       setRibbonSide(existing.ribbonSide ?? defaultRibbonSide)
       setGradientHeight(existing.gradientHeight ?? defaultGradientHeight)
       setBlurIntensity(existing.blurIntensity ?? defaultBlurIntensity)
@@ -841,6 +844,7 @@ export function usePictorium(): PictoriumCtx {
           setSelectedBackdrop(foundBackdrop || { file_path: existing.backdropPath, iso_639_1: null, vote_average: 0, width: 0, height: 0 })
         }
         setNetworkLogo(existing.networkLogo ?? defaultNetworkLogo)
+        setAccentDominant(existing.accentDominant ?? defaultAccentDominant)
         setEpisodeGroupId(existing.episodeGroupId ?? null)
       } else {
         setLogoDisabled(false)
@@ -909,7 +913,7 @@ export function usePictorium(): PictoriumCtx {
     defaultBadgeStyle, defaultRankingBadgeStyle, blurEnabled, blurIntensity, blurFade, blurDarkness, gradientHeight,
     setGradientHeight,
     rotationPosters, autoRotateClean, defaultAutoRotateClean, excludedPosters, accentColor, logoDisabled, setLogoDisabled,
-    setLogoScale, setLogoOffsetX, setLogoOffsetY, networkLogo, ribbonSide, lang, episodeGroupId,
+    setLogoScale, setLogoOffsetX, setLogoOffsetY, networkLogo, accentDominant, ribbonSide, lang, episodeGroupId,
   })
 
   const saveConfig = useCallback(async () => {

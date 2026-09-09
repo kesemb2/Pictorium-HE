@@ -173,6 +173,7 @@
   "ui.tmdbKey": "Clé TMDB personnelle",
   "ui.keyTooShort": "La clé doit contenir au moins 20 caractères",
   "ui.networkLogo": "Logo du réseau",
+  "ui.accentDominant": "Accent couleur du poster",
   "ui.badgePosition": "Position du badge",
   "ui.region": "Pays des classements",
   "ui.regionHint": "Les Top 20 JustWatch/FlixPatrol et la langue des titres suivent ce pays.",

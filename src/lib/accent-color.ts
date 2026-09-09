@@ -106,7 +106,22 @@ function hslToRgb(H: number, S: number, L: number): AccentResult {
   }
 }
 
-export function findAccentColor(pixels: Uint8ClampedArray | Buffer, width: number, height: number, genre: string): AccentResult {
+/**
+ * Rotazione di tinta applicata al colore estratto.
+ *
+ * `complement` (+150°) è il comportamento storico: un colore che "stacca"
+ * dall'artwork. `dominant` (0°) tiene la tinta del poster, che è ciò che
+ * serve quando lo stesso colore tinge anche la fascia sfocata in basso —
+ * una fascia complementare al poster su cui poggia sembrerebbe un errore.
+ */
+export type AccentHueMode = "complement" | "dominant"
+
+const ACCENT_HUE_ROTATION: Record<AccentHueMode, number> = {
+  complement: 150,
+  dominant: 0,
+}
+
+export function findAccentColor(pixels: Uint8ClampedArray | Buffer, width: number, height: number, genre: string, hueMode: AccentHueMode = "complement"): AccentResult {
   const step = 2
   let sumR = 0, sumG = 0, sumB = 0, countLuma = 0
 
@@ -182,9 +197,11 @@ export function findAccentColor(pixels: Uint8ClampedArray | Buffer, width: numbe
   //   Green (120°)       → 120+150 = 270° → violet      🟣
   //   Red (0°)           → 0+150   = 150° → teal        🩵
   //   Cyan (180°)        → 180+150 = 330° → pink-rose   🌸
-  const badgeHue = (posterHue + 150) % 360
+  const badgeHue = (posterHue + ACCENT_HUE_ROTATION[hueMode]) % 360
 
-  // Higher saturation since we're using a contrasting hue (not blending, but popping)
+  // Saturazione alta: in modalità complement il colore deve "poppare"
+  // sull'artwork, in modalità dominant deve restare riconoscibile una volta
+  // diluito al 22% nella fascia sfocata.
   const badgeSat = Math.min(0.82, Math.max(0.55, bestBucket.totalSat / bestBucket.count))
 
   // Lightness strategy:

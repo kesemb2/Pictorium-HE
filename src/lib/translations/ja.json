@@ -177,6 +177,7 @@
   "ui.tmdbKey": "個人TMDBキー",
   "ui.keyTooShort": "キーは20文字以上必要です",
   "ui.networkLogo": "ネットワークロゴ",
+  "ui.accentDominant": "ポスターの色をアクセントに",
   "ui.badgePosition": "バッジ位置",
   "ui.uiAccentDynamic": "動的UIアクセント",
   "ui.cacheDiagnostics": "診断 & キャッシュ",

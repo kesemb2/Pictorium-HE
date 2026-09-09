@@ -38,6 +38,8 @@ export interface PosterEditorCtx {
   setCustomBadge: (v: string | null | ((prev: string | null) => string | null)) => void
   networkLogo: boolean
   setNetworkLogo: (v: boolean | ((prev: boolean) => boolean)) => void
+  accentDominant: boolean
+  setAccentDominant: (v: boolean | ((prev: boolean) => boolean)) => void
   ribbonSide: "left" | "right"
   setRibbonSide: (v: "left" | "right" | ((prev: "left" | "right") => "left" | "right")) => void
   episodeMetadataSource: "tmdb" | "tvdb"
@@ -81,6 +83,8 @@ export interface PosterEditorCtx {
   defaultLogoFitEnabled: boolean
   setDefaultLogoFitEnabled: (v: boolean | ((prev: boolean) => boolean)) => void
   defaultNetworkLogo: boolean
+  defaultAccentDominant: boolean
+  setDefaultAccentDominant: (v: boolean | ((prev: boolean) => boolean)) => void
   setDefaultNetworkLogo: (v: boolean | ((prev: boolean) => boolean)) => void
   defaultRibbonSide: "left" | "right"
   setDefaultRibbonSide: (v: "left" | "right" | ((prev: "left" | "right") => "left" | "right")) => void
@@ -182,7 +186,7 @@ export function PosterEditorProvider({
   const [customBadge, setCustomBadge] = useState<string | null>(null)
 
   const {
-    globalBadges, rankingBadges, networkLogo, ribbonSide,
+    globalBadges, rankingBadges, networkLogo, accentDominant, ribbonSide,
     badgeGenre, badgeYear, badgeRating, badgeQuality, ratingSources,
     gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled,
     badgeStyle, rankingBadgeStyle,
@@ -190,7 +194,7 @@ export function PosterEditorProvider({
     defaultBlurEnabled, defaultBlurIntensity, defaultBlurFade, defaultBlurDarkness,
     defaultGradientHeight, defaultGlobalBadges, defaultRankingBadges,
     defaultBadgeGenre, defaultBadgeYear, defaultBadgeRating, defaultBadgeQuality, defaultRatingSources,
-    defaultAutoRotateClean, defaultLogoFitEnabled, defaultNetworkLogo, defaultRibbonSide,
+    defaultAutoRotateClean, defaultLogoFitEnabled, defaultNetworkLogo, defaultAccentDominant, defaultRibbonSide,
     episodeMetadataSource, defaultEpisodeMetadataSource,
     region, defaultRegion,
     loadDefaultsToState, update,
@@ -236,6 +240,11 @@ export function PosterEditorProvider({
       const next = typeof v === "function" ? v(networkLogo) : v
       update({ networkLogo: next, defaultNetworkLogo: next })
     }, [networkLogo, update])
+  const setAccentDominant = useCallback(
+    (v: boolean | ((prev: boolean) => boolean)) => {
+      const next = typeof v === "function" ? v(accentDominant) : v
+      update({ accentDominant: next, defaultAccentDominant: next })
+    }, [accentDominant, update])
   const setRibbonSide = useCallback(
     (v: "left" | "right" | ((prev: "left" | "right") => "left" | "right")) => {
       const next = typeof v === "function" ? v(ribbonSide) : v
@@ -366,6 +375,11 @@ export function PosterEditorProvider({
       const next = typeof v === "function" ? v(defaultNetworkLogo) : v
       update({ defaultNetworkLogo: next, networkLogo: next })
     }, [defaultNetworkLogo, update])
+  const setDefaultAccentDominant = useCallback(
+    (v: boolean | ((prev: boolean) => boolean)) => {
+      const next = typeof v === "function" ? v(defaultAccentDominant) : v
+      update({ defaultAccentDominant: next, accentDominant: next })
+    }, [defaultAccentDominant, update])
   const setDefaultRibbonSide = useCallback(
     (v: "left" | "right" | ((prev: "left" | "right") => "left" | "right")) => {
       const next = typeof v === "function" ? v(defaultRibbonSide) : v
@@ -417,6 +431,8 @@ export function PosterEditorProvider({
       setCustomBadge,
       networkLogo,
       setNetworkLogo,
+      accentDominant,
+      setAccentDominant,
       ribbonSide,
       setRibbonSide,
       episodeMetadataSource,
@@ -460,6 +476,8 @@ export function PosterEditorProvider({
       defaultLogoFitEnabled,
       setDefaultLogoFitEnabled,
       defaultNetworkLogo,
+      defaultAccentDominant,
+      setDefaultAccentDominant,
       setDefaultNetworkLogo,
       defaultRibbonSide,
       setDefaultRibbonSide,
@@ -528,6 +546,7 @@ export function PosterEditorProvider({
       rankingBadgeStyle, setRankingBadgeStyle,
       customBadge, setCustomBadge,
       networkLogo, setNetworkLogo,
+      accentDominant, setAccentDominant,
       ribbonSide, setRibbonSide,
       episodeMetadataSource, setEpisodeMetadataSource,
       region, setRegion,
@@ -552,6 +571,7 @@ export function PosterEditorProvider({
       defaultAutoRotateClean, setDefaultAutoRotateClean,
       defaultLogoFitEnabled, setDefaultLogoFitEnabled,
       defaultNetworkLogo, setDefaultNetworkLogo,
+      defaultAccentDominant, setDefaultAccentDominant,
       defaultRibbonSide, setDefaultRibbonSide,
       loadDefaultsToState,
 

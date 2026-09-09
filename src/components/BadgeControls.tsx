@@ -199,6 +199,14 @@ export function BadgeControls() {
 
           <div className="flex items-center justify-between gap-3 pt-1">
             <span className="text-zinc-300 font-medium flex items-center gap-1.5 shrink-0">
+              <Palette className="w-3.5 h-3.5 text-accent-orange" />
+              {t("ui.accentDominant")}
+            </span>
+            <Toggle value={ed.accentDominant} onChange={(v) => ed.setAccentDominant(v)} label={t("ui.accentDominant")} />
+          </div>
+
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <span className="text-zinc-300 font-medium flex items-center gap-1.5 shrink-0">
               <Flame className="w-3.5 h-3.5 text-accent-orange" />
               {t("ui.badgePosition")}
             </span>

@@ -2,6 +2,7 @@ import sharp from "sharp"
 import { cacheGet, cacheSet } from "./cache"
 import { GENRE_FALLBACK, cinematicVignetteSVG } from "./badges"
 import { FONT_FILES } from "./fonts"
+import type { AccentHueMode } from "./accent-color"
 import { applyBlur } from "./blur"
 import {
   STD_W, STD_H,
@@ -113,6 +114,13 @@ export interface GenerationInput {
   nextEpisodeAirDate?: string | null
   /** Titolo nella classifica settimanale TMDB (non il rank JustWatch). */
   tmdbTrending?: boolean
+  /**
+   * Accent preso dalla tinta dominante del poster invece che dal suo
+   * complementare, e usato anche per tingere la fascia sfocata in basso.
+   * Un unico interruttore per entrambe le cose: una fascia tinta col
+   * complementare del poster su cui poggia sembrerebbe un errore.
+   */
+  accentDominant?: boolean
   releaseDate: string | null
   firstAirDate: string | null
   /** Ultima messa in onda + n. stagioni + origin country (badge Nuova stagione / K-Drama). */
@@ -366,13 +374,17 @@ export async function resolveBadgeColors(
   genreName: string | null,
   posterSrc?: string | null,
   logoSrc?: string | null,
+  hueMode: AccentHueMode = "complement",
 ): Promise<BadgeColorsResult> {
-  const key = posterSrc ? `extract:${posterSrc}:${logoSrc ?? "x"}:${genreName ?? "x"}` : null
+  // `hueMode` entra nella chiave: le due modalità producono colori diversi
+  // dallo stesso poster, e senza distinguerle un cambio di toggle servirebbe
+  // il colore cachato dalla modalità precedente.
+  const key = posterSrc ? `extract:${posterSrc}:${logoSrc ?? "x"}:${genreName ?? "x"}:${hueMode}` : null
   const cached = key ? cacheGet<BadgeColorsResult>(key) : null
   if (cached) return cached
   const [gColor, rColor] = await Promise.all([
-    extractBadgeColor(posterBuf, logoFetch, genreName, 'bottom'),
-    extractBadgeColor(posterBuf, logoFetch, null, 'top'),
+    extractBadgeColor(posterBuf, logoFetch, genreName, 'bottom', hueMode),
+    extractBadgeColor(posterBuf, logoFetch, null, 'top', hueMode),
   ])
   const colors: BadgeColorsResult = {
     genreColor: isValidHex(gColor) ? gColor : (genreName ? GENRE_FALLBACK[genreName] : undefined) || "#555555",
@@ -453,7 +465,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     tmdbNetworksDetailed, productionCompaniesDetailed,
     tvType, tvStatus, releaseDate, firstAirDate,
     lastAirDate, seasonCount, originCountries,
-    voteCount, nextEpisodeAirDate, tmdbTrending,
+    voteCount, nextEpisodeAirDate, tmdbTrending, accentDominant,
     wikidataResult, tmdbKeywords, locale, t,
     qLabel, queryExtra, qNetLogo, networkLogo, sd, accentOverride, imdbTop250,
     posterSrc, logoSrc, backdropSrc,
@@ -503,13 +515,23 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     : null
   const titleBandH = titleFit ? titleStripHeight(titleFit.fs) + TITLE_BAND_GAP : 0
 
-  const [blurOverlay, badgeColors, logoResult] = await Promise.all([
-    applyBlur({ posterBuf, blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness }),
-    hasGenreBadge
-      ? (accentOverride
-          ? Promise.resolve(accentOverride)
-          : resolveBadgeColors(posterBuf, logoFetch, genreName, posterSrc, logoSrc))
-      : Promise.resolve(undefined),
+  // I colori si risolvono PRIMA del blur, non in parallelo: la fascia sfocata
+  // ne ha bisogno per la tinta. L'estrazione è cachata per (poster, logo,
+  // genere, modalità), quindi la serializzazione si paga solo a cache fredda.
+  // Nota il secondo ramo: senza badge non si estraeva NIENTE, ma la tinta
+  // serve anche a badge spenti, quindi ha un percorso suo.
+  const accentTintEnabled = accentDominant !== false
+  const accentHueMode: AccentHueMode = accentDominant !== false ? "dominant" : "complement"
+  const needColors = hasGenreBadge || (accentTintEnabled && blurEnabled)
+  const badgeColors = needColors
+    ? (accentOverride
+        ? accentOverride
+        : await resolveBadgeColors(posterBuf, logoFetch, genreName, posterSrc, logoSrc, accentHueMode))
+    : undefined
+  const tintColor = accentTintEnabled ? badgeColors?.genreColor ?? null : null
+
+  const [blurOverlay, logoResult] = await Promise.all([
+    applyBlur({ posterBuf, blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness, tintColor }),
     logoFetch
       ? (async () => {
           const lMeta = await sharp(logoFetch).metadata()

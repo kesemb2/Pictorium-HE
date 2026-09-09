@@ -62,6 +62,7 @@ export interface PosterRenderConfig {
   queryExtra: string | null
   qNetLogo: string | null
   networkLogo: boolean
+  accentDominant: boolean
   ribbonSide: "left" | "right"
 }
 
@@ -170,6 +171,13 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
     ? rawNetLogo !== "0"
     : (mapping?.networkLogo ?? (configOverride !== null ? configOverride.networkLogo : undefined) ?? sd.networkLogo ?? true)
   const qNetLogo = networkLogo ? (rawNetLogo ?? (configOverride !== null ? (configOverride.networkLogo ? "1" : null) : null)) : "0"
+
+  // Accent dalla tinta DOMINANTE del poster (e tinta della fascia sfocata)
+  // invece del complementare storico. Default acceso.
+  const rawAccentDominant = q.get("ad")
+  const accentDominant: boolean = rawAccentDominant !== null
+    ? rawAccentDominant !== "0"
+    : (mapping?.accentDominant ?? (configOverride !== null ? configOverride.accentDominant : undefined) ?? sd.accentDominant ?? true)
   // Modalità layout nastro Netflix + logo network: query `side=right` (Stremio) o `side=left` (Nuvio), mapping salvato o config/profilo
   const qSide = q.get("side")
   const ribbonSide: "left" | "right" = qSide === "right"
@@ -199,6 +207,7 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
     queryExtra,
     qNetLogo,
     networkLogo,
+    accentDominant,
     ribbonSide,
   }
 }

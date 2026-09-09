@@ -39,6 +39,9 @@ const USER_SAVED = {
   autoRotateClean: false,
   defaultLogoFitEnabled: true,
   networkLogo: true,
+  // Campo aggiunto dopo: l'idratazione ne scrive il default nel payload, ed è
+  // il comportamento voluto — un'impostazione nuova deve materializzarsi.
+  accentDominant: true,
   ribbonSide: "left",
   episodeMetadataSource: "tvdb",
   region: "IT",

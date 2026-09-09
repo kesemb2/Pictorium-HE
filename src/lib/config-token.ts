@@ -41,6 +41,9 @@ export const configTokenSchema = z.object({
   blurDarkness: z.number().finite(),
   gradientHeight: z.number().finite(),
   networkLogo: z.boolean(),
+  // Opzionale come ogni campo aggiunto dopo il rilascio: i token già emessi
+  // non contengono la chiave e un campo obbligatorio li farebbe fallire tutti.
+  accentDominant: z.boolean().optional(),
   autoRotateClean: z.boolean(),
   // Opzionale (finding 13): i token generati prima dell'aggiunta del campo
   // (best-fit) non devono fallire il safeParse — il render usa il default del

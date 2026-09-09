@@ -336,6 +336,7 @@ export default function EditView() {
                         blurDarkness: ed.blurDarkness,
                         blurEnabled: ed.blurEnabled,
                         networkLogo: ed.networkLogo,
+                        accentDominant: ed.accentDominant,
                         ribbonSide: ed.ribbonSide,
                       })
                       if (!url) return

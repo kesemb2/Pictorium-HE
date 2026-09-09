@@ -22,6 +22,7 @@ export interface StremioPosterParamsInput {
   readonly blurDarkness?: number
   readonly blurEnabled?: boolean
   readonly networkLogo?: boolean
+  readonly accentDominant?: boolean
   readonly ribbonSide?: "left" | "right"
   /** Badge extra testuale per-titolo (dal mapping): emesso come `extra`. */
   readonly customBadge?: string | null
@@ -40,6 +41,7 @@ const DEFAULT_STREMIO_POSTER_PARAMS = {
   blurDarkness: 40,
   blurEnabled: true,
   networkLogo: true,
+  accentDominant: true,
 } as const
 
 export function buildStremioPosterSearchParams(input: StremioPosterParamsInput): URLSearchParams {
@@ -48,6 +50,7 @@ export function buildStremioPosterSearchParams(input: StremioPosterParamsInput):
   const rankingBadges = input.rankingBadges ?? DEFAULT_STREMIO_POSTER_PARAMS.rankingBadges
   const blurEnabled = input.blurEnabled ?? DEFAULT_STREMIO_POSTER_PARAMS.blurEnabled
   const networkLogo = input.networkLogo ?? DEFAULT_STREMIO_POSTER_PARAMS.networkLogo
+  const accentDominant = input.accentDominant ?? DEFAULT_STREMIO_POSTER_PARAMS.accentDominant
 
   if (input.config) params.set("config", input.config)
   if (input.user) params.set("u", input.user)
@@ -67,6 +70,7 @@ export function buildStremioPosterSearchParams(input: StremioPosterParamsInput):
   if (input.ratingSources && input.ratingSources.length > 0) params.set("rsrc", input.ratingSources.join(","))
   if (input.customBadge) params.set("extra", input.customBadge)
   if (!networkLogo) params.set("netLogo", "0")
+  if (!accentDominant) params.set("ad", "0")
   if (input.ribbonSide === "right") params.set("side", "right")
   else if (input.ribbonSide === "left") params.set("side", "left")
   params.set("lang", input.lang || "it")

@@ -28,6 +28,7 @@ export interface ServerDefaults {
   autoRotateClean?: boolean
   defaultLogoFitEnabled?: boolean
   networkLogo?: boolean
+  accentDominant?: boolean
   ribbonSide?: "left" | "right"
   episodeMetadataSource?: "tmdb" | "tvdb"
   /** Regione classifiche JustWatch/FlixPatrol + lingua titoli (codice JW, es. "IT"). */
@@ -76,6 +77,7 @@ function defaultsFromEnv(): ServerDefaults {
   const bq = envBool("BADGE_QUALITY")
   const blurEn = envBool("BLUR_ENABLED")
   const netLogo = envBool("NETWORK_LOGO")
+  const accentDom = envBool("ACCENT_DOMINANT")
   const autoRotate = envBool("AUTO_ROTATE_CLEAN")
   const logoFit = envBool("LOGO_FIT_ENABLED")
   if (bG !== undefined) d.globalBadges = bG
@@ -88,6 +90,7 @@ function defaultsFromEnv(): ServerDefaults {
   if (rsrcEnv && rsrcEnv.length > 0) d.ratingSources = rsrcEnv
   if (blurEn !== undefined) d.blurEnabled = blurEn
   if (netLogo !== undefined) d.networkLogo = netLogo
+  if (accentDom !== undefined) d.accentDominant = accentDom
   if (autoRotate !== undefined) d.autoRotateClean = autoRotate
   if (logoFit !== undefined) d.defaultLogoFitEnabled = logoFit
   const bs = getEnv("BADGE_STYLE")?.trim()

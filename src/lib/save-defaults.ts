@@ -32,6 +32,7 @@ export function saveDefaults(p: { selected: PictoriumCtx["selected"]; mappingsMa
     defaultEpisodeMetadataSource: ed.defaultEpisodeMetadataSource,
     region: ed.defaultRegion,
     networkLogo: ed.defaultNetworkLogo,
+    accentDominant: ed.defaultAccentDominant,
     ribbonSide: ed.defaultRibbonSide,
     episodeMetadataSource: ed.defaultEpisodeMetadataSource,
   }
@@ -61,6 +62,7 @@ export function saveDefaults(p: { selected: PictoriumCtx["selected"]; mappingsMa
   ed.setBadgeRating(d.badgeRating)
   ed.setBadgeQuality(d.badgeQuality)
   ed.setNetworkLogo(d.networkLogo)
+  ed.setAccentDominant(d.accentDominant)
   ed.setRibbonSide(d.ribbonSide)
   ed.setBlurEnabled(d.blurEnabled)
   ed.setBlurIntensity(d.blurIntensity)

@@ -27,6 +27,7 @@ interface BadgeParams {
   blurDarkness: number
   blurEnabled: boolean
   networkLogo?: boolean
+  accentDominant?: boolean
   ribbonSide?: "left" | "right"
 }
 
@@ -85,6 +86,7 @@ export function buildUrlPattern(bp: BadgeParams & { tmdbKey: string; lang: strin
     blurDarkness: bp.blurDarkness,
     blurEnabled: bp.blurEnabled,
     networkLogo: bp.networkLogo,
+    accentDominant: bp.accentDominant,
     ribbonSide: bp.ribbonSide,
   })
   const str = params.toString()
@@ -149,6 +151,7 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
   params.push(`rs=${bp.rankingBadgeStyle}`)
   if (!bp.blurEnabled) params.push("be=0")
   params.push(`netLogo=${bp.networkLogo !== false ? "1" : "0"}`)
+  params.push(`ad=${bp.accentDominant !== false ? "1" : "0"}`)
   // Fix M2: side viene emesso SEMPRE (left|right) — prima soltanto "right";
   // senza il parametro il server risolve dal mapping/config salvati (di
   // default right in modalità Stremio) e la preview rendeva a destra anche

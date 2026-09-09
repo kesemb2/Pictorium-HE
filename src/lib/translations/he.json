@@ -177,6 +177,7 @@
   "ui.tmdbKey": "Personal TMDB Key",
   "ui.keyTooShort": "The key must be at least 20 characters long",
   "ui.networkLogo": "Network logo",
+  "ui.accentDominant": "צבע הדגשה מהפוסטר",
   "ui.badgePosition": "Badge position",
   "ui.uiAccentDynamic": "Dynamic UI tint",
   "ui.cacheDiagnostics": "Diagnostics & Cache",

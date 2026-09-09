@@ -1,6 +1,6 @@
 import crypto from "node:crypto"
 import sharp from "sharp"
-import { findAccentColor } from "@/lib/accent-color"
+import { findAccentColor, type AccentHueMode } from "@/lib/accent-color"
 import { GENRE_FALLBACK } from "@/lib/badges"
 // Batch B: STD_W/STD_H ora provengono da image-utils.ts (single source of truth)
 import { STD_W, STD_H, computeRegionStats } from "@/lib/image-utils"
@@ -117,10 +117,11 @@ export async function extractBadgeColor(
   logoBuf?: Buffer | null,
   fallbackGenre?: string | null,
   region?: 'bottom' | 'top',
+  hueMode: AccentHueMode = "complement",
 ): Promise<string> {
   async function extractFrom(buf: Buffer, w: number, h: number, genre: string): Promise<string> {
     const pixels = await sharp(buf).ensureAlpha().raw().toBuffer()
-    const result = findAccentColor(pixels, w, h, genre)
+    const result = findAccentColor(pixels, w, h, genre, hueMode)
     return `#${result.r.toString(16).padStart(2, "0")}${result.g.toString(16).padStart(2, "0")}${result.b.toString(16).padStart(2, "0")}`
   }
 

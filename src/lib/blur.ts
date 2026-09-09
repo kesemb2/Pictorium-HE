@@ -8,6 +8,29 @@ export interface BlurParams {
   blurIntensity: number
   blurFade: number
   blurDarkness: number
+  /**
+   * Tinta della fascia, esadecimale. È il colore d'accento del poster: la
+   * fascia sfocata prende la stessa tinta del badge invece di restare un
+   * grigio scuro neutro. `null` = nessuna tinta (comportamento storico).
+   */
+  tintColor?: string | null
+}
+
+/**
+ * Quanto la tinta si sostituisce al pixel sfocato, al massimo della fascia.
+ * 0.22 non è arbitrario: è il valore che usava `bottomGradientSVG` (rimosso
+ * con questo lavoro) prima che la fascia passasse da gradiente SVG a overlay
+ * raw, e con cui la tinta si legge senza coprire l'artwork.
+ */
+const TINT_STRENGTH = 0.22
+
+function parseHex(hex?: string | null): { r: number; g: number; b: number } | null {
+  if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return null
+  return {
+    r: parseInt(hex.slice(1, 3), 16),
+    g: parseInt(hex.slice(3, 5), 16),
+    b: parseInt(hex.slice(5, 7), 16),
+  }
 }
 
 /**
@@ -50,7 +73,7 @@ export interface BlurOverlay {
 }
 
 export async function applyBlur(params: BlurParams): Promise<BlurOverlay | null> {
-  const { posterBuf, blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness } = params
+  const { posterBuf, blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness, tintColor } = params
   if (!blurEnabled) return null
 
   const gh = Math.min(Math.max(Math.round(STD_H * blurHeight / 100), 100), STD_H)
@@ -70,18 +93,26 @@ export async function applyBlur(params: BlurParams): Promise<BlurOverlay | null>
 
   // Step 2: build RGBA overlay buffer
   //   RGB = blur × shade (darken by y), A = fade × 255 (opacity by y)
+  const tint = parseHex(tintColor)
+  const tintR = tint?.r ?? 0
+  const tintG = tint?.g ?? 0
+  const tintB = tint?.b ?? 0
   const overlay = Buffer.alloc(gh * STD_W * 4)
   for (let y = 0; y < gh; y++) {
     const yPct = gh <= 1 ? 1 : y / (gh - 1)
     const fade = fadeStop <= 0 ? 1 : Math.min(yPct / fadeStop, 1)
     const shade = 1 - darkAlpha * fade
     const alpha = Math.round(fade * 255)
+    // La tinta segue `fade`: al bordo superiore della fascia l'overlay è
+    // trasparente, quindi tingere lì colorerebbe il nulla e lascerebbe uno
+    // stacco netto nel punto in cui l'opacità sale.
+    const k = tint ? TINT_STRENGTH * fade : 0
     for (let x = 0; x < STD_W; x++) {
       const si = (y * STD_W + x) * 3
       const di = (y * STD_W + x) * 4
-      overlay[di] = Math.round(blurPx[si] * shade)
-      overlay[di + 1] = Math.round(blurPx[si + 1] * shade)
-      overlay[di + 2] = Math.round(blurPx[si + 2] * shade)
+      overlay[di] = Math.round(blurPx[si] * shade * (1 - k) + tintR * k)
+      overlay[di + 1] = Math.round(blurPx[si + 1] * shade * (1 - k) + tintG * k)
+      overlay[di + 2] = Math.round(blurPx[si + 2] * shade * (1 - k) + tintB * k)
       overlay[di + 3] = alpha
     }
   }

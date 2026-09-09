@@ -177,6 +177,7 @@
   "ui.tmdbKey": "Chiave TMDB personale",
   "ui.keyTooShort": "La chiave deve essere lunga almeno 20 caratteri",
   "ui.networkLogo": "Logo Network",
+  "ui.accentDominant": "Accento dal colore del poster",
   "ui.badgePosition": "Posizione badge",
   "ui.uiAccentDynamic": "Tinta UI dinamica",
   "ui.cacheDiagnostics": "Diagnostica & Cache",

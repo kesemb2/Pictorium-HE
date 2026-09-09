@@ -203,6 +203,16 @@ describe("resolvePosterRenderConfig", () => {
     expect(resolvePosterRenderConfig(baseInput()).networkLogo).toBe(true)
   })
 
+  it("accentDominant: query ad wins, then mapping, then config token, then sd, then true", () => {
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ ad: "1" }), mapping: mapping({ accentDominant: false }) })).accentDominant).toBe(true)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ ad: "0" }), mapping: mapping({ accentDominant: true }) })).accentDominant).toBe(false)
+    expect(resolvePosterRenderConfig(baseInput({ mapping: mapping({ accentDominant: false }) })).accentDominant).toBe(false)
+    expect(resolvePosterRenderConfig(baseInput({ configOverride: config({ accentDominant: false }) })).accentDominant).toBe(false)
+    expect(resolvePosterRenderConfig(baseInput({ sd: { accentDominant: false } })).accentDominant).toBe(false)
+    // Default acceso: è il look di riferimento.
+    expect(resolvePosterRenderConfig(baseInput()).accentDominant).toBe(true)
+  })
+
   it("queryExtra picks up extra param or config customBadge", () => {
     expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ extra: "Oggi" }) })).queryExtra).toBe("Oggi")
     expect(resolvePosterRenderConfig(baseInput({ configOverride: config({ customBadge: "Cult" }) })).queryExtra).toBe("Cult")
