@@ -50,6 +50,28 @@ describe("findAccentColor hue modes", () => {
     expect(withDefault).toEqual(explicit)
   })
 
+  // Il client campiona SOLO la fascia bassa del poster, come fa il server con
+  // `region: 'bottom'`: badge e fascia sfocata stanno lì. Prendere tutta
+  // l'immagine dava un accent diverso da quello poi renderizzato — questo test
+  // fissa il perché del crop, non un valore.
+  it("bottom-crop sampling can yield a different hue than the whole image", () => {
+    const W = 40, H = 40, BOTTOM_H = 16
+    // Metà alta arancione (~30°), metà bassa teal (~180°).
+    const px = new Uint8ClampedArray(W * H * 4)
+    for (let y = 0; y < H; y++) {
+      const [r, g, b] = y < H - BOTTOM_H ? [220, 120, 20] : [20, 140, 140]
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4
+        px[i] = r; px[i + 1] = g; px[i + 2] = b; px[i + 3] = 255
+      }
+    }
+    const bottom = px.slice((H - BOTTOM_H) * W * 4)
+    const whole = hue(findAccentColor(px, W, H, "", "dominant"))
+    const cropped = hue(findAccentColor(bottom, W, BOTTOM_H, "", "dominant"))
+    expect(hueDelta(cropped, TEAL_HUE)).toBeLessThan(25)
+    expect(hueDelta(whole, cropped)).toBeGreaterThan(60)
+  })
+
   it("falls back by genre on a flat poster with no vibrant pixels", () => {
     // Grigio: nessun pixel supera la soglia di saturazione, quindi la tinta
     // non si può dedurre e si usa il colore del genere.

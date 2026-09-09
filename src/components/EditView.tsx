@@ -24,6 +24,7 @@ import { Check, Clock, ExternalLink, Save, Trash2, X, ChevronLeft } from "lucide
 
 export default function EditView() {
   const accentColor = usePSelector((v) => v.accentColor)
+  const autoAccentColor = usePSelector((v) => v.autoAccentColor)
   const clearRecentSearches = usePSelector((v) => v.clearRecentSearches)
   const doSearch = usePSelector((v) => v.doSearch)
   const goHome = usePSelector((v) => v.goHome)
@@ -317,6 +318,7 @@ export default function EditView() {
                         mdblistAnimeList: mdblistAnimeList,
                         topEdgeColor: topEdgeColor,
                         accentColor: accentColor,
+                        autoAccentColor: autoAccentColor,
                         lang: lang,
                         tmdbKey: tmdbKey,
                       }, {

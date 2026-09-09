@@ -66,6 +66,15 @@ interface PosterState {
   mdblistAnimeList: EnrichedAnimeItem[]
   topEdgeColor: string | null
   accentColor?: string | null
+  /**
+   * Accent estratto automaticamente dal poster (client-side). Serve solo come
+   * termine di paragone: `ac` è un override MANUALE e va emesso soltanto quando
+   * l'utente ha scelto un colore diverso da quello auto. Emetterlo sempre
+   * cortocircuitava `resolveBadgeColors` sul server, così `accentDominant` non
+   * girava mai nell'editor e anche il tint della fascia ereditava il colore
+   * complementare del client.
+   */
+  autoAccentColor?: string | null
   lang: string
   tmdbKey: string
 }
@@ -173,7 +182,7 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
   // default right in modalità Stremio) e la preview rendeva a destra anche
   // quando l'editor mostra lo stato sinistra.
   if (bp.ribbonSide) params.push(`side=${bp.ribbonSide}`)
-  if (ps.accentColor) params.push(`ac=${encodeURIComponent(ps.accentColor)}`)
+  if (isManualAccent(ps.accentColor, ps.autoAccentColor)) params.push(`ac=${encodeURIComponent(ps.accentColor!)}`)
   // Fix M16: tl è inviato SOLO a calcolo completato: con topEdgeColor null
   // (colore non ancora campionato) la preview forzava tl=1 (testo chiaro)
   // anche quando il server avrebbe calcolato scuro — ora il server decide.
@@ -197,6 +206,21 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
   params.push("preview=1")
   const qs = "?" + params.join("&")
   return `${getDomain()}/api/poster/${ps.selected.media_type}/${ps.selected.id}${qs}`
+}
+
+/**
+ * Vero solo quando `accentColor` è una scelta dell'utente, cioè quando esiste
+ * ed è diverso dall'auto-rilevato (confronto case-insensitive: il picker
+ * emette maiuscole, il campionamento minuscole). Esportata perché la stessa
+ * regola decide se persistere il colore nel mapping (`usePosterSave`).
+ */
+export function isManualAccent(
+  accentColor: string | null | undefined,
+  autoAccentColor: string | null | undefined,
+): boolean {
+  if (!accentColor) return false
+  if (!autoAccentColor) return true
+  return accentColor.toLowerCase() !== autoAccentColor.toLowerCase()
 }
 
 /**

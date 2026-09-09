@@ -6,6 +6,7 @@ import { titleOf } from "./utils"
 import { computeTopBadge, type BadgeInput } from "./poster-badge"
 import { defaultGradientHeightForPoster } from "./gradient-defaults"
 import { logoDefaultScale } from "./logo-selection"
+import { isManualAccent } from "./poster-url"
 import { t } from "./i18n"
 import type { EnrichedAnimeItem } from "./validation"
 import { http } from "./http"
@@ -58,6 +59,8 @@ interface PosterSaveDeps {
   defaultAutoRotateClean: boolean
   excludedPosters: string[]
   accentColor: string | null
+  /** Accent auto-rilevato: serve a NON persistire come override un colore che l'utente non ha scelto. */
+  autoAccentColor: string | null
   logoDisabled: boolean
   setLogoDisabled: (v: boolean) => void
   setLogoScale: (v: number) => void
@@ -92,7 +95,7 @@ export function usePosterSave(deps: PosterSaveDeps) {
     badgeGenre, badgeYear, badgeRating, badgeQuality,
     defaultBadgeStyle, defaultRankingBadgeStyle,
     blurEnabled, blurIntensity, blurFade, blurDarkness, gradientHeight, setGradientHeight,
-    rotationPosters, autoRotateClean, defaultAutoRotateClean, excludedPosters, accentColor, logoDisabled, setLogoDisabled,
+    rotationPosters, autoRotateClean, defaultAutoRotateClean, excludedPosters, accentColor, autoAccentColor, logoDisabled, setLogoDisabled,
     setLogoScale, setLogoOffsetX, setLogoOffsetY, networkLogo, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, ribbonSide, lang, episodeGroupId,
   } = deps
 
@@ -249,7 +252,10 @@ export function usePosterSave(deps: PosterSaveDeps) {
           voteAverage: metaInfo.voteAverage || null,
           trendRank: trendRank ?? undefined,
           trendPeriod: "day",
-          accentColor: accentColor !== '#ffffff' ? accentColor : undefined,
+          // `mapping.accentColor` è un override lato render: persisterlo sempre
+          // congelava nel mapping il colore auto-rilevato, e il server non
+          // ricalcolava più l'accent (né rispettava `accentDominant`).
+          accentColor: isManualAccent(accentColor, autoAccentColor) ? accentColor! : undefined,
           showBadges: globalBadges,
           rankingBadges,
           badgeGenre: badgeGenre === false ? false : undefined,
@@ -299,7 +305,7 @@ export function usePosterSave(deps: PosterSaveDeps) {
       if (!overrides.silent) import("sonner").then(({ toast }) => toast(t("ui.saveError")))
       if (overrides.silent) throw error
     }
-  }, [selected, previewPoster, selectedLogo, metaInfo, logoScale, logoOffsetX, logoOffsetY, trendRank, globalBadges, rankingBadges, badgeGenre, badgeYear, badgeRating, badgeQuality, mdblistAnimeList, loadMappings, customBadge, badgeStyle, rankingBadgeStyle, blurEnabled, blurIntensity, blurFade, blurDarkness, gradientHeight, rotationPosters, autoRotateClean, defaultAutoRotateClean, excludedPosters, defaultBadgeStyle, defaultRankingBadgeStyle, posters, mappingsMap, accentColor, backdropOffsetX, backdropOffsetY, backdropScale, selectedBackdrop, networkLogo, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, ribbonSide, episodeGroupId]) // eslint-disable-line react-hooks/exhaustive-deps -- intentionally complete to save all poster state
+  }, [selected, previewPoster, selectedLogo, metaInfo, logoScale, logoOffsetX, logoOffsetY, trendRank, globalBadges, rankingBadges, badgeGenre, badgeYear, badgeRating, badgeQuality, mdblistAnimeList, loadMappings, customBadge, badgeStyle, rankingBadgeStyle, blurEnabled, blurIntensity, blurFade, blurDarkness, gradientHeight, rotationPosters, autoRotateClean, defaultAutoRotateClean, excludedPosters, defaultBadgeStyle, defaultRankingBadgeStyle, posters, mappingsMap, accentColor, autoAccentColor, backdropOffsetX, backdropOffsetY, backdropScale, selectedBackdrop, networkLogo, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, ribbonSide, episodeGroupId]) // eslint-disable-line react-hooks/exhaustive-deps -- intentionally complete to save all poster state
 
   return { selectPoster, selectLogo, removeLogo, selectBackdrop, removeBackdrop, saveConfig }
 }

@@ -7,7 +7,7 @@
 
 import { useEffect } from "react"
 import type { TMDBImage } from "./types"
-import { findAccentColor, topEdgeAverage } from "./accent-color"
+import { findAccentColor, topEdgeAverage, type AccentHueMode } from "./accent-color"
 
 interface RootColorsSetters {
   setAccentColor: (v: string | null) => void
@@ -15,11 +15,21 @@ interface RootColorsSetters {
   setTopEdgeColor: (v: string | null) => void
 }
 
+/**
+ * Frazione inferiore del poster campionata per l'accent. Deve restare
+ * allineata al crop del server (`extractBadgeColor`, region 'bottom', che
+ * ritaglia gli ultimi 120px di una miniatura 200×300): il badge e la fascia
+ * sfocata stanno in basso, e campionare tutto il poster dava un colore
+ * diverso da quello poi renderizzato.
+ */
+const ACCENT_BOTTOM_FRACTION = 0.4
+
 export function useRootColors(
   previewPoster: TMDBImage | null,
   genreName: string | undefined,
   posterUrl: (path: string, size?: string) => string,
   { setAccentColor, setAutoAccentColor, setTopEdgeColor }: RootColorsSetters,
+  accentDominant = true,
 ): void {
   useEffect(() => {
     const root = document.documentElement
@@ -64,7 +74,12 @@ export function useRootColors(
         ctx.imageSmoothingEnabled = false
         ctx.drawImage(img, 0, 0, w, h)
         const pixels = ctx.getImageData(0, 0, w, h).data
-        const result = findAccentColor(pixels, w, h, genreName || '')
+        // L'accent si campiona SOLO dalla fascia bassa, come il server; il
+        // bordo superiore (per `tl`) continua a servirsi dall'immagine intera.
+        const bottomH = Math.max(1, Math.round(h * ACCENT_BOTTOM_FRACTION))
+        const bottomPixels = ctx.getImageData(0, h - bottomH, w, bottomH).data
+        const hueMode: AccentHueMode = accentDominant ? "dominant" : "complement"
+        const result = findAccentColor(bottomPixels, w, bottomH, genreName || '', hueMode)
         const edge = topEdgeAverage(pixels, w, h)
 
         setRootColors(result.r, result.g, result.b, edge.r, edge.g, edge.b)
@@ -74,7 +89,9 @@ export function useRootColors(
     img.src = url
     return () => { cancelled = true }
     // La semantica dell'effetto originale: gira solo quando cambia il poster
-    // (genreName è letto dalla closure, non è una dependency).
+    // (genreName è letto dalla closure, non è una dependency). `accentDominant`
+    // invece SÌ: cambia il colore estratto, e senza di esso il toggle non
+    // avrebbe effetto finché non si cambia poster.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewPoster])
+  }, [previewPoster, accentDominant])
 }

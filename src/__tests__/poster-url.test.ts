@@ -284,6 +284,34 @@ describe("buildPreviewUrl", () => {
     expect(url).not.toContain("ac=")
   })
 
+  // `ac` è un override MANUALE. L'editor estrae da solo un accent dal poster e
+  // lo mette in accentColor: emetterlo comunque cortocircuitava
+  // `resolveBadgeColors` sul server, così `accentDominant` non girava mai nella
+  // preview e la fascia sfocata prendeva il tint del colore complementare.
+  it("omits ac when accentColor is just the auto-detected colour", () => {
+    const url = buildPreviewUrl(
+      { ...basePosterState, accentColor: "#3ba9c7", autoAccentColor: "#3ba9c7" },
+      baseBadgeParams,
+    )
+    expect(url).not.toContain("ac=")
+  })
+
+  it("omits ac when the two differ only by hex case", () => {
+    const url = buildPreviewUrl(
+      { ...basePosterState, accentColor: "#3BA9C7", autoAccentColor: "#3ba9c7" },
+      baseBadgeParams,
+    )
+    expect(url).not.toContain("ac=")
+  })
+
+  it("emits ac when the user picked a colour other than the auto one", () => {
+    const url = buildPreviewUrl(
+      { ...basePosterState, accentColor: "#ff0000", autoAccentColor: "#3ba9c7" },
+      baseBadgeParams,
+    )
+    expect(url).toContain("ac=%23ff0000")
+  })
+
   it("includes badges=1 when globalBadges is true", () => {
     const url = buildPreviewUrl(basePosterState, { ...baseBadgeParams, globalBadges: true })
     expect(url).toContain("badges=1")
