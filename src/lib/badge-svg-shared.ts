@@ -23,6 +23,11 @@ export function escSvg(s: string): string {
 /** Ebraico (blocco base + presentation forms). */
 const HEBREW_RE = /[\u0590-\u05FF\uFB1D-\uFB4F]/
 
+/** True se il testo contiene almeno un carattere ebraico. */
+export function containsHebrew(text: string): boolean {
+  return HEBREW_RE.test(text)
+}
+
 /**
  * Famiglia da dichiarare per un testo di badge. Inter non ha glifi ebraici:
  * resvg li recupera per-glifo da Rubik (presente nel fontdb, vedi lib/fonts),
@@ -182,6 +187,51 @@ export function buildGenrePillSvg(genreName: string, voteStr: string, yearStr: s
   const textParts = buildGenreTextFlow({ genreName, voteStr, yearStr, fs, centerX: pillW / 2 + textOffsetX, y: pillH / 2, parts })
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pillW}" height="${pillH}"><rect width="${pillW}" height="${pillH}" rx="${pillR}" fill="${bgColor}" stroke="rgba(255,255,255,0.18)" stroke-width="1"/><g fill="${textColor}">${textParts}</g></svg>`
   return { svg, w: pillW, h: pillH }
+}
+
+/** Corpo del titolo tradotto sotto il logo, in scala col poster (27px @ 750). */
+export const TITLE_TEXT_FONT_SIZE = 27
+/** Pavimento dello shrink-to-fit: sotto questo corpo il titolo si tronca. */
+const TITLE_TEXT_MIN_FONT_SIZE = 15
+/** Frazione di larghezza poster utilizzabile dal titolo. */
+const TITLE_TEXT_MAX_RATIO = 0.8
+
+export function titleTextMaxW(posterW: number): number {
+  return Math.round(posterW * TITLE_TEXT_MAX_RATIO)
+}
+
+/**
+ * Titolo su UNA riga: prima riduce il corpo fino a `TITLE_TEXT_MIN_FONT_SIZE`,
+ * poi tronca con l'ellissi. In tutto il codebase non esiste un helper di
+ * a-capo e una riga di sottotitolo non lo giustifica: la fascia sotto il logo
+ * è alta ~150px in tutto e due righe se la mangerebbero.
+ */
+export function fitTitleText(title: string, maxW: number, fs = TITLE_TEXT_FONT_SIZE): { text: string; fs: number } {
+  const clean = title.trim().replace(/\s+/g, " ")
+  if (!clean) return { text: "", fs }
+  let size = fs
+  while (size > TITLE_TEXT_MIN_FONT_SIZE && estimateTextWidth(clean, size) > maxW) size -= 1
+  if (estimateTextWidth(clean, size) <= maxW) return { text: clean, fs: size }
+  // Ancora troppo lungo al corpo minimo: taglia carattere per carattere.
+  const chars = [...clean]
+  while (chars.length > 1 && estimateTextWidth(`${chars.join("")}\u2026`, size) > maxW) chars.pop()
+  return { text: `${chars.join("")}\u2026`, fs: size }
+}
+
+/**
+ * SVG del titolo tradotto reso sotto il logo. Stessa doppia ombra del badge
+ * genere "shadow": il testo cade su artwork, non su una pill, e senza ombra
+ * sparirebbe sui poster chiari.
+ */
+export function buildTitleTextSvg(title: string, maxW: number, fs = TITLE_TEXT_FONT_SIZE, textColor = "#ffffff") {
+  const fit = fitTitleText(title, maxW, fs)
+  if (!fit.text) return null
+  const shadowPad = 8
+  const renderW = Math.min(Math.round(estimateTextWidth(fit.text, fit.fs)) + shadowPad * 2, maxW + shadowPad * 2)
+  const renderH = Math.round(fit.fs * 1.6)
+  const defs = `<defs><filter id="ts" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="rgba(0,0,0,0.8)"/><feDropShadow dx="0" dy="5" stdDeviation="4.5" flood-color="rgba(0,0,0,0.55)"/></filter></defs>`
+  const textEl = `<text x="${renderW / 2}" y="${renderH / 2}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(fit.text)}" font-weight="700" font-size="${fit.fs}" fill="${textColor}" filter="url(#ts)">${escSvg(fit.text)}</text>`
+  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${renderH}">${defs}${textEl}</svg>`, w: renderW, h: renderH }
 }
 
 export function buildGenreTextSvg(genreName: string, voteStr: string, yearStr: string, fs: number, textColor: string, style: string, textOffsetX = 0, parts?: GenreParts) {

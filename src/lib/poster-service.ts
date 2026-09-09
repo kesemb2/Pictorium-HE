@@ -11,12 +11,22 @@ import {
   isValidHex,
   PosterComposite,
 } from "./poster-render-helpers"
-import { renderGenreBadge, renderRankingBadge, renderExtraBadge, renderQualityBadge } from "./svg-badge"
+
+/**
+ * Striscia riservata al titolo tradotto sotto il logo, a canvas STD_H=750.
+ * La fascia utile va dall'inizio della sfocatura (y 525 col gradHeight di
+ * default) alla base del logo (y 675): 150px in tutto. 46px per il titolo
+ * lasciano il logo leggibile e il badge genere libero sotto.
+ */
+const TITLE_BAND_H = 46
+/** Aria tra la base del logo e la riga del titolo. */
+const TITLE_BAND_GAP = 6
+import { renderGenreBadge, renderRankingBadge, renderExtraBadge, renderQualityBadge, renderTitleText } from "./svg-badge"
 import { renderFirstMatchingNetworkLogoBadge, renderFirstMatchingNetworkRawBadge, renderFirstMatchingNetworkLogoBadgeHybrid, renderFirstMatchingNetworkRawBadgeHybrid, type NetworkCandidate } from "./network-svgs"
 import { computeLogoLayout } from "./logo-layout"
 import fs from "fs"
 import path from "path"
-import { estimateTextWidth, fontFamilyFor } from "./badge-svg-shared"
+import { estimateTextWidth, fontFamilyFor, titleTextMaxW } from "./badge-svg-shared"
 import { computeTopBadge, isNetworkStudio, type BadgeInput } from "./poster-badge"
 import type { Mapping } from "./types"
 import type { ServerDefaults } from "./server-defaults"
@@ -77,6 +87,13 @@ export interface GenerationInput {
   logoScale: number | null
   logoOffsetX: number | null
   logoOffsetY: number | null
+  /**
+   * Titolo nella lingua richiesta, reso come riga di testo SOTTO il logo quando
+   * TMDB non ha un logo in quella lingua (`titleUnderLogo`). Il chiamante decide
+   * SE mostrarlo — qui si rende e basta.
+   */
+  title?: string | null
+  titleUnderLogo?: boolean
 
   // Badge data sources
   mediaType: "movie" | "tv"
@@ -426,7 +443,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     badgesEnabled, rankingEnabled, genreName, voteAverage, badgeStyle,
     rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality, quality,
     topLight, targetCenter, ribbonSide,
-    logoScale, logoOffsetX, logoOffsetY,
+    logoScale, logoOffsetX, logoOffsetY, title, titleUnderLogo,
     mediaType, finalRank, animeRankResult,
     mapping, tmdbNetworks, productionCompanies, tmdbStudios,
     tmdbNetworksDetailed, productionCompaniesDetailed,
@@ -468,6 +485,11 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   const hasGenreBadge = badgesEnabled
     && ((genreAvailable && badgeGenre) || (ratingAvailable && badgeRating) || (yearAvailable && badgeYear))
 
+  // Titolo tradotto sotto il logo: solo se il chiamante lo chiede E c'è un logo
+  // su cui appoggiarlo. Senza logo il titolo diventerebbe l'elemento principale
+  // del poster, che è una scelta di design diversa (e non quella approvata).
+  const showTitleUnderLogo = !!titleUnderLogo && !!title?.trim() && !!logoFetch
+
   const [blurOverlay, badgeColors, logoResult] = await Promise.all([
     applyBlur({ posterBuf, blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness }),
     hasGenreBadge
@@ -488,6 +510,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
             posterW: STD_W, posterH: STD_H, logoW: lw, logoH: lh,
             logoScale: uScale, logoOffsetX: uOx, logoOffsetY: uOy,
             hasBadges: hasGenreBadge,
+            titleBandH: showTitleUnderLogo ? TITLE_BAND_H : 0,
           })
           const resized = await resizeLogoCached(logoFetch, layout.width, layout.height, logoSrc)
           const aW = resized.w
@@ -503,6 +526,16 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   const vigBuf = await getVignette()
   composites.push({ input: vigBuf, top: 0, left: 0 })
   if (logoResult) composites.push(logoResult)
+  if (showTitleUnderLogo && logoResult) {
+    const titleBadge = await renderTitleText(title!, titleTextMaxW(STD_W)).catch(() => null)
+    if (titleBadge) {
+      composites.push({
+        input: titleBadge.png,
+        top: Math.min(logoResult.top + logoResult.h + TITLE_BAND_GAP, STD_H - titleBadge.h),
+        left: Math.round((STD_W - titleBadge.w) / 2),
+      })
+    }
+  }
 
   // -----------------------------------------------------------------------
   // 4. Badge computation

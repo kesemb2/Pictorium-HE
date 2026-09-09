@@ -53,6 +53,7 @@ import {
   topLuminance,
 } from "@/lib/poster-render-helpers"
 import { generatePosterBuffer, type GenerationInput } from "@/lib/poster-service"
+import { containsHebrew } from "@/lib/badge-svg-shared"
 import { computeTopBadge } from "@/lib/poster-badge"
 
 import { resolveImdbToTmdb } from "@/lib/imdb-resolver"
@@ -60,6 +61,14 @@ import { decodeConfig } from "@/lib/config-token"
 import { createLogger } from "@/lib/logger"
 import { resolvePosterRenderConfig } from "@/lib/poster-config"
 import { selectBestLogo, logoBestLogoFallbackReason } from "@/lib/logo-selection"
+
+/**
+ * Lingue per cui si rende il titolo tradotto sotto il logo quando TMDB non ha
+ * un logo in quella lingua. Solo ebraico: le altre dodici regioni hanno una
+ * copertura loghi decente e aggiungere una riga cambierebbe poster che oggi
+ * vanno bene. Aggiungere una lingua qui è tutto quel che serve.
+ */
+const TITLE_UNDER_LOGO_LANGS = new Set(["he"])
 import { resolveStreamQuality } from "@/lib/stream-quality"
 
 // Vercel: limite massimo di esecuzione della funzione. Il render poster ha un
@@ -323,6 +332,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   let tmdbNetworksDetailed: { name: string; logoPath: string | null }[] = []
   let productionCompaniesDetailed: { name: string; logoPath: string | null }[] = []
   let imdbId: string | null = null
+  // Titolo nella lingua richiesta + "TMDB aveva un logo in quella lingua?".
+  // Insieme decidono la riga di titolo sotto il logo (vedi titleUnderLogo).
+  let resolvedTitle: string | null = null
+  let hasLangLogo = false
 
   const queryPoster = req.nextUrl.searchParams.get("poster")
   const queryLogo = req.nextUrl.searchParams.get("logo")
@@ -364,6 +377,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       else releaseDate = `${y}-01-01`
     }
     imdbId = req.nextUrl.searchParams.get("imdbId") || null
+    resolvedTitle = req.nextUrl.searchParams.get("title")
+    // Il ramo preview non vede la lista loghi di TMDB, quindi non può dedurre
+    // "manca il logo nella lingua": lo dichiara il client con `tul=1`
+    // (buildPreviewUrl), che ha sia la lingua sia il logo selezionato.
+    hasLangLogo = req.nextUrl.searchParams.get("tul") !== "1"
     showBadges = req.nextUrl.searchParams.get("badges") !== "0"
     rankingBadges = req.nextUrl.searchParams.get("ranking") !== "0"
     etag = `"p${etagBase}"`
@@ -383,6 +401,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     backdropOffsetY = mapping?.backdropOffsetY ?? 0
     genreName = mapping.genreName ?? null
     voteAverage = mapping.voteAverage ?? null
+    resolvedTitle = mapping.title || null
+    // Il mapping salva il poster scelto, non la lingua del logo: senza quel
+    // dato non si può dedurre "mancava il logo in ebraico", quindi qui la riga
+    // del titolo resta spenta (vedi nota di scope nel piano).
+    hasLangLogo = true
     showBadges = mapping.showBadges ?? true
     rankingBadges = mapping.rankingBadges ?? true
     etag = `"m${etagBase}:${mapping.updatedAt}"`
@@ -436,6 +459,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         ? fetchAggregatedRating(imdbId, req.nextUrl.searchParams.get("mdblist_key") || envWithFallback("MDBLIST_KEY") || undefined, ratingAbort!.signal).catch(() => null)
         : Promise.resolve(null)
       genreName = details.genres[0]?.name || null
+      resolvedTitle = details.title || details.name || null
+      hasLangLogo = images.logos.some((l: TMDBImage) => l.iso_639_1 === preferredLanguage)
       voteAverage = details.vote_average ?? 0
       releaseDate = details.release_date || null
       firstAirDate = details.first_air_date || null
@@ -943,6 +968,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       tmdbNetworksDetailed = [{ name: fallbackName, logoPath: fallbackPath }]
     }
 
+    // Riga di titolo sotto il logo: TMDB ha pochissimi loghi in ebraico, ma
+    // quasi sempre il titolo tradotto. Quando manca il logo nella lingua
+    // richiesta si tiene il logo inglese e si mette il titolo sotto.
+    // Il controllo sui caratteri ebraici NON è pleonastico: senza traduzione
+    // TMDB restituisce il titolo ORIGINALE, quindi `resolvedTitle` sotto he-IL
+    // è spesso inglese e finiremmo per scrivere "Fight Club" sotto il logo
+    // "FIGHT CLUB".
+    const posterLang = (req.nextUrl.searchParams.get("lang") || mapping?.language || "it").slice(0, 2).toLowerCase()
+    const showTitleUnderLogo = TITLE_UNDER_LOGO_LANGS.has(posterLang)
+      && !hasLangLogo
+      && !!resolvedTitle
+      && containsHebrew(resolvedTitle)
+
     // 10. Generate poster buffer
     const genInput: GenerationInput = {
       posterBuf, logoFetch, backdropFetch,
@@ -953,6 +991,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       quality: finalQuality,
       topLight, targetCenter, ribbonSide,
       logoScale, logoOffsetX, logoOffsetY,
+      title: resolvedTitle,
+      titleUnderLogo: showTitleUnderLogo,
       mediaType: mediaType as "movie" | "tv",
       finalRank, animeRankResult, rankingResult,
       mapping, tmdbNetworks, productionCompanies, tmdbStudios,

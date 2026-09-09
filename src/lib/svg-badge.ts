@@ -1,7 +1,7 @@
 import fs from "fs"
 import { textColorForBg } from "./accent-color"
 import { FONT_FILES, FONT_INTER_REGULAR, FONT_INTER_BOLD, FONT_INTER_BLACK, FONT_SYMBOLS } from "./fonts"
-import { estimateTextWidth, fontFamilyFor, genreBadgeSafePad, genreBadgeSvgDims, genrePillMaxW, buildGenreBarSvg, buildGenrePillSvg, buildGenreTextSvg, buildGenreBorderedSvg, buildGenreGlassSvg, buildRankingBarSvg, buildRankingDefaultSvg, buildRankingPillSvg, buildExtraBarSvg, buildExtraDefaultSvg, buildExtraPillSvg, buildExtraGlassSvg, buildQualityBadgeSvg, escSvg } from "./badge-svg-shared"
+import { buildTitleTextSvg, estimateTextWidth, fontFamilyFor, genreBadgeSafePad, genreBadgeSvgDims, genrePillMaxW, buildGenreBarSvg, buildGenrePillSvg, buildGenreTextSvg, buildGenreBorderedSvg, buildGenreGlassSvg, buildRankingBarSvg, buildRankingDefaultSvg, buildRankingPillSvg, buildExtraBarSvg, buildExtraDefaultSvg, buildExtraPillSvg, buildExtraGlassSvg, buildQualityBadgeSvg, escSvg } from "./badge-svg-shared"
 import type { GenreParts } from "./badge-svg-shared"
 import type { BadgeStyle, RankingBadgeStyle, ExtraBadgeStyle } from "./badge-styles"
 
@@ -381,6 +381,20 @@ export async function renderExtraBadge(
   const r = await buildExtraBadgeSVG(label, pw, topLight, badgeStyle, accentColor)
   if (r) return r
   throw new Error(`SVG extra badge failed: ${label}`)
+}
+
+/**
+ * Titolo tradotto reso sotto il logo (vedi buildTitleTextSvg). Ritorna null
+ * quando il titolo è vuoto, così il chiamante può semplicemente non comporre
+ * nulla senza casi speciali.
+ */
+export async function renderTitleText(
+  title: string, maxW: number, fs?: number, textColor?: string,
+): Promise<{ png: Buffer; w: number; h: number } | null> {
+  const built = buildTitleTextSvg(title, maxW, fs, textColor)
+  if (!built) return null
+  const png = await renderSVG(wrapSvg(built.svg), built.w)
+  return { png, w: built.w, h: built.h }
 }
 
 export async function renderQualityBadge(

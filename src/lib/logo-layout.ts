@@ -7,6 +7,14 @@ type LogoLayoutInput = {
   readonly logoOffsetX: number
   readonly logoOffsetY: number
   readonly hasBadges: boolean
+  /**
+   * Altezza della striscia riservata SOTTO il logo al titolo tradotto (0 =
+   * nessuna striscia, comportamento storico). Il logo viene SOLLEVATO di questo
+   * valore, non rimpicciolito: per un wordmark è la larghezza a decidere la
+   * dimensione, quindi ridurne l'altezza gli toglierebbe metà larghezza via
+   * `fit: "inside"` senza guadagnare spazio utile.
+   */
+  readonly titleBandH?: number
 }
 
 type LogoBoxInput = Pick<LogoLayoutInput, "posterW" | "posterH" | "logoW" | "logoH" | "logoScale">
@@ -58,11 +66,17 @@ export function computeLogoLayout(input: LogoLayoutInput): LogoLayout {
   const posterH = sanePositive(input.posterH, 1500)
   const box = computeLogoBox(input)
   const badgeOffset = input.hasBadges ? 0 : Math.round(40 * posterH / 1500)
+  const titleBandH = Number.isFinite(input.titleBandH) ? Math.max(input.titleBandH!, 0) : 0
   const left = Math.round((posterW - box.width) / 2 + input.logoOffsetX)
-  const top = Math.max(0, Math.round(posterH - box.height - posterH * 0.1 + input.logoOffsetY + badgeOffset))
+  const top = Math.max(0, Math.round(posterH - box.height - posterH * 0.1 + input.logoOffsetY + badgeOffset - titleBandH))
   return { ...box, left, top }
 }
 
+/**
+ * Bounds degli slider X/Y dell'editor. Ignora deliberatamente `titleBandH`: la
+ * striscia del titolo è una decisione del render server (dipende dai loghi che
+ * TMDB restituisce), il client non la conosce e passa sempre 0.
+ */
 export function computeLogoOffsetBounds(input: Omit<LogoLayoutInput, "logoOffsetX" | "logoOffsetY">): LogoOffsetBounds {
   const posterW = sanePositive(input.posterW, 1000)
   const posterH = sanePositive(input.posterH, 1500)

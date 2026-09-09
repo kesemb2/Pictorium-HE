@@ -2,6 +2,7 @@ import { getDomain } from "./utils"
 import { resolveLabel, isRankKey, t as tFn } from "./i18n"
 import { getPosterPublicBaseUrl } from "./poster-public-url"
 import { buildStremioPosterSearchParams } from "./stremio-poster-params"
+import { containsHebrew } from "./badge-svg-shared"
 import { RENDER_VERSION } from "./render-version"
 import { TOP_LIGHT_LUMINANCE } from "./constants"
 import type { SearchResult, TMDBImage } from "./types"
@@ -120,6 +121,18 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
     params.push(`scale=${ps.logoScale}`)
     params.push(`ox=${ps.logoOffsetX}`)
     params.push(`oy=${ps.logoOffsetY}`)
+    // WYSIWYG della riga di titolo sotto il logo. Il ramo query del render non
+    // vede la lista loghi di TMDB, quindi non può dedurre da solo "manca il
+    // logo nella lingua": glielo dice il client, che ha entrambi i dati.
+    const title = ps.selected.title || ps.selected.name || ""
+    if (
+      ps.lang === "he"
+      && ps.selectedLogo.iso_639_1 !== ps.lang
+      && containsHebrew(title)
+    ) {
+      params.push(`title=${encodeURIComponent(title)}`)
+      params.push("tul=1")
+    }
   }
   if (ps.selectedBackdrop) {
     params.push(`backdrop=${encodeURIComponent(ps.selectedBackdrop.file_path)}`)
