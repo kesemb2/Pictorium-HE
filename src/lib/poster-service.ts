@@ -109,6 +109,12 @@ export interface GenerationInput {
   productionCompaniesDetailed?: readonly NetworkCandidate[]
   tvType: string | null
   tvStatus: string | null
+  /** Numero di voti TMDB — con voteAverage decide il badge "molto votato". */
+  voteCount?: number | null
+  /** `next_episode_to_air.air_date` TMDB — badge "nuovo episodio". */
+  nextEpisodeAirDate?: string | null
+  /** Titolo nella classifica settimanale TMDB (non il rank JustWatch). */
+  tmdbTrending?: boolean
   releaseDate: string | null
   firstAirDate: string | null
   /** Ultima messa in onda + n. stagioni + origin country (badge Nuova stagione / K-Drama). */
@@ -449,6 +455,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     tmdbNetworksDetailed, productionCompaniesDetailed,
     tvType, tvStatus, releaseDate, firstAirDate,
     lastAirDate, seasonCount, originCountries,
+    voteCount, nextEpisodeAirDate, tmdbTrending,
     wikidataResult, tmdbKeywords, locale, t,
     qLabel, queryExtra, qNetLogo, networkLogo, sd, accentOverride, imdbTop250,
     posterSrc, logoSrc, backdropSrc,
@@ -551,6 +558,9 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     seasonCount: seasonCount ?? null,
     originCountries: [...originCountries],
     voteAverage: voteAverage ?? 0,
+    voteCount: voteCount ?? null,
+    nextEpisodeAirDate: nextEpisodeAirDate ?? null,
+    tmdbTrending: !!tmdbTrending,
     trendRank: finalRank,
     animeRank: animeRankResult,
     awards: wikidataResult.awards,

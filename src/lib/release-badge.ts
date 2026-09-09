@@ -25,14 +25,16 @@ export function getUpcomingReleaseLabel(input: {
   return translate("badge.upcomingRelease", { date: formatReleaseDate(date, input.locale ?? "it") })
 }
 
-function parseTmdbDate(value?: string | null): Date | null {
+export function parseTmdbDate(value?: string | null): Date | null {
   if (!value) return null
   const [year, month, day] = value.split("-").map(Number)
   if (!year || !month || !day) return null
   return new Date(year, month - 1, day)
 }
 
-function formatReleaseDate(date: Date, locale: string): string {
+/** `dd.mm.yy` — condiviso col badge "nuovo episodio" perché le due date
+ *  vanno formattate identiche. */
+export function formatReleaseDate(date: Date, locale: string): string {
   const d = date.toLocaleDateString(locale === "it" ? "it-IT" : locale, {
     day: "2-digit",
     month: "2-digit",

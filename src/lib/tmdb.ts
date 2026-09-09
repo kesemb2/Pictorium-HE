@@ -152,6 +152,11 @@ const tmdbDetailsSchema = z.object({
   original_language: z.string().optional(),
   networks: z.array(tmdbCompanySchema).optional(),
   production_companies: z.array(tmdbCompanySchema).optional(),
+  next_episode_to_air: z.object({
+    air_date: z.string().nullable().optional(),
+    episode_number: z.number().optional(),
+    season_number: z.number().optional(),
+  }).nullable().optional(),
 }).passthrough()
 
 // Stessa cosa per i gruppi di episodi: struttura annidata, tutto opzionale
@@ -617,8 +622,8 @@ export interface TMDBTrendingResponse {
   total_results: number
 }
 
-export async function getTrending(mediaType: "movie" | "tv", timeWindow: "day" | "week" = "day", apiKey?: string, page = 1): Promise<TMDBTrendingResponse> {
-  const data = await tmdbFetch(`/trending/${mediaType}/${timeWindow}?language=it-IT&page=${page}`, apiKey)
+export async function getTrending(mediaType: "movie" | "tv", timeWindow: "day" | "week" = "day", apiKey?: string, page = 1, language = "it-IT"): Promise<TMDBTrendingResponse> {
+  const data = await tmdbFetch(`/trending/${mediaType}/${timeWindow}?language=${language}&page=${page}`, apiKey)
   return parseTmdb<TMDBTrendingResponse>("trending", tmdbTrendingResponseSchema, data)
 }
 

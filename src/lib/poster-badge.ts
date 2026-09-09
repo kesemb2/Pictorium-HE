@@ -5,10 +5,41 @@
  */
 import { computeBadge, computeAbsoluteCinema, type BadgeResult } from "./badge-priority"
 import { getAwardBadgeLabel, getNominationBadgeLabel } from "./awards"
-import { getUpcomingReleaseLabel } from "./release-badge"
+import { formatReleaseDate, getUpcomingReleaseLabel, parseTmdbDate } from "./release-badge"
 import { getSubGenreLabel } from "./subgenres"
 
 export type BadgeT = (key: string, params?: Record<string, string | number>) => string
+
+/** Voto TMDB minimo per il badge "molto votato". */
+const HIGHLY_RATED_MIN_SCORE = 8.0
+/**
+ * Voti minimi. Senza soglia sul campione il badge sarebbe rumore: su TMDB un
+ * titolo oscuro con una dozzina di voti arriva tranquillamente a 9.
+ */
+const HIGHLY_RATED_MIN_VOTES = 1000
+/** Stati TMDB che valgono come "conclusa" (lowercase). */
+const ENDED_STATUSES = new Set(["ended", "canceled", "cancelled"])
+/** Finestra del badge "nuovo episodio": oltre, la data non è più una notizia. */
+const NEXT_EPISODE_WINDOW_DAYS = 14
+
+/**
+ * Badge "Nuovo episodio {data}" dalla prossima messa in onda TMDB. Vale solo
+ * per date FUTURE dentro la finestra: un episodio già andato in onda è coperto
+ * da "nuova stagione", uno fra tre mesi non interessa a nessuno.
+ */
+export function getNextEpisodeLabel(input: {
+  airDate?: string | null
+  locale?: string
+  t: BadgeT
+}): string | null {
+  const date = parseTmdbDate(input.airDate)
+  if (!date) return null
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const days = (date.getTime() - today.getTime()) / (24 * 60 * 60 * 1000)
+  if (days <= 0 || days > NEXT_EPISODE_WINDOW_DAYS) return null
+  return input.t("badge.nextEpisode", { date: formatReleaseDate(date, input.locale ?? "it") })
+}
 
 export interface BadgeInput {
   mediaType: "movie" | "tv"
@@ -21,6 +52,12 @@ export interface BadgeInput {
   /** Origin country di network + production companies (ISO-3166) — per "K-Drama". */
   originCountries: string[]
   voteAverage: number
+  /** Numero di voti TMDB — con voteAverage decide il badge "molto votato". */
+  voteCount?: number | null
+  /** `next_episode_to_air.air_date` TMDB — badge "nuovo episodio". */
+  nextEpisodeAirDate?: string | null
+  /** Titolo nella classifica settimanale TMDB (non il rank JustWatch). */
+  tmdbTrending?: boolean
   trendRank: number | null
   animeRank: number | null
   awards: string[]
@@ -37,6 +74,9 @@ export interface BadgeInput {
 
 export interface ComputedTopBadge {
   readonly badge: BadgeResult | null
+  readonly nextEpisode: string | null
+  readonly highlyRated: boolean
+  readonly ended: boolean
   readonly upcomingRelease: string | null
   readonly isNewMovie: boolean
   readonly isNewSeries: boolean
@@ -151,6 +191,15 @@ export function computeTopBadge(input: BadgeInput, t: BadgeT, locale?: string): 
     : null
   const isKDrama = input.mediaType === "tv" && isKDramaOrigin(input.originCountries)
 
+  const nextEpisode = input.mediaType === "tv"
+    ? getNextEpisodeLabel({ airDate: input.nextEpisodeAirDate, locale: locale || "it", t })
+    : null
+  // Voto alto DA SOLO non dice niente: su TMDB un titolo con 12 voti arriva a
+  // 9. Serve anche un campione ampio.
+  const highlyRated = (input.voteAverage ?? 0) >= HIGHLY_RATED_MIN_SCORE
+    && (input.voteCount ?? 0) >= HIGHLY_RATED_MIN_VOTES
+  const ended = input.mediaType === "tv" && ENDED_STATUSES.has((input.tvStatus || "").toLowerCase())
+
   const badge = computeBadge({
     mediaType: input.mediaType,
     upcomingRelease,
@@ -166,11 +215,18 @@ export function computeTopBadge(input: BadgeInput, t: BadgeT, locale?: string): 
     subGenre: subGenreBadge,
     isKDrama,
     imdbTop250: !!input.imdbTop250,
+    nextEpisode,
+    tmdbTrending: !!input.tmdbTrending,
+    highlyRated,
+    ended,
     extra: extraFallback,
   }, t)
 
   return {
     badge,
+    nextEpisode,
+    highlyRated,
+    ended,
     upcomingRelease,
     isNewMovie,
     isNewSeries,

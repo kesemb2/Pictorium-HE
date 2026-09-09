@@ -11,7 +11,7 @@ import { BadgeStyleSelector } from "@/components/ui"
 import { getAwardBadgeLabel, getNominationBadgeLabel } from "@/lib/awards"
 import { getSubGenreLabel } from "@/lib/subgenres"
 import { getUpcomingReleaseLabel } from "@/lib/release-badge"
-import { getNewSeasonLabel, isKDramaOrigin } from "@/lib/poster-badge"
+import { getNewSeasonLabel, getNextEpisodeLabel, isKDramaOrigin } from "@/lib/poster-badge"
 import { isPrefixedKey, badgeKey } from "@/lib/i18n"
 import { getAllBadgeOptions } from "@/lib/badge-priority"
 import { defaultGradientHeightForPoster } from "@/lib/gradient-defaults"
@@ -292,10 +292,22 @@ export function BadgeControls() {
                   ...(metaInfo.networksDetailed ?? []),
                   ...(metaInfo.productionCompaniesDetailed ?? []),
                 ].map((c) => c.origin_country).filter((c): c is string => !!c))
+                const nextEpisode = selected.media_type === "tv" ? getNextEpisodeLabel({
+                  airDate: metaInfo.next_episode_to_air?.air_date,
+                  locale: lang,
+                  t,
+                }) : null
+                const highlyRated = metaInfo.voteAverage >= 8 && (metaInfo.voteCount ?? 0) >= 1000
+                const ended = selected.media_type === "tv"
+                  && ["ended", "canceled", "cancelled"].includes((tvStatus || "").toLowerCase())
+                // `tmdbTrending` non è tra le opzioni: il client non ha la lista
+                // di tendenza e chiederla costerebbe una richiesta per titolo
+                // solo per popolare una voce di menu. Il badge resta automatico.
                 const options = getAllBadgeOptions({
                   upcomingRelease, isNewMovie, isNewSeries, newSeason, animeRank, trendRank: trendRank,
                   award, nomination, studio,
                   director: metaInfo.director || null, subGenre, isKDrama, extra,
+                  nextEpisode, highlyRated, ended,
                   mediaType: selected.media_type === "tv" ? "tv" : "movie",
                   voteAverage: metaInfo.voteAverage, tvType, tvStatus,
                   imdbTop250: !!imdbTop250,

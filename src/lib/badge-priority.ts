@@ -29,6 +29,14 @@ export function computeBadge(params: {
   /** Serie TV prodotta in Corea del Sud (origin country KR). */
   isKDrama?: boolean
   imdbTop250?: boolean
+  /** Label "Nuovo episodio {data}" già localizzata, o null. */
+  nextEpisode?: string | null
+  /** Titolo nella classifica settimanale TMDB (non il rank JustWatch). */
+  tmdbTrending?: boolean
+  /** Voto TMDB alto su un campione ampio. */
+  highlyRated?: boolean
+  /** Serie TV conclusa o cancellata. */
+  ended?: boolean
   extra: string | null
 }, _t?: T): BadgeResult | null {
   const t = _t || _idT
@@ -40,13 +48,21 @@ export function computeBadge(params: {
   if (params.isNewMovie) return { type: "extra", label: t("badge.newMovie") }
   if (params.isNewSeries) return { type: "extra", label: t("badge.newSeries") }
   if (params.newSeason) return { type: "extra", label: params.newSeason }
+  // Sensibile al tempo come "nuova stagione", quindi sta accanto a quello e
+  // sopra i premi, che non scadono mai.
+  if (params.nextEpisode) return { type: "extra", label: params.nextEpisode }
   if (params.award) return { type: "extra", label: params.award }
   if (params.imdbTop250) return { type: "extra", label: t("badge.absoluteCinema") }
   if (params.nomination) return { type: "extra", label: params.nomination }
+  if (params.tmdbTrending) return { type: "extra", label: t(params.mediaType === "movie" ? "badge.trending" : "badge.trendingSeries") }
   if (params.subGenre) return { type: "extra", label: params.subGenre }
   if (params.isKDrama) return { type: "extra", label: "K-Drama" }
   if (params.director) return { type: "extra", label: params.director }
   if (params.studio) return { type: "extra", label: params.studio }
+  // Proprietà permanenti del titolo: non sono una notizia, quindi non devono
+  // mai scavalcare qualcosa che lo è. Restano in fondo, sopra l'extra manuale.
+  if (params.highlyRated) return { type: "extra", label: t("badge.highlyRated") }
+  if (params.ended) return { type: "extra", label: t("badge.ended") }
   if (params.extra) return { type: "extra", label: params.extra }
   return null
 }
@@ -82,6 +98,10 @@ export function getAllBadgeOptions(params: {
   subGenre?: string | null
   isKDrama?: boolean
   imdbTop250?: boolean
+  nextEpisode?: string | null
+  tmdbTrending?: boolean
+  highlyRated?: boolean
+  ended?: boolean
   extra: string | null
   mediaType: "movie" | "tv"
   voteAverage: number
@@ -98,6 +118,10 @@ export function getAllBadgeOptions(params: {
   if (params.award) options.add(params.award)
   if (params.mediaType === "movie" && params.imdbTop250) options.add(keyed("badge.absoluteCinema"))
   if (params.nomination) options.add(params.nomination)
+  if (params.nextEpisode) options.add(params.nextEpisode)
+  if (params.tmdbTrending) options.add(keyed(params.mediaType === "movie" ? "badge.trending" : "badge.trendingSeries"))
+  if (params.highlyRated) options.add(keyed("badge.highlyRated"))
+  if (params.ended) options.add(keyed("badge.ended"))
   if (params.subGenre) options.add(params.subGenre)
   if (params.isKDrama) options.add("K-Drama")
   if (params.director) options.add(params.director)

@@ -54,6 +54,7 @@ import {
 } from "@/lib/poster-render-helpers"
 import { generatePosterBuffer, type GenerationInput } from "@/lib/poster-service"
 import { containsHebrew } from "@/lib/badge-svg-shared"
+import { isTmdbTrending } from "@/lib/tmdb-trending-badge"
 import { computeTopBadge } from "@/lib/poster-badge"
 
 import { resolveImdbToTmdb } from "@/lib/imdb-resolver"
@@ -326,6 +327,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   let originCountries: string[] = []
   let tvType: string | null = null
   let tvStatus: string | null = null
+  let voteCount: number | null = null
+  let nextEpisodeAirDate: string | null = null
   let tmdbStudios: string[] = []
   let tmdbNetworks: string[] = []
   let productionCompanies: string[] = []
@@ -462,6 +465,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       resolvedTitle = details.title || details.name || null
       hasLangLogo = images.logos.some((l: TMDBImage) => l.iso_639_1 === preferredLanguage)
       voteAverage = details.vote_average ?? 0
+      voteCount = details.vote_count ?? null
+      nextEpisodeAirDate = details.next_episode_to_air?.air_date ?? null
       releaseDate = details.release_date || null
       firstAirDate = details.first_air_date || null
       lastAirDate = details.last_air_date || null
@@ -633,7 +638,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     const WIKIDATA_TIMEOUT = Number(process.env.WIKIDATA_TIMEOUT) || 2500
     const [
       [originalBuf, logoFetch, backdropFetch, rankingResult, animeRankResult, liveQualityResult],
-      [wikidataResult, tmdbKeywords, imdbTop250],
+      [wikidataResult, tmdbKeywords, imdbTop250, tmdbTrending],
     ] = await Promise.all([
       // Block A: images + ranking data + quality
       Promise.all([
@@ -732,6 +737,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           if (!imdbId) return false
           return isImdbTop250(imdbId)
         })(),
+        // Classifica settimanale TMDB. Cachata a monte (lista per media type,
+        // non per titolo), quindi una griglia catalogo paga una fetch sola.
+        // `.catch` interno: un badge extra non deve poter far fallire un render.
+        rankingEnabledEarly
+          ? isTmdbTrending(mediaType, tmdbId, resolveRequestApiKey(req))
+          : Promise.resolve(false),
       ]),
     ])
 
@@ -999,6 +1010,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       tmdbNetworksDetailed, productionCompaniesDetailed,
       tvType, tvStatus, releaseDate, firstAirDate,
       lastAirDate, seasonCount, originCountries,
+      voteCount, nextEpisodeAirDate, tmdbTrending,
       wikidataResult, tmdbKeywords, locale, t,
       qLabel, queryExtra, qNetLogo, networkLogo, sd,
       accentOverride, imdbTop250,

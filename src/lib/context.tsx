@@ -34,6 +34,8 @@ export type ViewType = "search" | "myposters" | "edit" | "cataloghi"
 export interface MetaInfo {
   genres: { id: number; name: string }[]
   voteAverage: number
+  /** Numero di voti TMDB: da solo il voto non basta a dire "molto votato". */
+  voteCount?: number
   aggregatedRatings?: AggregatedRatings | null
   type?: string
   status?: string
@@ -642,7 +644,7 @@ export function usePictorium(): PictoriumCtx {
     if (details.title) navigation.setSelected((prev) => ({ ...prev!, title: details.title! }))
     if (details.name) navigation.setSelected((prev) => ({ ...prev!, name: details.name! }))
     const tmdbNetworks = itemType === "tv" ? (details.networks || []).map((n: { name: string }) => n.name) : (details.production_companies || []).map((c: { name: string }) => c.name)
-    setMetaInfo({ genres: details.genres || [], voteAverage: details.voteAverage || 0, aggregatedRatings: details.aggregatedRatings ?? null, imdb_id: details.imdb_id ?? undefined, type: details.type ?? undefined, status: details.status ?? undefined, release_date: details.release_date ?? undefined, first_air_date: details.first_air_date ?? undefined, last_air_date: details.last_air_date ?? undefined, next_episode_to_air: details.next_episode_to_air ?? undefined, number_of_seasons: details.number_of_seasons ?? undefined, number_of_episodes: details.number_of_episodes ?? undefined, awards: awardData?.awards || [], nominations: awardData?.nominations || [], studios: matchTMDBStudios(tmdbNetworks).length ? matchTMDBStudios(tmdbNetworks) : (awardData?.studios || []), director: awardData?.director || null, keywords: awardData?.keywords || [], networksDetailed: details.networks || [], productionCompaniesDetailed: details.production_companies || [] })
+    setMetaInfo({ genres: details.genres || [], voteAverage: details.voteAverage || 0, voteCount: details.voteCount ?? 0, aggregatedRatings: details.aggregatedRatings ?? null, imdb_id: details.imdb_id ?? undefined, type: details.type ?? undefined, status: details.status ?? undefined, release_date: details.release_date ?? undefined, first_air_date: details.first_air_date ?? undefined, last_air_date: details.last_air_date ?? undefined, next_episode_to_air: details.next_episode_to_air ?? undefined, number_of_seasons: details.number_of_seasons ?? undefined, number_of_episodes: details.number_of_episodes ?? undefined, awards: awardData?.awards || [], nominations: awardData?.nominations || [], studios: matchTMDBStudios(tmdbNetworks).length ? matchTMDBStudios(tmdbNetworks) : (awardData?.studios || []), director: awardData?.director || null, keywords: awardData?.keywords || [], networksDetailed: details.networks || [], productionCompaniesDetailed: details.production_companies || [] })
     setTrendRank(rankData.rank || null)
     const extImdbId = item.imdb_id || details.imdb_id
     if (extImdbId) {
