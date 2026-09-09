@@ -23,6 +23,11 @@ export interface StremioPosterParamsInput {
   readonly blurEnabled?: boolean
   readonly networkLogo?: boolean
   readonly accentDominant?: boolean
+  readonly badgeTopScale?: number
+  readonly badgeBottomScale?: number
+  readonly badgeTopOffset?: number
+  readonly badgeBottomOffset?: number
+  readonly logoBottomOffset?: number
   readonly ribbonSide?: "left" | "right"
   /** Badge extra testuale per-titolo (dal mapping): emesso come `extra`. */
   readonly customBadge?: string | null
@@ -42,6 +47,11 @@ const DEFAULT_STREMIO_POSTER_PARAMS = {
   blurEnabled: true,
   networkLogo: true,
   accentDominant: true,
+  badgeTopScale: 100,
+  badgeBottomScale: 100,
+  badgeTopOffset: 0,
+  badgeBottomOffset: 0,
+  logoBottomOffset: 0,
 } as const
 
 export function buildStremioPosterSearchParams(input: StremioPosterParamsInput): URLSearchParams {
@@ -71,6 +81,11 @@ export function buildStremioPosterSearchParams(input: StremioPosterParamsInput):
   if (input.customBadge) params.set("extra", input.customBadge)
   if (!networkLogo) params.set("netLogo", "0")
   if (!accentDominant) params.set("ad", "0")
+  params.set("bts", String(input.badgeTopScale ?? DEFAULT_STREMIO_POSTER_PARAMS.badgeTopScale))
+  params.set("bbs", String(input.badgeBottomScale ?? DEFAULT_STREMIO_POSTER_PARAMS.badgeBottomScale))
+  params.set("bto", String(input.badgeTopOffset ?? DEFAULT_STREMIO_POSTER_PARAMS.badgeTopOffset))
+  params.set("bbo", String(input.badgeBottomOffset ?? DEFAULT_STREMIO_POSTER_PARAMS.badgeBottomOffset))
+  params.set("lbo", String(input.logoBottomOffset ?? DEFAULT_STREMIO_POSTER_PARAMS.logoBottomOffset))
   if (input.ribbonSide === "right") params.set("side", "right")
   else if (input.ribbonSide === "left") params.set("side", "left")
   params.set("lang", input.lang || "it")

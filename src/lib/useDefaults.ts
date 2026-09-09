@@ -27,6 +27,11 @@ export interface DefaultsState {
   defaultLogoFitEnabled: boolean
   defaultNetworkLogo: boolean
   defaultAccentDominant: boolean
+  defaultBadgeTopScale: number
+  defaultBadgeBottomScale: number
+  defaultBadgeTopOffset: number
+  defaultBadgeBottomOffset: number
+  defaultLogoBottomOffset: number
   defaultRibbonSide: RibbonSide
   defaultEpisodeMetadataSource: "tmdb" | "tvdb"
   /** Regione classifiche (codice JW canonico, es. "IT"). */
@@ -42,6 +47,11 @@ export interface DefaultsState {
   ratingSources: string[]
   networkLogo: boolean
   accentDominant: boolean
+  badgeTopScale: number
+  badgeBottomScale: number
+  badgeTopOffset: number
+  badgeBottomOffset: number
+  logoBottomOffset: number
   ribbonSide: RibbonSide
   episodeMetadataSource: "tmdb" | "tvdb"
   gradientHeight: number
@@ -72,6 +82,11 @@ const DEFAULTS: DefaultsState = {
   defaultLogoFitEnabled: true,
   defaultNetworkLogo: true,
   defaultAccentDominant: true,
+  defaultBadgeTopScale: 100,
+  defaultBadgeBottomScale: 100,
+  defaultBadgeTopOffset: 0,
+  defaultBadgeBottomOffset: 0,
+  defaultLogoBottomOffset: 0,
   defaultRibbonSide: "left",
   defaultEpisodeMetadataSource: "tmdb",
   defaultRegion: "IT",
@@ -85,6 +100,11 @@ const DEFAULTS: DefaultsState = {
   ratingSources: ["imdb", "tmdb"],
   networkLogo: true,
   accentDominant: true,
+  badgeTopScale: 100,
+  badgeBottomScale: 100,
+  badgeTopOffset: 0,
+  badgeBottomOffset: 0,
+  logoBottomOffset: 0,
   ribbonSide: "left",
   episodeMetadataSource: "tmdb",
   gradientHeight: 30,
@@ -106,6 +126,16 @@ interface StoredDefaults {
   networkLogo?: boolean
   accentDominant?: boolean
   defaultAccentDominant?: boolean
+  badgeTopScale?: number
+  defaultBadgeTopScale?: number
+  badgeBottomScale?: number
+  defaultBadgeBottomScale?: number
+  badgeTopOffset?: number
+  defaultBadgeTopOffset?: number
+  badgeBottomOffset?: number
+  defaultBadgeBottomOffset?: number
+  logoBottomOffset?: number
+  defaultLogoBottomOffset?: number
   gradientHeight?: number
   blurIntensity?: number
   blurFade?: number
@@ -177,6 +207,11 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     defaultLogoFitEnabled: d.defaultLogoFitEnabled ?? true,
     defaultNetworkLogo: d.defaultNetworkLogo ?? d.networkLogo ?? true,
     defaultAccentDominant: d.defaultAccentDominant ?? d.accentDominant ?? true,
+    defaultBadgeTopScale: d.defaultBadgeTopScale ?? d.badgeTopScale ?? 100,
+    defaultBadgeBottomScale: d.defaultBadgeBottomScale ?? d.badgeBottomScale ?? 100,
+    defaultBadgeTopOffset: d.defaultBadgeTopOffset ?? d.badgeTopOffset ?? 0,
+    defaultBadgeBottomOffset: d.defaultBadgeBottomOffset ?? d.badgeBottomOffset ?? 0,
+    defaultLogoBottomOffset: d.defaultLogoBottomOffset ?? d.logoBottomOffset ?? 0,
     defaultRibbonSide: d.defaultRibbonSide ?? d.ribbonSide ?? "left",
     defaultEpisodeMetadataSource: d.defaultEpisodeMetadataSource ?? d.episodeMetadataSource ?? "tmdb",
     defaultRegion: normalizeRegion(d.defaultRegion ?? d.region),
@@ -190,6 +225,11 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     ratingSources: d.ratingSources ?? d.defaultRatingSources ?? ["imdb", "tmdb"],
     networkLogo: d.networkLogo ?? d.defaultNetworkLogo ?? true,
     accentDominant: d.accentDominant ?? d.defaultAccentDominant ?? true,
+    badgeTopScale: d.badgeTopScale ?? d.defaultBadgeTopScale ?? 100,
+    badgeBottomScale: d.badgeBottomScale ?? d.defaultBadgeBottomScale ?? 100,
+    badgeTopOffset: d.badgeTopOffset ?? d.defaultBadgeTopOffset ?? 0,
+    badgeBottomOffset: d.badgeBottomOffset ?? d.defaultBadgeBottomOffset ?? 0,
+    logoBottomOffset: d.logoBottomOffset ?? d.defaultLogoBottomOffset ?? 0,
     ribbonSide: d.ribbonSide ?? d.defaultRibbonSide ?? "left",
     episodeMetadataSource: d.episodeMetadataSource ?? d.defaultEpisodeMetadataSource ?? "tmdb",
     gradientHeight: d.gradientHeight ?? d.defaultGradientHeight ?? 30,
@@ -228,6 +268,11 @@ function defaultsToPayload(d: DefaultsState): Record<string, unknown> {
     defaultLogoFitEnabled: d.defaultLogoFitEnabled,
     networkLogo: d.defaultNetworkLogo,
     accentDominant: d.defaultAccentDominant,
+    badgeTopScale: d.defaultBadgeTopScale,
+    badgeBottomScale: d.defaultBadgeBottomScale,
+    badgeTopOffset: d.defaultBadgeTopOffset,
+    badgeBottomOffset: d.defaultBadgeBottomOffset,
+    logoBottomOffset: d.defaultLogoBottomOffset,
     ribbonSide: d.defaultRibbonSide,
     episodeMetadataSource: d.defaultEpisodeMetadataSource,
     region: d.defaultRegion,

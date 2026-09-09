@@ -28,6 +28,11 @@ interface BadgeParams {
   blurEnabled: boolean
   networkLogo?: boolean
   accentDominant?: boolean
+  badgeTopScale?: number
+  badgeBottomScale?: number
+  badgeTopOffset?: number
+  badgeBottomOffset?: number
+  logoBottomOffset?: number
   ribbonSide?: "left" | "right"
 }
 
@@ -87,6 +92,12 @@ export function buildUrlPattern(bp: BadgeParams & { tmdbKey: string; lang: strin
     blurEnabled: bp.blurEnabled,
     networkLogo: bp.networkLogo,
     accentDominant: bp.accentDominant,
+    badgeTopScale: bp.badgeTopScale,
+    badgeBottomScale: bp.badgeBottomScale,
+    badgeTopOffset: bp.badgeTopOffset,
+    badgeBottomOffset: bp.badgeBottomOffset,
+    logoBottomOffset: bp.logoBottomOffset,
+
     ribbonSide: bp.ribbonSide,
   })
   const str = params.toString()
@@ -152,6 +163,11 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
   if (!bp.blurEnabled) params.push("be=0")
   params.push(`netLogo=${bp.networkLogo !== false ? "1" : "0"}`)
   params.push(`ad=${bp.accentDominant !== false ? "1" : "0"}`)
+  params.push(`bts=${bp.badgeTopScale ?? 100}`)
+  params.push(`bbs=${bp.badgeBottomScale ?? 100}`)
+  params.push(`bto=${bp.badgeTopOffset ?? 0}`)
+  params.push(`bbo=${bp.badgeBottomOffset ?? 0}`)
+  params.push(`lbo=${bp.logoBottomOffset ?? 0}`)
   // Fix M2: side viene emesso SEMPRE (left|right) — prima soltanto "right";
   // senza il parametro il server risolve dal mapping/config salvati (di
   // default right in modalità Stremio) e la preview rendeva a destra anche

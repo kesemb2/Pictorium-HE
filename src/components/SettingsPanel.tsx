@@ -612,6 +612,91 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
               editingKey="bd"
               suffix="%"
             />
+            <SliderRow
+              icon={<Ruler className="w-3.5 h-3.5 text-accent-orange" />}
+              label={t("ui.badgeTopScale")}
+              value={ed.defaultBadgeTopScale}
+              min={50}
+              max={200}
+              boundsMin={50}
+              boundsMax={200}
+              onChange={(v) => { ed.setDefaultBadgeTopScale(v); ed.setBadgeTopScale(v) }}
+              onDoubleClick={() => { ed.setDefaultBadgeTopScale(100); ed.setBadgeTopScale(100) }}
+              editingValue={editVal}
+              editText={editTxt}
+              setEditingValue={setEditVal}
+              setEditText={setEditTxt}
+              editingKey="gdbadgeTopScale"
+              suffix="%"
+            />
+            <SliderRow
+              icon={<Ruler className="w-3.5 h-3.5 text-accent-orange" />}
+              label={t("ui.badgeBottomScale")}
+              value={ed.defaultBadgeBottomScale}
+              min={50}
+              max={200}
+              boundsMin={50}
+              boundsMax={200}
+              onChange={(v) => { ed.setDefaultBadgeBottomScale(v); ed.setBadgeBottomScale(v) }}
+              onDoubleClick={() => { ed.setDefaultBadgeBottomScale(100); ed.setBadgeBottomScale(100) }}
+              editingValue={editVal}
+              editText={editTxt}
+              setEditingValue={setEditVal}
+              setEditText={setEditTxt}
+              editingKey="gdbadgeBottomScale"
+              suffix="%"
+            />
+            <SliderRow
+              icon={<Ruler className="w-3.5 h-3.5 text-accent-orange" />}
+              label={t("ui.badgeTopOffset")}
+              value={ed.defaultBadgeTopOffset}
+              min={-50}
+              max={150}
+              boundsMin={-50}
+              boundsMax={150}
+              onChange={(v) => { ed.setDefaultBadgeTopOffset(v); ed.setBadgeTopOffset(v) }}
+              onDoubleClick={() => { ed.setDefaultBadgeTopOffset(0); ed.setBadgeTopOffset(0) }}
+              editingValue={editVal}
+              editText={editTxt}
+              setEditingValue={setEditVal}
+              setEditText={setEditTxt}
+              editingKey="gdbadgeTopOffset"
+              suffix="px"
+            />
+            <SliderRow
+              icon={<Ruler className="w-3.5 h-3.5 text-accent-orange" />}
+              label={t("ui.badgeBottomOffset")}
+              value={ed.defaultBadgeBottomOffset}
+              min={-100}
+              max={100}
+              boundsMin={-100}
+              boundsMax={100}
+              onChange={(v) => { ed.setDefaultBadgeBottomOffset(v); ed.setBadgeBottomOffset(v) }}
+              onDoubleClick={() => { ed.setDefaultBadgeBottomOffset(0); ed.setBadgeBottomOffset(0) }}
+              editingValue={editVal}
+              editText={editTxt}
+              setEditingValue={setEditVal}
+              setEditText={setEditTxt}
+              editingKey="gdbadgeBottomOffset"
+              suffix="px"
+            />
+            <SliderRow
+              icon={<Ruler className="w-3.5 h-3.5 text-accent-orange" />}
+              label={t("ui.logoBottomOffset")}
+              value={ed.defaultLogoBottomOffset}
+              min={-150}
+              max={150}
+              boundsMin={-150}
+              boundsMax={150}
+              onChange={(v) => { ed.setDefaultLogoBottomOffset(v); ed.setLogoBottomOffset(v) }}
+              onDoubleClick={() => { ed.setDefaultLogoBottomOffset(0); ed.setLogoBottomOffset(0) }}
+              editingValue={editVal}
+              editText={editTxt}
+              setEditingValue={setEditVal}
+              setEditText={setEditTxt}
+              editingKey="gdlogoBottomOffset"
+              suffix="px"
+            />
           </div>
         )}
       </div>

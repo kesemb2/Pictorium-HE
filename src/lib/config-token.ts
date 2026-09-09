@@ -44,6 +44,11 @@ export const configTokenSchema = z.object({
   // Opzionale come ogni campo aggiunto dopo il rilascio: i token già emessi
   // non contengono la chiave e un campo obbligatorio li farebbe fallire tutti.
   accentDominant: z.boolean().optional(),
+  badgeTopScale: z.number().finite().optional(),
+  badgeBottomScale: z.number().finite().optional(),
+  badgeTopOffset: z.number().finite().optional(),
+  badgeBottomOffset: z.number().finite().optional(),
+  logoBottomOffset: z.number().finite().optional(),
   autoRotateClean: z.boolean(),
   // Opzionale (finding 13): i token generati prima dell'aggiunta del campo
   // (best-fit) non devono fallire il safeParse — il render usa il default del

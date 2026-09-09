@@ -337,6 +337,11 @@ export default function EditView() {
                         blurEnabled: ed.blurEnabled,
                         networkLogo: ed.networkLogo,
                         accentDominant: ed.accentDominant,
+                        badgeTopScale: ed.badgeTopScale,
+                        badgeBottomScale: ed.badgeBottomScale,
+                        badgeTopOffset: ed.badgeTopOffset,
+                        badgeBottomOffset: ed.badgeBottomOffset,
+                        logoBottomOffset: ed.logoBottomOffset,
                         ribbonSide: ed.ribbonSide,
                       })
                       if (!url) return

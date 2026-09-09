@@ -42,6 +42,11 @@ const USER_SAVED = {
   // Campo aggiunto dopo: l'idratazione ne scrive il default nel payload, ed è
   // il comportamento voluto — un'impostazione nuova deve materializzarsi.
   accentDominant: true,
+  badgeTopScale: 100,
+  badgeBottomScale: 100,
+  badgeTopOffset: 0,
+  badgeBottomOffset: 0,
+  logoBottomOffset: 0,
   ribbonSide: "left",
   episodeMetadataSource: "tvdb",
   region: "IT",

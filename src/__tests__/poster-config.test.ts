@@ -213,6 +213,41 @@ describe("resolvePosterRenderConfig", () => {
     expect(resolvePosterRenderConfig(baseInput()).accentDominant).toBe(true)
   })
 
+  it("badge geometry: query wins, then mapping, then config token, then sd, then the default", () => {
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ bts: "150" }), mapping: mapping({ badgeTopScale: 80 }) })).badgeTopScale).toBe(150)
+    expect(resolvePosterRenderConfig(baseInput({ mapping: mapping({ badgeTopScale: 80 }) })).badgeTopScale).toBe(80)
+    expect(resolvePosterRenderConfig(baseInput({ configOverride: config({ badgeBottomScale: 70 }) })).badgeBottomScale).toBe(70)
+    expect(resolvePosterRenderConfig(baseInput({ sd: { badgeBottomOffset: 25 } })).badgeBottomOffset).toBe(25)
+    expect(resolvePosterRenderConfig(baseInput()).badgeTopScale).toBe(100)
+    expect(resolvePosterRenderConfig(baseInput()).badgeBottomOffset).toBe(0)
+  })
+
+  it("badge geometry: an explicit 0 offset survives instead of falling through", () => {
+    // La forma storica `q.get(x) ? Number(x) : NaN` tratta "0" come assente,
+    // perché è una stringa falsy. Per gli offset lo zero è il default ED è
+    // significativo: senza `q.has` un `bbo=0` esplicito cadrebbe sul mapping.
+    const r = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ bbo: "0", bto: "0" }),
+      mapping: mapping({ badgeBottomOffset: 60, badgeTopOffset: 40 }),
+    }))
+    expect(r.badgeBottomOffset).toBe(0)
+    expect(r.badgeTopOffset).toBe(0)
+  })
+
+  it("badge geometry: out-of-range and non-numeric values are clamped, not trusted", () => {
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ bts: "9999" }) })).badgeTopScale).toBe(200)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ bts: "1" }) })).badgeTopScale).toBe(50)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ bts: "abc" }) })).badgeTopScale).toBe(100)
+    expect(resolvePosterRenderConfig(baseInput({ mapping: mapping({ badgeTopScale: 9999 }) })).badgeTopScale).toBe(200)
+  })
+
+  it("logoBottomOffset skips the mapping level, which logoOffsetY already owns", () => {
+    // Due controlli per titolo sullo stesso asse si contenderebbero il logo.
+    expect(resolvePosterRenderConfig(baseInput({ configOverride: config({ logoBottomOffset: 40 }) })).logoBottomOffset).toBe(40)
+    expect(resolvePosterRenderConfig(baseInput({ sd: { logoBottomOffset: -30 } })).logoBottomOffset).toBe(-30)
+    expect(resolvePosterRenderConfig(baseInput()).logoBottomOffset).toBe(0)
+  })
+
   it("queryExtra picks up extra param or config customBadge", () => {
     expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ extra: "Oggi" }) })).queryExtra).toBe("Oggi")
     expect(resolvePosterRenderConfig(baseInput({ configOverride: config({ customBadge: "Cult" }) })).queryExtra).toBe("Cult")

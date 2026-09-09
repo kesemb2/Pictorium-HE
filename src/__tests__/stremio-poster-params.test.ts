@@ -74,4 +74,20 @@ describe("buildStremioPosterSearchParams", () => {
   it("keeps the public Stremio poster URL version in sync with renderer changes", () => {
     expect(POSTER_URL_VERSION).toBe(RENDER_VERSION)
   })
+
+  it("always emits the badge geometry params, like gradHeight", () => {
+    // Numerici: si emettono sempre, così l'URL Stremio è autosufficiente e non
+    // dipende dai default del server che lo serve.
+    const params = buildStremioPosterSearchParams({ badgeTopScale: 130, badgeBottomOffset: -20 })
+    expect(params.get("bts")).toBe("130")
+    expect(params.get("bbo")).toBe("-20")
+    expect(params.get("bbs")).toBe("100")
+    expect(params.get("bto")).toBe("0")
+    expect(params.get("lbo")).toBe("0")
+  })
+
+  it("emits ad only when the dominant accent is turned off", () => {
+    expect(buildStremioPosterSearchParams({}).get("ad")).toBeNull()
+    expect(buildStremioPosterSearchParams({ accentDominant: false }).get("ad")).toBe("0")
+  })
 })

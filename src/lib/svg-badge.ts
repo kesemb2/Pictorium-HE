@@ -5,6 +5,16 @@ import { buildTitleTextSvg, estimateTextWidth, fontFamilyFor, genreBadgeSafePad,
 import type { GenreParts } from "./badge-svg-shared"
 import type { BadgeStyle, RankingBadgeStyle, ExtraBadgeStyle } from "./badge-styles"
 
+/**
+ * Moltiplicatore dei corpi badge. 100 = taglia di default; il clamp evita che
+ * un valore fuori scala (config token vecchio, query manomessa) produca un
+ * badge grande quanto il poster o invisibile.
+ */
+export function badgeScaleFactor(scale: number | null | undefined): number {
+  if (!Number.isFinite(scale as number)) return 1
+  return Math.min(Math.max(scale as number, 50), 200) / 100
+}
+
 
 let _regular: Buffer | null = null
 let _bold: Buffer | null = null
@@ -115,11 +125,12 @@ export async function buildExtraBadgeSVG(
   topLight?: boolean,
   badgeStyle?: ExtraBadgeStyle,
   accentColor?: string,
+  scale = 100,
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
   const s = badgeStyle || "default"
   const maxBadgeW = pw - 20
   // Più piccola
-  let finalFs = 19 * pw / 380
+  let finalFs = 19 * pw / 380 * badgeScaleFactor(scale)
   const projectedW = estimateTextWidth(label, finalFs) + Math.round(finalFs * 2) + Math.round(finalFs * 0.6) * 2
   if (projectedW > maxBadgeW) {
     finalFs = Math.max(maxBadgeW / projectedW * finalFs, 10)
@@ -154,13 +165,13 @@ export async function buildExtraBadgeSVG(
 
 export async function buildGenreBadgeSVG(
   genreName: string, voteAverage: number, pw: number,
-  year?: string, style?: BadgeStyle, accentColor?: string, topLight?: boolean, parts?: GenreParts,
+  year?: string, style?: BadgeStyle, accentColor?: string, topLight?: boolean, parts?: GenreParts, scale = 100,
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
   const s = style || "shadow"
   const voteStr = voteAverage ? voteAverage.toFixed(1) : ""
   const yearStr = year || ""
 
-  let finalFs = 28 * pw / 380
+  let finalFs = 28 * pw / 380 * badgeScaleFactor(scale)
   const aestheticMaxW = Math.round(pw * 0.86) // 86% per margine estetico
   let dims = genreBadgeSvgDims(finalFs, genreName, voteStr, yearStr, parts)
   let safePad = genreBadgeSafePad(finalFs)
@@ -221,9 +232,9 @@ export async function buildGenreBadgeSVG(
 
 export async function renderGenreBadge(
   genreName: string, voteAverage: number, pw: number,
-  year?: string, style?: BadgeStyle, accentColor?: string, topLight?: boolean, parts?: GenreParts,
+  year?: string, style?: BadgeStyle, accentColor?: string, topLight?: boolean, parts?: GenreParts, scale = 100,
 ): Promise<{ png: Buffer; w: number; h: number }> {
-  const r = await buildGenreBadgeSVG(genreName, voteAverage, pw, year, style, accentColor, topLight, parts)
+  const r = await buildGenreBadgeSVG(genreName, voteAverage, pw, year, style, accentColor, topLight, parts, scale)
   if (r) return r
   throw new Error(`SVG genre badge failed: ${genreName}`)
 }
@@ -337,12 +348,13 @@ export async function buildRankingBadgeSVG(
   accentColor?: string,
   side?: "left" | "right",
   isAnime?: boolean,
+  scale = 100,
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
   const s = badgeStyle || "default"
   const periodText = label || "Oggi"
   const fullText = `#${rank} ${periodText}`
   const maxBadgeW = pw - 20
-  let finalFs = 24 * pw / 380
+  let finalFs = 24 * pw / 380 * badgeScaleFactor(scale)
   const projectedW = estimateTextWidth(fullText, finalFs) + Math.round(finalFs * 2) + Math.round(finalFs * 0.6) * 2
   if (projectedW > maxBadgeW) {
     finalFs = Math.max(maxBadgeW / projectedW * finalFs, 10)
@@ -375,18 +387,18 @@ export async function buildRankingBadgeSVG(
 
 export async function renderRankingBadge(
   rank: number, pw: number, label?: string,
-  topLight?: boolean, badgeStyle?: RankingBadgeStyle, accentColor?: string, side?: "left" | "right", isAnime?: boolean,
+  topLight?: boolean, badgeStyle?: RankingBadgeStyle, accentColor?: string, side?: "left" | "right", isAnime?: boolean, scale = 100,
 ): Promise<{ png: Buffer; w: number; h: number }> {
-  const r = await buildRankingBadgeSVG(rank, pw, label, topLight, badgeStyle, accentColor, side, isAnime)
+  const r = await buildRankingBadgeSVG(rank, pw, label, topLight, badgeStyle, accentColor, side, isAnime, scale)
   if (r) return r
   throw new Error(`SVG ranking badge failed: rank=${rank}`)
 }
 
 export async function renderExtraBadge(
   label: string, pw: number, topLight?: boolean,
-  badgeStyle?: ExtraBadgeStyle, accentColor?: string,
+  badgeStyle?: ExtraBadgeStyle, accentColor?: string, scale = 100,
 ): Promise<{ png: Buffer; w: number; h: number }> {
-  const r = await buildExtraBadgeSVG(label, pw, topLight, badgeStyle, accentColor)
+  const r = await buildExtraBadgeSVG(label, pw, topLight, badgeStyle, accentColor, scale)
   if (r) return r
   throw new Error(`SVG extra badge failed: ${label}`)
 }
@@ -409,8 +421,9 @@ export async function renderQualityBadge(
   quality: string,
   pw: number,
   topLight?: boolean,
+  scale = 100,
 ): Promise<{ png: Buffer; w: number; h: number }> {
-  const fs = Math.round(Math.max(19 * pw / 380, 13))
+  const fs = Math.round(Math.max(19 * pw / 380 * badgeScaleFactor(scale), 13))
   const bg = topLight ? "rgba(0,0,0,0.80)" : "rgba(255,255,255,0.80)"
   const fg = topLight ? "rgba(255,255,255,0.80)" : "rgba(0,0,0,0.80)"
   const result = buildQualityBadgeSvg(quality, fs, fg, bg, !!topLight)

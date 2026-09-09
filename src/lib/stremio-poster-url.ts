@@ -72,6 +72,11 @@ export function buildStremioPosterUrl(input: BuildStremioPosterUrlInput): URL {
     customBadge,
     networkLogo: (input.defaults.networkLogo !== false) && (mapping?.networkLogo !== false),
     accentDominant: (input.defaults.accentDominant !== false) && (mapping?.accentDominant !== false),
+    badgeTopScale: mapping?.badgeTopScale ?? input.defaults.badgeTopScale,
+    badgeBottomScale: mapping?.badgeBottomScale ?? input.defaults.badgeBottomScale,
+    badgeTopOffset: mapping?.badgeTopOffset ?? input.defaults.badgeTopOffset,
+    badgeBottomOffset: mapping?.badgeBottomOffset ?? input.defaults.badgeBottomOffset,
+    logoBottomOffset: input.defaults.logoBottomOffset,
     ribbonSide: mapping?.ribbonSide ?? input.defaults.ribbonSide,
   })
 

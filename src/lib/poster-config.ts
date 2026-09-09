@@ -63,6 +63,11 @@ export interface PosterRenderConfig {
   qNetLogo: string | null
   networkLogo: boolean
   accentDominant: boolean
+  badgeTopScale: number
+  badgeBottomScale: number
+  badgeTopOffset: number
+  badgeBottomOffset: number
+  logoBottomOffset: number
   ribbonSide: "left" | "right"
 }
 
@@ -172,6 +177,30 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
     : (mapping?.networkLogo ?? (configOverride !== null ? configOverride.networkLogo : undefined) ?? sd.networkLogo ?? true)
   const qNetLogo = networkLogo ? (rawNetLogo ?? (configOverride !== null ? (configOverride.networkLogo ? "1" : null) : null)) : "0"
 
+  /**
+   * Catena numerica per le impostazioni di geometria badge.
+   *
+   * Usa `q.has` e NON `q.get(x) ? ... : NaN` come le altre: per gli offset lo
+   * zero è il valore di default e significativo, e la forma storica lo tratta
+   * come "assente" perché "0" è una stringa falsy. Con quella un `bto=0`
+   * esplicito cadrebbe silenziosamente sul mapping o sul config token.
+   */
+  const geom = (param: string, mapVal: number | null | undefined, cfgVal: number | undefined, sdVal: number | undefined, min: number, max: number, fallback: number): number => {
+    if (q.has(param)) {
+      const raw = Number(q.get(param))
+      if (Number.isFinite(raw)) return clamp(raw, min, max)
+    }
+    if (mapVal != null && Number.isFinite(mapVal)) return clamp(mapVal, min, max)
+    if (cfgVal != null && Number.isFinite(cfgVal)) return clamp(cfgVal, min, max)
+    if (sdVal != null && Number.isFinite(sdVal)) return clamp(sdVal, min, max)
+    return fallback
+  }
+  const badgeTopScale = geom("bts", mapping?.badgeTopScale, configOverride?.badgeTopScale, sd.badgeTopScale, 50, 200, 100)
+  const badgeBottomScale = geom("bbs", mapping?.badgeBottomScale, configOverride?.badgeBottomScale, sd.badgeBottomScale, 50, 200, 100)
+  const badgeTopOffset = geom("bto", mapping?.badgeTopOffset, configOverride?.badgeTopOffset, sd.badgeTopOffset, -50, 150, 0)
+  const badgeBottomOffset = geom("bbo", mapping?.badgeBottomOffset, configOverride?.badgeBottomOffset, sd.badgeBottomOffset, -100, 100, 0)
+  const logoBottomOffset = geom("lbo", undefined, configOverride?.logoBottomOffset, sd.logoBottomOffset, -150, 150, 0)
+
   // Accent dalla tinta DOMINANTE del poster (e tinta della fascia sfocata)
   // invece del complementare storico. Default acceso.
   const rawAccentDominant = q.get("ad")
@@ -208,6 +237,11 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
     qNetLogo,
     networkLogo,
     accentDominant,
+    badgeTopScale,
+    badgeBottomScale,
+    badgeTopOffset,
+    badgeBottomOffset,
+    logoBottomOffset,
     ribbonSide,
   }
 }

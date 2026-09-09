@@ -40,6 +40,16 @@ export interface PosterEditorCtx {
   setNetworkLogo: (v: boolean | ((prev: boolean) => boolean)) => void
   accentDominant: boolean
   setAccentDominant: (v: boolean | ((prev: boolean) => boolean)) => void
+  badgeTopScale: number
+  setBadgeTopScale: (v: number | ((prev: number) => number)) => void
+  badgeBottomScale: number
+  setBadgeBottomScale: (v: number | ((prev: number) => number)) => void
+  badgeTopOffset: number
+  setBadgeTopOffset: (v: number | ((prev: number) => number)) => void
+  badgeBottomOffset: number
+  setBadgeBottomOffset: (v: number | ((prev: number) => number)) => void
+  logoBottomOffset: number
+  setLogoBottomOffset: (v: number | ((prev: number) => number)) => void
   ribbonSide: "left" | "right"
   setRibbonSide: (v: "left" | "right" | ((prev: "left" | "right") => "left" | "right")) => void
   episodeMetadataSource: "tmdb" | "tvdb"
@@ -85,6 +95,16 @@ export interface PosterEditorCtx {
   defaultNetworkLogo: boolean
   defaultAccentDominant: boolean
   setDefaultAccentDominant: (v: boolean | ((prev: boolean) => boolean)) => void
+  defaultBadgeTopScale: number
+  setDefaultBadgeTopScale: (v: number | ((prev: number) => number)) => void
+  defaultBadgeBottomScale: number
+  setDefaultBadgeBottomScale: (v: number | ((prev: number) => number)) => void
+  defaultBadgeTopOffset: number
+  setDefaultBadgeTopOffset: (v: number | ((prev: number) => number)) => void
+  defaultBadgeBottomOffset: number
+  setDefaultBadgeBottomOffset: (v: number | ((prev: number) => number)) => void
+  defaultLogoBottomOffset: number
+  setDefaultLogoBottomOffset: (v: number | ((prev: number) => number)) => void
   setDefaultNetworkLogo: (v: boolean | ((prev: boolean) => boolean)) => void
   defaultRibbonSide: "left" | "right"
   setDefaultRibbonSide: (v: "left" | "right" | ((prev: "left" | "right") => "left" | "right")) => void
@@ -187,6 +207,7 @@ export function PosterEditorProvider({
 
   const {
     globalBadges, rankingBadges, networkLogo, accentDominant, ribbonSide,
+    badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset,
     badgeGenre, badgeYear, badgeRating, badgeQuality, ratingSources,
     gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled,
     badgeStyle, rankingBadgeStyle,
@@ -195,6 +216,7 @@ export function PosterEditorProvider({
     defaultGradientHeight, defaultGlobalBadges, defaultRankingBadges,
     defaultBadgeGenre, defaultBadgeYear, defaultBadgeRating, defaultBadgeQuality, defaultRatingSources,
     defaultAutoRotateClean, defaultLogoFitEnabled, defaultNetworkLogo, defaultAccentDominant, defaultRibbonSide,
+    defaultBadgeTopScale, defaultBadgeBottomScale, defaultBadgeTopOffset, defaultBadgeBottomOffset, defaultLogoBottomOffset,
     episodeMetadataSource, defaultEpisodeMetadataSource,
     region, defaultRegion,
     loadDefaultsToState, update,
@@ -245,6 +267,31 @@ export function PosterEditorProvider({
       const next = typeof v === "function" ? v(accentDominant) : v
       update({ accentDominant: next, defaultAccentDominant: next })
     }, [accentDominant, update])
+  const setBadgeTopScale = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(badgeTopScale) : v
+      update({ badgeTopScale: next, defaultBadgeTopScale: next })
+    }, [badgeTopScale, update])
+  const setBadgeBottomScale = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(badgeBottomScale) : v
+      update({ badgeBottomScale: next, defaultBadgeBottomScale: next })
+    }, [badgeBottomScale, update])
+  const setBadgeTopOffset = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(badgeTopOffset) : v
+      update({ badgeTopOffset: next, defaultBadgeTopOffset: next })
+    }, [badgeTopOffset, update])
+  const setBadgeBottomOffset = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(badgeBottomOffset) : v
+      update({ badgeBottomOffset: next, defaultBadgeBottomOffset: next })
+    }, [badgeBottomOffset, update])
+  const setLogoBottomOffset = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(logoBottomOffset) : v
+      update({ logoBottomOffset: next, defaultLogoBottomOffset: next })
+    }, [logoBottomOffset, update])
   const setRibbonSide = useCallback(
     (v: "left" | "right" | ((prev: "left" | "right") => "left" | "right")) => {
       const next = typeof v === "function" ? v(ribbonSide) : v
@@ -380,6 +427,31 @@ export function PosterEditorProvider({
       const next = typeof v === "function" ? v(defaultAccentDominant) : v
       update({ defaultAccentDominant: next, accentDominant: next })
     }, [defaultAccentDominant, update])
+  const setDefaultBadgeTopScale = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultBadgeTopScale) : v
+      update({ defaultBadgeTopScale: next, badgeTopScale: next })
+    }, [defaultBadgeTopScale, update])
+  const setDefaultBadgeBottomScale = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultBadgeBottomScale) : v
+      update({ defaultBadgeBottomScale: next, badgeBottomScale: next })
+    }, [defaultBadgeBottomScale, update])
+  const setDefaultBadgeTopOffset = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultBadgeTopOffset) : v
+      update({ defaultBadgeTopOffset: next, badgeTopOffset: next })
+    }, [defaultBadgeTopOffset, update])
+  const setDefaultBadgeBottomOffset = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultBadgeBottomOffset) : v
+      update({ defaultBadgeBottomOffset: next, badgeBottomOffset: next })
+    }, [defaultBadgeBottomOffset, update])
+  const setDefaultLogoBottomOffset = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultLogoBottomOffset) : v
+      update({ defaultLogoBottomOffset: next, logoBottomOffset: next })
+    }, [defaultLogoBottomOffset, update])
   const setDefaultRibbonSide = useCallback(
     (v: "left" | "right" | ((prev: "left" | "right") => "left" | "right")) => {
       const next = typeof v === "function" ? v(defaultRibbonSide) : v
@@ -433,6 +505,16 @@ export function PosterEditorProvider({
       setNetworkLogo,
       accentDominant,
       setAccentDominant,
+      badgeTopScale,
+      setBadgeTopScale,
+      badgeBottomScale,
+      setBadgeBottomScale,
+      badgeTopOffset,
+      setBadgeTopOffset,
+      badgeBottomOffset,
+      setBadgeBottomOffset,
+      logoBottomOffset,
+      setLogoBottomOffset,
       ribbonSide,
       setRibbonSide,
       episodeMetadataSource,
@@ -478,6 +560,16 @@ export function PosterEditorProvider({
       defaultNetworkLogo,
       defaultAccentDominant,
       setDefaultAccentDominant,
+      defaultBadgeTopScale,
+      setDefaultBadgeTopScale,
+      defaultBadgeBottomScale,
+      setDefaultBadgeBottomScale,
+      defaultBadgeTopOffset,
+      setDefaultBadgeTopOffset,
+      defaultBadgeBottomOffset,
+      setDefaultBadgeBottomOffset,
+      defaultLogoBottomOffset,
+      setDefaultLogoBottomOffset,
       setDefaultNetworkLogo,
       defaultRibbonSide,
       setDefaultRibbonSide,
@@ -547,6 +639,11 @@ export function PosterEditorProvider({
       customBadge, setCustomBadge,
       networkLogo, setNetworkLogo,
       accentDominant, setAccentDominant,
+      badgeTopScale, setBadgeTopScale,
+      badgeBottomScale, setBadgeBottomScale,
+      badgeTopOffset, setBadgeTopOffset,
+      badgeBottomOffset, setBadgeBottomOffset,
+      logoBottomOffset, setLogoBottomOffset,
       ribbonSide, setRibbonSide,
       episodeMetadataSource, setEpisodeMetadataSource,
       region, setRegion,
@@ -572,6 +669,11 @@ export function PosterEditorProvider({
       defaultLogoFitEnabled, setDefaultLogoFitEnabled,
       defaultNetworkLogo, setDefaultNetworkLogo,
       defaultAccentDominant, setDefaultAccentDominant,
+      defaultBadgeTopScale, setDefaultBadgeTopScale,
+      defaultBadgeBottomScale, setDefaultBadgeBottomScale,
+      defaultBadgeTopOffset, setDefaultBadgeTopOffset,
+      defaultBadgeBottomOffset, setDefaultBadgeBottomOffset,
+      defaultLogoBottomOffset, setDefaultLogoBottomOffset,
       defaultRibbonSide, setDefaultRibbonSide,
       loadDefaultsToState,
 

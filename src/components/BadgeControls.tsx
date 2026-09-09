@@ -205,6 +205,92 @@ export function BadgeControls() {
             <Toggle value={ed.accentDominant} onChange={(v) => ed.setAccentDominant(v)} label={t("ui.accentDominant")} />
           </div>
 
+              <SliderRow
+                icon={<Ruler className="w-3.5 h-3.5 text-accent-orange" />}
+                label={t("ui.badgeTopScale")}
+                value={ed.badgeTopScale}
+                min={50}
+                max={200}
+                boundsMin={50}
+                boundsMax={200}
+                onChange={(v) => ed.setBadgeTopScale(v)}
+                onDoubleClick={() => ed.setBadgeTopScale(100)}
+                editingValue={editingValue}
+                editText={editText}
+                setEditingValue={setEditingValue}
+                setEditText={setEditText}
+                editingKey="gbadgeTopScale"
+                suffix="%"
+              />
+              <SliderRow
+                icon={<Ruler className="w-3.5 h-3.5 text-accent-orange" />}
+                label={t("ui.badgeBottomScale")}
+                value={ed.badgeBottomScale}
+                min={50}
+                max={200}
+                boundsMin={50}
+                boundsMax={200}
+                onChange={(v) => ed.setBadgeBottomScale(v)}
+                onDoubleClick={() => ed.setBadgeBottomScale(100)}
+                editingValue={editingValue}
+                editText={editText}
+                setEditingValue={setEditingValue}
+                setEditText={setEditText}
+                editingKey="gbadgeBottomScale"
+                suffix="%"
+              />
+              <SliderRow
+                icon={<Ruler className="w-3.5 h-3.5 text-accent-orange" />}
+                label={t("ui.badgeTopOffset")}
+                value={ed.badgeTopOffset}
+                min={-50}
+                max={150}
+                boundsMin={-50}
+                boundsMax={150}
+                onChange={(v) => ed.setBadgeTopOffset(v)}
+                onDoubleClick={() => ed.setBadgeTopOffset(0)}
+                editingValue={editingValue}
+                editText={editText}
+                setEditingValue={setEditingValue}
+                setEditText={setEditText}
+                editingKey="gbadgeTopOffset"
+                suffix="px"
+              />
+              <SliderRow
+                icon={<Ruler className="w-3.5 h-3.5 text-accent-orange" />}
+                label={t("ui.badgeBottomOffset")}
+                value={ed.badgeBottomOffset}
+                min={-100}
+                max={100}
+                boundsMin={-100}
+                boundsMax={100}
+                onChange={(v) => ed.setBadgeBottomOffset(v)}
+                onDoubleClick={() => ed.setBadgeBottomOffset(0)}
+                editingValue={editingValue}
+                editText={editText}
+                setEditingValue={setEditingValue}
+                setEditText={setEditText}
+                editingKey="gbadgeBottomOffset"
+                suffix="px"
+              />
+              <SliderRow
+                icon={<Ruler className="w-3.5 h-3.5 text-accent-orange" />}
+                label={t("ui.logoBottomOffset")}
+                value={ed.logoBottomOffset}
+                min={-150}
+                max={150}
+                boundsMin={-150}
+                boundsMax={150}
+                onChange={(v) => ed.setLogoBottomOffset(v)}
+                onDoubleClick={() => ed.setLogoBottomOffset(0)}
+                editingValue={editingValue}
+                editText={editText}
+                setEditingValue={setEditingValue}
+                setEditText={setEditText}
+                editingKey="glogoBottomOffset"
+                suffix="px"
+              />
+
           <div className="flex items-center justify-between gap-3 pt-1">
             <span className="text-zinc-300 font-medium flex items-center gap-1.5 shrink-0">
               <Flame className="w-3.5 h-3.5 text-accent-orange" />

@@ -121,6 +121,16 @@ export interface GenerationInput {
    * complementare del poster su cui poggia sembrerebbe un errore.
    */
   accentDominant?: boolean
+  /** Corpo dei badge in alto (rank/extra/qualità), 100 = default. */
+  badgeTopScale?: number
+  /** Corpo della riga genere/voto in basso, 100 = default. */
+  badgeBottomScale?: number
+  /** Scostamento verticale in px dei badge in alto; positivo = più in basso. */
+  badgeTopOffset?: number
+  /** Scostamento verticale in px della riga in basso; positivo = più in alto. */
+  badgeBottomOffset?: number
+  /** Scostamento verticale in px del logo; positivo = più in alto. */
+  logoBottomOffset?: number
   releaseDate: string | null
   firstAirDate: string | null
   /** Ultima messa in onda + n. stagioni + origin country (badge Nuova stagione / K-Drama). */
@@ -466,6 +476,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     tvType, tvStatus, releaseDate, firstAirDate,
     lastAirDate, seasonCount, originCountries,
     voteCount, nextEpisodeAirDate, tmdbTrending, accentDominant,
+    badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset,
     wikidataResult, tmdbKeywords, locale, t,
     qLabel, queryExtra, qNetLogo, networkLogo, sd, accentOverride, imdbTop250,
     posterSrc, logoSrc, backdropSrc,
@@ -540,7 +551,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
           const defScale = Math.min(Math.round(37.5 * lw / lh), 75)
           const uScale = logoScale ?? defScale
           const uOx = logoOffsetX ?? 0
-          const uOy = logoOffsetY ?? 0
+          const uOy = (logoOffsetY ?? 0) - (logoBottomOffset ?? 0)
           const layout = computeLogoLayout({
             posterW: STD_W, posterH: STD_H, logoW: lw, logoH: lh,
             logoScale: uScale, logoOffsetX: uOx, logoOffsetY: uOy,
@@ -674,20 +685,20 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     : null
 
   const genreBadgeKey = hasGenreBadge
-    ? badgeCacheKey("genre", genreName, voteAverage, STD_W, year, badgeStyle, accentColorGenre, topLight, badgeGenre, badgeYear, badgeRating)
+    ? badgeCacheKey("genre", genreName, voteAverage, STD_W, year, badgeStyle, accentColorGenre, topLight, badgeGenre, badgeYear, badgeRating, badgeBottomScale)
     : null
   const rankBadgeKey = topBadge
-    ? badgeCacheKey("rank", topBadge.type === "extra" ? topBadge.label : `${(topBadge as { rank: number }).rank}:${topBadge!.label}`, STD_W, topLight, rankingBadgeStyle, accentColorRank, ribbonSide, isAnimeRank)
+    ? badgeCacheKey("rank", topBadge.type === "extra" ? topBadge.label : `${(topBadge as { rank: number }).rank}:${topBadge!.label}`, STD_W, topLight, rankingBadgeStyle, accentColorRank, ribbonSide, isAnimeRank, badgeTopScale)
     : null
   const qualityBadgeKey = hasQualityBadge
-    ? badgeCacheKey("quality", quality, STD_W, topLight)
+    ? badgeCacheKey("quality", quality, STD_W, topLight, badgeTopScale)
     : null
 
   const [genreBadgeResult, rankBadgeResult, qualityBadgeResult] = await Promise.all([
     genreBadgeKey
       ? (cacheGet<{ png: Buffer; w: number; h: number }>(genreBadgeKey)
           || coalesceBadgeRender(genreBadgeKey, () =>
-              renderGenreBadge(genreName ?? "", voteAverage ?? 0, STD_W, year, badgeStyle, accentColorGenre, topLight, { showGenre: badgeGenre, showYear: badgeYear, showRating: badgeRating })
+              renderGenreBadge(genreName ?? "", voteAverage ?? 0, STD_W, year, badgeStyle, accentColorGenre, topLight, { showGenre: badgeGenre, showYear: badgeYear, showRating: badgeRating }, badgeBottomScale)
                 .then((r) => { if (r) cacheSet(genreBadgeKey, r, ["badge"], BADGE_CACHE_TTL); return r })
             ))
       : Promise.resolve(null),
@@ -695,17 +706,17 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
       ? (cacheGet<{ png: Buffer; w: number; h: number; isRank?: boolean }>(rankBadgeKey)
           || coalesceBadgeRender(rankBadgeKey, () => {
               if (topBadge!.type === "extra") {
-                return renderExtraBadge(topBadge!.label, STD_W, topLight, rankingBadgeStyle, accentColorRank)
+                return renderExtraBadge(topBadge!.label, STD_W, topLight, rankingBadgeStyle, accentColorRank, badgeTopScale)
                   .then((r) => { const v = { ...r, isRank: false }; cacheSet(rankBadgeKey, v, ["badge"], BADGE_CACHE_TTL); return v })
               }
-              return renderRankingBadge((topBadge as { rank: number }).rank, STD_W, topBadge!.label, topLight, rankingBadgeStyle, accentColorRank, ribbonSide, isAnimeRank)
+              return renderRankingBadge((topBadge as { rank: number }).rank, STD_W, topBadge!.label, topLight, rankingBadgeStyle, accentColorRank, ribbonSide, isAnimeRank, badgeTopScale)
                 .then((r) => { const v = { ...r, isRank: true }; cacheSet(rankBadgeKey, v, ["badge"], BADGE_CACHE_TTL); return v })
             }))
       : Promise.resolve(null),
     qualityBadgeKey
       ? (cacheGet<{ png: Buffer; w: number; h: number }>(qualityBadgeKey)
           || coalesceBadgeRender(qualityBadgeKey, () =>
-              renderQualityBadge(quality!, STD_W, topLight)
+              renderQualityBadge(quality!, STD_W, topLight, badgeTopScale)
                 .then((r) => { if (r) cacheSet(qualityBadgeKey, r, ["badge"], BADGE_CACHE_TTL); return r })
             ))
       : Promise.resolve(null),
@@ -724,7 +735,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     if (badgeStyle === "bar") {
       composites.push({ input: safeGenreBadgeResult.png, top: STD_H - safeGenreBadgeResult.h, left: 0 })
     } else {
-      const badgeY = STD_H - safeGenreBadgeResult.h - Math.max(0, Math.round(targetCenter - safeGenreBadgeResult.h / 2))
+      const badgeY = STD_H - safeGenreBadgeResult.h - Math.max(0, Math.round(targetCenter + (badgeBottomOffset ?? 0) - safeGenreBadgeResult.h / 2))
       composites.push({ input: safeGenreBadgeResult.png, top: badgeY, left: Math.round((STD_W - safeGenreBadgeResult.w) / 2) })
     }
   }
@@ -753,7 +764,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     }
     finalRankBadge = safeRankBadgeResult
     finalRankLeft = left
-    finalRankTop = TOP_BADGE_MARGIN
+    finalRankTop = Math.max(0, TOP_BADGE_MARGIN + (badgeTopOffset ?? 0))
 
     // Il badge centrale resta invariato — la gestione overlap vive nei blocchi
     // network/qualità qui sotto (shrink dei laterali).

@@ -29,6 +29,11 @@ export interface ServerDefaults {
   defaultLogoFitEnabled?: boolean
   networkLogo?: boolean
   accentDominant?: boolean
+  badgeTopScale?: number
+  badgeBottomScale?: number
+  badgeTopOffset?: number
+  badgeBottomOffset?: number
+  logoBottomOffset?: number
   ribbonSide?: "left" | "right"
   episodeMetadataSource?: "tmdb" | "tvdb"
   /** Regione classifiche JustWatch/FlixPatrol + lingua titoli (codice JW, es. "IT"). */
@@ -78,6 +83,13 @@ function defaultsFromEnv(): ServerDefaults {
   const blurEn = envBool("BLUR_ENABLED")
   const netLogo = envBool("NETWORK_LOGO")
   const accentDom = envBool("ACCENT_DOMINANT")
+  const geomEnv: [keyof ServerDefaults, number | undefined][] = [
+    ["badgeTopScale", envNum("BADGE_TOP_SCALE")],
+    ["badgeBottomScale", envNum("BADGE_BOTTOM_SCALE")],
+    ["badgeTopOffset", envNum("BADGE_TOP_OFFSET")],
+    ["badgeBottomOffset", envNum("BADGE_BOTTOM_OFFSET")],
+    ["logoBottomOffset", envNum("LOGO_BOTTOM_OFFSET")],
+  ]
   const autoRotate = envBool("AUTO_ROTATE_CLEAN")
   const logoFit = envBool("LOGO_FIT_ENABLED")
   if (bG !== undefined) d.globalBadges = bG
@@ -91,6 +103,9 @@ function defaultsFromEnv(): ServerDefaults {
   if (blurEn !== undefined) d.blurEnabled = blurEn
   if (netLogo !== undefined) d.networkLogo = netLogo
   if (accentDom !== undefined) d.accentDominant = accentDom
+  for (const [key, val] of geomEnv) {
+    if (val !== undefined) (d as Record<string, unknown>)[key] = val
+  }
   if (autoRotate !== undefined) d.autoRotateClean = autoRotate
   if (logoFit !== undefined) d.defaultLogoFitEnabled = logoFit
   const bs = getEnv("BADGE_STYLE")?.trim()
