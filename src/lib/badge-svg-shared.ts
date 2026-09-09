@@ -189,15 +189,41 @@ export function buildGenrePillSvg(genreName: string, voteStr: string, yearStr: s
   return { svg, w: pillW, h: pillH }
 }
 
-/** Corpo del titolo tradotto sotto il logo, in scala col poster (27px @ 750). */
-export const TITLE_TEXT_FONT_SIZE = 27
-/** Pavimento dello shrink-to-fit: sotto questo corpo il titolo si tronca. */
-const TITLE_TEXT_MIN_FONT_SIZE = 15
-/** Frazione di larghezza poster utilizzabile dal titolo. */
-const TITLE_TEXT_MAX_RATIO = 0.8
+/**
+ * Corpo del titolo tradotto sotto il logo, in scala con la larghezza del poster
+ * come il badge genere (`24 * pw / 380` in buildGenreBadgeSVG). Il fattore è
+ * esattamente 1.5x quello: prima il titolo era fisso a 27px, quindi PIÙ PICCOLO
+ * della riga genere+voto che dovrebbe sovrastare, e leggeva come didascalia.
+ */
+export function titleTextFontSize(posterW: number): number {
+  return Math.round(36 * posterW / 380)
+}
+/**
+ * Pavimento dello shrink-to-fit: sotto questo corpo il titolo si tronca invece
+ * di rimpicciolirsi ancora. Tenerlo alto è il punto: un titolo lungo che scende
+ * a 15px torna a essere la didascalia che questo lavoro elimina.
+ */
+const TITLE_TEXT_MIN_FONT_SIZE = 20
+/**
+ * Frazione di larghezza poster utilizzabile dal titolo. Larga: su una riga
+ * sola è l'unica leva che tiene un titolo lungo sopra la soglia della
+ * didascalia. 0.85 lascia comunque ~37px di margine per lato.
+ */
+const TITLE_TEXT_MAX_RATIO = 0.85
+/** Interlinea della striscia, in multipli del corpo. */
+const TITLE_TEXT_LINE_HEIGHT = 1.6
 
 export function titleTextMaxW(posterW: number): number {
   return Math.round(posterW * TITLE_TEXT_MAX_RATIO)
+}
+
+/**
+ * Altezza della striscia per un dato corpo. Usata sia da chi RISERVA lo spazio
+ * (poster-service, che alza il logo) sia da chi DISEGNA: se le due divergessero
+ * il titolo finirebbe sopra o sotto il buco lasciato per lui.
+ */
+export function titleStripHeight(fs: number): number {
+  return Math.round(fs * TITLE_TEXT_LINE_HEIGHT)
 }
 
 /**
@@ -206,7 +232,7 @@ export function titleTextMaxW(posterW: number): number {
  * a-capo e una riga di sottotitolo non lo giustifica: la fascia sotto il logo
  * è alta ~150px in tutto e due righe se la mangerebbero.
  */
-export function fitTitleText(title: string, maxW: number, fs = TITLE_TEXT_FONT_SIZE): { text: string; fs: number } {
+export function fitTitleText(title: string, maxW: number, fs: number): { text: string; fs: number } {
   const clean = title.trim().replace(/\s+/g, " ")
   if (!clean) return { text: "", fs }
   let size = fs
@@ -223,12 +249,12 @@ export function fitTitleText(title: string, maxW: number, fs = TITLE_TEXT_FONT_S
  * genere "shadow": il testo cade su artwork, non su una pill, e senza ombra
  * sparirebbe sui poster chiari.
  */
-export function buildTitleTextSvg(title: string, maxW: number, fs = TITLE_TEXT_FONT_SIZE, textColor = "#ffffff") {
+export function buildTitleTextSvg(title: string, maxW: number, fs: number, textColor = "#ffffff") {
   const fit = fitTitleText(title, maxW, fs)
   if (!fit.text) return null
   const shadowPad = 8
   const renderW = Math.min(Math.round(estimateTextWidth(fit.text, fit.fs)) + shadowPad * 2, maxW + shadowPad * 2)
-  const renderH = Math.round(fit.fs * 1.6)
+  const renderH = titleStripHeight(fit.fs)
   const defs = `<defs><filter id="ts" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="rgba(0,0,0,0.8)"/><feDropShadow dx="0" dy="5" stdDeviation="4.5" flood-color="rgba(0,0,0,0.55)"/></filter></defs>`
   const textEl = `<text x="${renderW / 2}" y="${renderH / 2}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(fit.text)}" font-weight="700" font-size="${fit.fs}" fill="${textColor}" filter="url(#ts)">${escSvg(fit.text)}</text>`
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${renderH}">${defs}${textEl}</svg>`, w: renderW, h: renderH }

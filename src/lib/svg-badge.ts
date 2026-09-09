@@ -389,7 +389,7 @@ export async function renderExtraBadge(
  * nulla senza casi speciali.
  */
 export async function renderTitleText(
-  title: string, maxW: number, fs?: number, textColor?: string,
+  title: string, maxW: number, fs: number, textColor?: string,
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
   const built = buildTitleTextSvg(title, maxW, fs, textColor)
   if (!built) return null

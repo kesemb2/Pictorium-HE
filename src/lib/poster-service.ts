@@ -12,13 +12,6 @@ import {
   PosterComposite,
 } from "./poster-render-helpers"
 
-/**
- * Striscia riservata al titolo tradotto sotto il logo, a canvas STD_H=750.
- * La fascia utile va dall'inizio della sfocatura (y 525 col gradHeight di
- * default) alla base del logo (y 675): 150px in tutto. 46px per il titolo
- * lasciano il logo leggibile e il badge genere libero sotto.
- */
-const TITLE_BAND_H = 46
 /** Aria tra la base del logo e la riga del titolo. */
 const TITLE_BAND_GAP = 6
 import { renderGenreBadge, renderRankingBadge, renderExtraBadge, renderQualityBadge, renderTitleText } from "./svg-badge"
@@ -26,7 +19,7 @@ import { renderFirstMatchingNetworkLogoBadge, renderFirstMatchingNetworkRawBadge
 import { computeLogoLayout } from "./logo-layout"
 import fs from "fs"
 import path from "path"
-import { estimateTextWidth, fontFamilyFor, titleTextMaxW } from "./badge-svg-shared"
+import { estimateTextWidth, fitTitleText, fontFamilyFor, titleStripHeight, titleTextFontSize, titleTextMaxW } from "./badge-svg-shared"
 import { computeTopBadge, isNetworkStudio, type BadgeInput } from "./poster-badge"
 import type { Mapping } from "./types"
 import type { ServerDefaults } from "./server-defaults"
@@ -496,6 +489,14 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // su cui appoggiarlo. Senza logo il titolo diventerebbe l'elemento principale
   // del poster, che è una scelta di design diversa (e non quella approvata).
   const showTitleUnderLogo = !!titleUnderLogo && !!title?.trim() && !!logoFetch
+  // Il corpo si decide PRIMA del layout del logo: la striscia riservata deve
+  // valere esattamente quanto il titolo occuperà davvero, altrimenti un titolo
+  // lungo (rimpicciolito) lascerebbe un buco tra sé e il logo. fitTitleText è
+  // puro, quindi calcolarlo qui non costa nulla.
+  const titleFit = showTitleUnderLogo
+    ? fitTitleText(title!, titleTextMaxW(STD_W), titleTextFontSize(STD_W))
+    : null
+  const titleBandH = titleFit ? titleStripHeight(titleFit.fs) + TITLE_BAND_GAP : 0
 
   const [blurOverlay, badgeColors, logoResult] = await Promise.all([
     applyBlur({ posterBuf, blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness }),
@@ -517,7 +518,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
             posterW: STD_W, posterH: STD_H, logoW: lw, logoH: lh,
             logoScale: uScale, logoOffsetX: uOx, logoOffsetY: uOy,
             hasBadges: hasGenreBadge,
-            titleBandH: showTitleUnderLogo ? TITLE_BAND_H : 0,
+            titleBandH,
           })
           const resized = await resizeLogoCached(logoFetch, layout.width, layout.height, logoSrc)
           const aW = resized.w
@@ -533,8 +534,8 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   const vigBuf = await getVignette()
   composites.push({ input: vigBuf, top: 0, left: 0 })
   if (logoResult) composites.push(logoResult)
-  if (showTitleUnderLogo && logoResult) {
-    const titleBadge = await renderTitleText(title!, titleTextMaxW(STD_W)).catch(() => null)
+  if (titleFit && logoResult) {
+    const titleBadge = await renderTitleText(title!, titleTextMaxW(STD_W), titleFit.fs).catch(() => null)
     if (titleBadge) {
       composites.push({
         input: titleBadge.png,
