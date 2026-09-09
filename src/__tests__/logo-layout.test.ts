@@ -26,7 +26,9 @@ describe("logo layout", () => {
 
     expect(bounds.minX).toBe(0)
     expect(bounds.maxX).toBe(0)
-    expect(bounds.minY).toBe(-850)
-    expect(bounds.maxY).toBe(150)
+    // Margine sotto il logo = 20% dell'altezza (300px su 1500):
+    // baseTop = 1500 - 500 - 300 = 700.
+    expect(bounds.minY).toBe(-700)
+    expect(bounds.maxY).toBe(300)
   })
 })

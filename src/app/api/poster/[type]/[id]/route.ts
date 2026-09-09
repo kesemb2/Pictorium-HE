@@ -864,7 +864,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     const finalQuality = qQualityParam || liveQualityResult || null
 
     const locale = req.nextUrl.searchParams.get("lang") || mapping?.language || "it"
-    const targetCenter = Math.round(30 * STD_H / 570)
+    // Centro della riga genere/voto, distanza dal bordo inferiore. Era 30
+    // (39px a STD_H=750): la riga sfiorava il bordo. 65 la porta a ~86px,
+    // staccata dal bordo e sotto un logo che ora finisce più in alto.
+    const targetCenter = Math.round(65 * STD_H / 570)
 
     // 8. Pre-resolve accent color override
     const qAc = req.nextUrl.searchParams.get("ac")

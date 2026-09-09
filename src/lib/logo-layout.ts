@@ -36,6 +36,14 @@ type LogoOffsetBounds = {
   readonly maxY: number
 }
 
+/**
+ * Margine sotto il logo, in frazione dell'altezza poster. Era 0.1 (75px a
+ * STD_H=750): il logo finiva schiacciato sul bordo inferiore, sopra una riga
+ * genere che a sua volta stava a 39px dal fondo. 0.2 lo stacca dal bordo e
+ * lascia respiro alla riga metadati, come nei poster di riferimento.
+ */
+const LOGO_BOTTOM_MARGIN_RATIO = 0.2
+
 function sanePositive(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback
 }
@@ -68,7 +76,7 @@ export function computeLogoLayout(input: LogoLayoutInput): LogoLayout {
   const badgeOffset = input.hasBadges ? 0 : Math.round(40 * posterH / 1500)
   const titleBandH = Number.isFinite(input.titleBandH) ? Math.max(input.titleBandH!, 0) : 0
   const left = Math.round((posterW - box.width) / 2 + input.logoOffsetX)
-  const top = Math.max(0, Math.round(posterH - box.height - posterH * 0.1 + input.logoOffsetY + badgeOffset - titleBandH))
+  const top = Math.max(0, Math.round(posterH - box.height - posterH * LOGO_BOTTOM_MARGIN_RATIO + input.logoOffsetY + badgeOffset - titleBandH))
   return { ...box, left, top }
 }
 
@@ -83,7 +91,7 @@ export function computeLogoOffsetBounds(input: Omit<LogoLayoutInput, "logoOffset
   const box = computeLogoBox(input)
   const badgeOffset = input.hasBadges ? 0 : Math.round(40 * posterH / 1500)
   const halfX = Math.round((posterW - box.width) / 2)
-  const baseTop = Math.round(posterH - box.height - posterH * 0.1 + badgeOffset)
-  const maxY = Math.round(posterH * 0.1 - badgeOffset)
+  const baseTop = Math.round(posterH - box.height - posterH * LOGO_BOTTOM_MARGIN_RATIO + badgeOffset)
+  const maxY = Math.round(posterH * LOGO_BOTTOM_MARGIN_RATIO - badgeOffset)
   return { minX: cleanZero(-halfX), maxX: cleanZero(halfX), minY: cleanZero(-baseTop), maxY: cleanZero(maxY) }
 }

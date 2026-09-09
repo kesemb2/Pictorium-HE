@@ -12,6 +12,11 @@ import {
   PosterComposite,
 } from "./poster-render-helpers"
 
+/**
+ * Margine sopra il badge in alto. Era 0: il badge era incollato alla prima
+ * riga di pixel del poster, senza aria attorno.
+ */
+const TOP_BADGE_MARGIN = 10
 /** Aria tra la base del logo e la riga del titolo. */
 const TITLE_BAND_GAP = 6
 import { renderGenreBadge, renderRankingBadge, renderExtraBadge, renderQualityBadge, renderTitleText } from "./svg-badge"
@@ -726,7 +731,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     }
     finalRankBadge = safeRankBadgeResult
     finalRankLeft = left
-    finalRankTop = 0
+    finalRankTop = TOP_BADGE_MARGIN
 
     // Il badge centrale resta invariato — la gestione overlap vive nei blocchi
     // network/qualità qui sotto (shrink dei laterali).

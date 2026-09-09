@@ -247,11 +247,13 @@ describe("selectBestLogoFitPosterPath", () => {
   })
 
   it("does not penalize text above the logo zone (quality wins instead)", async () => {
-    // Testo a y=430: dentro la vecchia striscia globale (55–88%) ma SOPRA la
-    // logo zone (≈575–675). La text penalty mirata non deve penalizzarlo, quindi
-    // il poster con voto migliore vince nonostante abbia testo in basso.
+    // Testo SOPRA la logo zone. La zona segue l'ancoraggio del logo, che è a
+    // 20% dell'altezza: con un logo 300×120 a scala 50 la box è 250×100 e la
+    // zona va da y=500 a y=600, quindi il blocco di testo (60px) sta a 355.
+    // La text penalty mirata non deve penalizzarlo, quindi il poster col voto
+    // migliore vince nonostante abbia testo in basso.
     const cleanPoster = await solidPoster("#1a1a2e")
-    const textPoster = await posterWithTextBlock("#1a1a2e", "#e0e0e0", 430)
+    const textPoster = await posterWithTextBlock("#1a1a2e", "#e0e0e0", 355)
     const logo = await solidLogo("#ffffff")
     const images = new Map([
       ["/clean.jpg", cleanPoster],
@@ -281,7 +283,7 @@ describe("selectBestLogoFitPosterPath", () => {
     })
       .composite([{
         input: Buffer.from(`<svg width="500" height="750">
-          <rect x="50" y="420" width="400" height="100" fill="#333355" opacity="0.15"/>
+          <rect x="50" y="345" width="400" height="100" fill="#333355" opacity="0.15"/>
         </svg>`),
         top: 0, left: 0,
       }])

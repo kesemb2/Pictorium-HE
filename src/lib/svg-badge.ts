@@ -119,7 +119,7 @@ export async function buildExtraBadgeSVG(
   const s = badgeStyle || "default"
   const maxBadgeW = pw - 20
   // Più piccola
-  let finalFs = 16 * pw / 380
+  let finalFs = 19 * pw / 380
   const projectedW = estimateTextWidth(label, finalFs) + Math.round(finalFs * 2) + Math.round(finalFs * 0.6) * 2
   if (projectedW > maxBadgeW) {
     finalFs = Math.max(maxBadgeW / projectedW * finalFs, 10)
@@ -160,7 +160,7 @@ export async function buildGenreBadgeSVG(
   const voteStr = voteAverage ? voteAverage.toFixed(1) : ""
   const yearStr = year || ""
 
-  let finalFs = 24 * pw / 380
+  let finalFs = 28 * pw / 380
   const aestheticMaxW = Math.round(pw * 0.86) // 86% per margine estetico
   let dims = genreBadgeSvgDims(finalFs, genreName, voteStr, yearStr, parts)
   let safePad = genreBadgeSafePad(finalFs)
@@ -238,8 +238,16 @@ function netflixSubLabel(isAnime: boolean | undefined, label: string | undefined
   return isAnime ? "anime" : ""
 }
 
+/**
+ * Corpo base del nastro Netflix. Esportato perché i test lo ricalcolavano a
+ * mano: la formula viveva in due punti e il secondo non seguiva il primo.
+ */
+export function netflixRibbonFontSize(pw: number): number {
+  return Math.round(Math.max(27 * pw / 380, 16))
+}
+
 export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boolean, side: "left" | "right" = "left", isAnime?: boolean, label?: string) {
-  const fs = Math.round(Math.max(23 * pw / 380, 14))
+  const fs = netflixRibbonFontSize(pw)
   const w = Math.round(fs * 2.6)
   // Sottotitolo presente (anime o film/serie con etichetta): nastro allungato
   // verso il basso (h × 1.55) per dare spazio alla scritta sotto il numero.
@@ -334,7 +342,7 @@ export async function buildRankingBadgeSVG(
   const periodText = label || "Oggi"
   const fullText = `#${rank} ${periodText}`
   const maxBadgeW = pw - 20
-  let finalFs = 20 * pw / 380
+  let finalFs = 24 * pw / 380
   const projectedW = estimateTextWidth(fullText, finalFs) + Math.round(finalFs * 2) + Math.round(finalFs * 0.6) * 2
   if (projectedW > maxBadgeW) {
     finalFs = Math.max(maxBadgeW / projectedW * finalFs, 10)
@@ -402,7 +410,7 @@ export async function renderQualityBadge(
   pw: number,
   topLight?: boolean,
 ): Promise<{ png: Buffer; w: number; h: number }> {
-  const fs = Math.round(Math.max(16 * pw / 380, 11))
+  const fs = Math.round(Math.max(19 * pw / 380, 13))
   const bg = topLight ? "rgba(0,0,0,0.80)" : "rgba(255,255,255,0.80)"
   const fg = topLight ? "rgba(255,255,255,0.80)" : "rgba(0,0,0,0.80)"
   const result = buildQualityBadgeSvg(quality, fs, fg, bg, !!topLight)

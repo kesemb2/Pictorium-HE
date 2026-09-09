@@ -1,7 +1,7 @@
 import sharp from "sharp"
 import { describe, expect, it } from "vitest"
 import { buildGenrePillSvg, buildGenreTextSvg, buildRankingDefaultSvg, buildExtraDefaultSvg } from "@/lib/badge-svg-shared"
-import { buildGenreBadgeSVG, buildRankingBadgeSVG, buildExtraBadgeSVG, buildNetflixRankBadgeSVG } from "@/lib/svg-badge"
+import { buildGenreBadgeSVG, buildRankingBadgeSVG, buildExtraBadgeSVG, buildNetflixRankBadgeSVG, netflixRibbonFontSize } from "@/lib/svg-badge"
 
 async function alphaBounds(png: Buffer) {
   const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
@@ -261,7 +261,7 @@ describe("buildRankingBadgeSVG", () => {
     expect(svg).toContain(">4</text>")
     expect(svg).toContain(">Oggi</text>")
     // Nastro esteso (h × 1.55) come quello anime: il testo ha bisogno di spazio
-    const fs = Math.round(Math.max(23 * 1000 / 380, 14))
+    const fs = netflixRibbonFontSize(1000)
     const w = Math.round(fs * 2.6)
     const subFs = Math.round(w * 0.20)
     const extendedH = Math.round(w * 1.55) + Math.round(fs * 0.4) + Math.round(subFs * 0.6)
@@ -271,7 +271,7 @@ describe("buildRankingBadgeSVG", () => {
   it("stays compact without label and not anime", () => {
     const { svg, h } = buildNetflixRankBadgeSVG(4, 1000, false)
     expect(svg).not.toContain(">anime</text>")
-    const fs = Math.round(Math.max(23 * 1000 / 380, 14))
+    const fs = netflixRibbonFontSize(1000)
     const w = Math.round(fs * 2.6)
     expect(h).toBe(Math.round(w * 1.35) + Math.round(fs * 0.4))
   })
