@@ -68,6 +68,11 @@ export interface PosterRenderConfig {
   badgeTopOffset: number
   badgeBottomOffset: number
   logoBottomOffset: number
+  textOpacity: number
+  textShadowOpacity: number
+  textShadowBlur: number
+  textShadowOffset: number
+  ratingStar: boolean
   ribbonSide: "left" | "right"
 }
 
@@ -201,6 +206,19 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
   const badgeBottomOffset = geom("bbo", mapping?.badgeBottomOffset, configOverride?.badgeBottomOffset, sd.badgeBottomOffset, -100, 100, 0)
   const logoBottomOffset = geom("lbo", undefined, configOverride?.logoBottomOffset, sd.logoBottomOffset, -150, 150, 0)
 
+  // Aspetto del testo bianco su artwork. Stessa catena `geom` dei cursori di
+  // geometria: sono percentuali del default, quindi 100 significa "come prima".
+  const textOpacity = geom("to", mapping?.textOpacity, configOverride?.textOpacity, sd.textOpacity, 0, 100, 100)
+  const textShadowOpacity = geom("tso", mapping?.textShadowOpacity, configOverride?.textShadowOpacity, sd.textShadowOpacity, 0, 100, 100)
+  const textShadowBlur = geom("tsb", mapping?.textShadowBlur, configOverride?.textShadowBlur, sd.textShadowBlur, 0, 200, 100)
+  const textShadowOffset = geom("tsf", mapping?.textShadowOffset, configOverride?.textShadowOffset, sd.textShadowOffset, 0, 200, 100)
+
+  // Stellina davanti al voto. Default acceso.
+  const rawRatingStar = q.get("star")
+  const ratingStar: boolean = rawRatingStar !== null
+    ? rawRatingStar !== "0"
+    : (mapping?.ratingStar ?? (configOverride !== null ? configOverride.ratingStar : undefined) ?? sd.ratingStar ?? true)
+
   // Accent dalla tinta DOMINANTE del poster (e tinta della fascia sfocata)
   // invece del complementare storico. Default acceso.
   const rawAccentDominant = q.get("ad")
@@ -242,6 +260,11 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
     badgeTopOffset,
     badgeBottomOffset,
     logoBottomOffset,
+    textOpacity,
+    textShadowOpacity,
+    textShadowBlur,
+    textShadowOffset,
+    ratingStar,
     ribbonSide,
   }
 }

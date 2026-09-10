@@ -40,6 +40,16 @@ export interface PosterEditorCtx {
   setNetworkLogo: (v: boolean | ((prev: boolean) => boolean)) => void
   accentDominant: boolean
   setAccentDominant: (v: boolean | ((prev: boolean) => boolean)) => void
+  textOpacity: number
+  setTextOpacity: (v: number | ((prev: number) => number)) => void
+  textShadowOpacity: number
+  setTextShadowOpacity: (v: number | ((prev: number) => number)) => void
+  textShadowBlur: number
+  setTextShadowBlur: (v: number | ((prev: number) => number)) => void
+  textShadowOffset: number
+  setTextShadowOffset: (v: number | ((prev: number) => number)) => void
+  ratingStar: boolean
+  setRatingStar: (v: boolean | ((prev: boolean) => boolean)) => void
   badgeTopScale: number
   setBadgeTopScale: (v: number | ((prev: number) => number)) => void
   badgeBottomScale: number
@@ -95,6 +105,16 @@ export interface PosterEditorCtx {
   defaultNetworkLogo: boolean
   defaultAccentDominant: boolean
   setDefaultAccentDominant: (v: boolean | ((prev: boolean) => boolean)) => void
+  defaultTextOpacity: number
+  setDefaultTextOpacity: (v: number | ((prev: number) => number)) => void
+  defaultTextShadowOpacity: number
+  setDefaultTextShadowOpacity: (v: number | ((prev: number) => number)) => void
+  defaultTextShadowBlur: number
+  setDefaultTextShadowBlur: (v: number | ((prev: number) => number)) => void
+  defaultTextShadowOffset: number
+  setDefaultTextShadowOffset: (v: number | ((prev: number) => number)) => void
+  defaultRatingStar: boolean
+  setDefaultRatingStar: (v: boolean | ((prev: boolean) => boolean)) => void
   defaultBadgeTopScale: number
   setDefaultBadgeTopScale: (v: number | ((prev: number) => number)) => void
   defaultBadgeBottomScale: number
@@ -208,6 +228,7 @@ export function PosterEditorProvider({
   const {
     globalBadges, rankingBadges, networkLogo, accentDominant, ribbonSide,
     badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset,
+    textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
     badgeGenre, badgeYear, badgeRating, badgeQuality, ratingSources,
     gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled,
     badgeStyle, rankingBadgeStyle,
@@ -217,6 +238,7 @@ export function PosterEditorProvider({
     defaultBadgeGenre, defaultBadgeYear, defaultBadgeRating, defaultBadgeQuality, defaultRatingSources,
     defaultAutoRotateClean, defaultLogoFitEnabled, defaultNetworkLogo, defaultAccentDominant, defaultRibbonSide,
     defaultBadgeTopScale, defaultBadgeBottomScale, defaultBadgeTopOffset, defaultBadgeBottomOffset, defaultLogoBottomOffset,
+    defaultTextOpacity, defaultTextShadowOpacity, defaultTextShadowBlur, defaultTextShadowOffset, defaultRatingStar,
     episodeMetadataSource, defaultEpisodeMetadataSource,
     region, defaultRegion,
     loadDefaultsToState, update,
@@ -272,6 +294,31 @@ export function PosterEditorProvider({
       const next = typeof v === "function" ? v(badgeTopScale) : v
       update({ badgeTopScale: next, defaultBadgeTopScale: next })
     }, [badgeTopScale, update])
+  const setTextOpacity = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(textOpacity) : v
+      update({ textOpacity: next, defaultTextOpacity: next })
+    }, [textOpacity, update])
+  const setTextShadowOpacity = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(textShadowOpacity) : v
+      update({ textShadowOpacity: next, defaultTextShadowOpacity: next })
+    }, [textShadowOpacity, update])
+  const setTextShadowBlur = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(textShadowBlur) : v
+      update({ textShadowBlur: next, defaultTextShadowBlur: next })
+    }, [textShadowBlur, update])
+  const setTextShadowOffset = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(textShadowOffset) : v
+      update({ textShadowOffset: next, defaultTextShadowOffset: next })
+    }, [textShadowOffset, update])
+  const setRatingStar = useCallback(
+    (v: boolean | ((prev: boolean) => boolean)) => {
+      const next = typeof v === "function" ? v(ratingStar) : v
+      update({ ratingStar: next, defaultRatingStar: next })
+    }, [ratingStar, update])
   const setBadgeBottomScale = useCallback(
     (v: number | ((prev: number) => number)) => {
       const next = typeof v === "function" ? v(badgeBottomScale) : v
@@ -427,6 +474,31 @@ export function PosterEditorProvider({
       const next = typeof v === "function" ? v(defaultAccentDominant) : v
       update({ defaultAccentDominant: next, accentDominant: next })
     }, [defaultAccentDominant, update])
+  const setDefaultTextOpacity = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultTextOpacity) : v
+      update({ defaultTextOpacity: next, textOpacity: next })
+    }, [defaultTextOpacity, update])
+  const setDefaultTextShadowOpacity = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultTextShadowOpacity) : v
+      update({ defaultTextShadowOpacity: next, textShadowOpacity: next })
+    }, [defaultTextShadowOpacity, update])
+  const setDefaultTextShadowBlur = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultTextShadowBlur) : v
+      update({ defaultTextShadowBlur: next, textShadowBlur: next })
+    }, [defaultTextShadowBlur, update])
+  const setDefaultTextShadowOffset = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultTextShadowOffset) : v
+      update({ defaultTextShadowOffset: next, textShadowOffset: next })
+    }, [defaultTextShadowOffset, update])
+  const setDefaultRatingStar = useCallback(
+    (v: boolean | ((prev: boolean) => boolean)) => {
+      const next = typeof v === "function" ? v(defaultRatingStar) : v
+      update({ defaultRatingStar: next, ratingStar: next })
+    }, [defaultRatingStar, update])
   const setDefaultBadgeTopScale = useCallback(
     (v: number | ((prev: number) => number)) => {
       const next = typeof v === "function" ? v(defaultBadgeTopScale) : v
@@ -505,6 +577,16 @@ export function PosterEditorProvider({
       setNetworkLogo,
       accentDominant,
       setAccentDominant,
+      textOpacity,
+      setTextOpacity,
+      textShadowOpacity,
+      setTextShadowOpacity,
+      textShadowBlur,
+      setTextShadowBlur,
+      textShadowOffset,
+      setTextShadowOffset,
+      ratingStar,
+      setRatingStar,
       badgeTopScale,
       setBadgeTopScale,
       badgeBottomScale,
@@ -560,6 +642,16 @@ export function PosterEditorProvider({
       defaultNetworkLogo,
       defaultAccentDominant,
       setDefaultAccentDominant,
+      defaultTextOpacity,
+      setDefaultTextOpacity,
+      defaultTextShadowOpacity,
+      setDefaultTextShadowOpacity,
+      defaultTextShadowBlur,
+      setDefaultTextShadowBlur,
+      defaultTextShadowOffset,
+      setDefaultTextShadowOffset,
+      defaultRatingStar,
+      setDefaultRatingStar,
       defaultBadgeTopScale,
       setDefaultBadgeTopScale,
       defaultBadgeBottomScale,
@@ -669,6 +761,11 @@ export function PosterEditorProvider({
       defaultLogoFitEnabled, setDefaultLogoFitEnabled,
       defaultNetworkLogo, setDefaultNetworkLogo,
       defaultAccentDominant, setDefaultAccentDominant,
+      defaultTextOpacity, setDefaultTextOpacity,
+      defaultTextShadowOpacity, setDefaultTextShadowOpacity,
+      defaultTextShadowBlur, setDefaultTextShadowBlur,
+      defaultTextShadowOffset, setDefaultTextShadowOffset,
+      defaultRatingStar, setDefaultRatingStar,
       defaultBadgeTopScale, setDefaultBadgeTopScale,
       defaultBadgeBottomScale, setDefaultBadgeBottomScale,
       defaultBadgeTopOffset, setDefaultBadgeTopOffset,

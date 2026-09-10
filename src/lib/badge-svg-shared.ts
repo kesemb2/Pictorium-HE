@@ -75,6 +75,91 @@ type GenreBadgeText = {
 }
 
 /**
+ * Stile del testo bianco che cade sull'artwork (riga genere/voto/anno e titolo
+ * sotto il logo). Tutti i valori sono percentuali del default, così 100 ovunque
+ * riproduce byte per byte l'SVG precedente e i poster esistenti non si muovono.
+ */
+export interface TextStyle {
+  /** Opacità del testo, 0-100. */
+  readonly opacity?: number
+  /** Opacità dell'ombra, 0-100 come percentuale di quella di default. */
+  readonly shadowOpacity?: number
+  /** Raggio dell'ombra, 0-200 come percentuale di quello di default. */
+  readonly shadowBlur?: number
+  /** Scostamento dell'ombra, 0-200 come percentuale di quello di default. */
+  readonly shadowOffset?: number
+}
+
+export const DEFAULT_TEXT_STYLE: Required<TextStyle> = {
+  opacity: 100,
+  shadowOpacity: 100,
+  shadowBlur: 100,
+  shadowOffset: 100,
+}
+
+function pct(value: number | undefined, max: number): number {
+  if (!Number.isFinite(value as number)) return 1
+  return Math.min(Math.max(value as number, 0), max) / 100
+}
+
+export function normalizeTextStyle(style?: TextStyle) {
+  return {
+    opacity: pct(style?.opacity ?? DEFAULT_TEXT_STYLE.opacity, 100),
+    shadowOpacity: pct(style?.shadowOpacity ?? DEFAULT_TEXT_STYLE.shadowOpacity, 100),
+    shadowBlur: pct(style?.shadowBlur ?? DEFAULT_TEXT_STYLE.shadowBlur, 200),
+    shadowOffset: pct(style?.shadowOffset ?? DEFAULT_TEXT_STYLE.shadowOffset, 200),
+  }
+}
+
+/** Numero in forma compatta: 2 resta "2", 1.5 resta "1.5" (niente 1.500). */
+function num(n: number): string {
+  return String(Math.round(n * 1000) / 1000)
+}
+
+/**
+ * Le due ombre portanti del testo su artwork: una stretta e scura che stacca i
+ * bordi, una larga e morbida che stende il testo sullo sfondo. Erano duplicate
+ * alla lettera in `buildGenreTextSvg` e `buildTitleTextSvg`.
+ */
+const TEXT_SHADOW_LAYERS = [
+  { dy: 2, sd: 1.5, alpha: 0.8 },
+  { dy: 5, sd: 4.5, alpha: 0.55 },
+] as const
+
+/** `<defs>` del filtro ombra. A scale 1 emette esattamente l'SVG storico. */
+export function textShadowDefs(id: string, style?: TextStyle): string {
+  const n = normalizeTextStyle(style)
+  const layers = TEXT_SHADOW_LAYERS
+    .map((l) => `<feDropShadow dx="0" dy="${num(l.dy * n.shadowOffset)}" stdDeviation="${num(l.sd * n.shadowBlur)}" flood-color="rgba(0,0,0,${num(l.alpha * n.shadowOpacity)})"/>`)
+    .join("")
+  return `<defs><filter id="${id}" x="-50%" y="-50%" width="200%" height="200%">${layers}</filter></defs>`
+}
+
+/**
+ * Margini del riquadro di render che l'ombra richiede. Non scendono mai sotto il
+ * default: rimpicciolire l'ombra non deve rimpicciolire il badge, perché la sua
+ * larghezza decide dove viene composto sul poster. Crescono invece con blur e
+ * offset, altrimenti un'ombra più grande verrebbe tagliata ai bordi.
+ */
+export function textShadowBox(style?: TextStyle): { pad: number; drop: number } {
+  const n = normalizeTextStyle(style)
+  return {
+    pad: Math.ceil(8 * Math.max(1, n.shadowBlur, n.shadowOffset)),
+    drop: Math.ceil(5 * Math.max(1, n.shadowOffset)),
+  }
+}
+
+/** Attributo `opacity` sul gruppo, omesso quando è 100 (SVG invariato). */
+export function textOpacityAttr(style?: TextStyle): string {
+  const n = normalizeTextStyle(style)
+  // `opacity` e non `fill-opacity`: i bullet portano già `fill-opacity="0.6"`, e
+  // un fill-opacity ereditato viene SOSTITUITO dal valore del figlio, non
+  // moltiplicato — i separatori non si attenuerebbero. L'opacità di gruppo
+  // compone l'intero gruppo, quindi è moltiplicativa.
+  return n.opacity >= 1 ? "" : ` opacity="${num(n.opacity)}"`
+}
+
+/**
  * Quali componenti del badge genere/rating mostrare. Default tutti ON:
  * con tutte le parti attive l'output SVG \u00e8 byte-identico al precedente
  * "genere \u2022 \u2605 voto \u2022 anno" (i test di regressione visiva non cambiano).
@@ -83,6 +168,8 @@ export interface GenreParts {
   readonly showGenre?: boolean
   readonly showYear?: boolean
   readonly showRating?: boolean
+  /** Stellina davanti al voto. Spegnerla lascia il numero da solo. */
+  readonly showStar?: boolean
 }
 
 function normalizeParts(parts?: GenreParts): Required<GenreParts> {
@@ -90,6 +177,7 @@ function normalizeParts(parts?: GenreParts): Required<GenreParts> {
     showGenre: parts?.showGenre ?? true,
     showYear: parts?.showYear ?? true,
     showRating: parts?.showRating ?? true,
+    showStar: parts?.showStar ?? true,
   }
 }
 
@@ -103,9 +191,13 @@ type GenreTextFlowArgs = GenreBadgeText & {
 export function genreBadgeSvgDims(fs: number, genreName: string, voteStr: string, yearStr: string, parts?: GenreParts) {
   const opts = normalizeParts(parts)
   const gap = Math.round(fs / 3)
-  const gapStar = Math.round(fs / 6)
   const bulletW = Math.round(fs * 0.35)
-  const starW = Math.round(fs * 0.92)
+  // Senza stella spariscono sia la sua larghezza sia lo spazio che la separa dal
+  // voto. Le due cose vanno insieme a buildGenreTextFlow, che salta lo stesso
+  // tspan: se solo una delle due cambiasse, il testo uscirebbe scentrato.
+  const showStar = opts.showRating && opts.showStar
+  const starW = showStar ? Math.round(fs * 0.92) : 0
+  const gapStarValue = showStar ? Math.round(fs / 6) : 0
   const genreW = (opts.showGenre && genreName) ? estimateTextWidth(genreName, fs) : 0
   const voteW = (opts.showRating && voteStr) ? estimateTextWidth(voteStr, fs) : 0
   const yearW = (opts.showYear && yearStr) ? estimateTextWidth(yearStr, fs) : 0
@@ -117,11 +209,11 @@ export function genreBadgeSvgDims(fs: number, genreName: string, voteStr: string
   const segYear = yearW > 0 ? 1 : 0
   const segCount = segGenre + segRating + segYear
   const textContentW = segCount > 0
-    ? (genreW + (segRating ? starW + gapStar + voteW : 0) + yearW) + (segCount - 1) * (gap + bulletW + gap)
+    ? (genreW + (segRating ? starW + gapStarValue + voteW : 0) + yearW) + (segCount - 1) * (gap + bulletW + gap)
     : 0
   const totalW = textContentW + buf
   const svgH = Math.max(Math.round(fs * 1.6), 24)
-  return { starW, gap, gapStar, totalW, svgH, genreW, voteW, yearW, bulletW, textContentW }
+  return { starW, gap, gapStar: gapStarValue, totalW, svgH, genreW, voteW, yearW, bulletW, textContentW }
 }
 
 function buildGenreTextFlow({ genreName, voteStr, yearStr, fs, centerX, y, parts }: GenreTextFlowArgs) {
@@ -130,6 +222,7 @@ function buildGenreTextFlow({ genreName, voteStr, yearStr, fs, centerX, y, parts
   const starDy = Math.max(2, Math.round(fs * 0.14))
   const hasGenre = opts.showGenre && !!genreName
   const hasRating = opts.showRating && !!voteStr
+  const hasStar = hasRating && opts.showStar
   const hasYear = opts.showYear && !!yearStr
   const bullet = (dx: number) => `<tspan dx="${dx}" fill-opacity="0.6">${escSvg("\u2022")}</tspan>`
   const tspan: string[] = []
@@ -144,8 +237,14 @@ function buildGenreTextFlow({ genreName, voteStr, yearStr, fs, centerX, y, parts
     if (hasRating || hasYear) tspan.push(bullet(dims.gap))
   }
   if (hasRating) {
-    tspan.push(`<tspan dx="${starGapDx}" dy="${starDy}" font-family="Noto Sans Symbols 2" font-weight="400" fill="#F59E0B">${escSvg("\u2605")}</tspan>`)
-    tspan.push(`<tspan dx="${dims.gapStar}" dy="${-starDy}">${escSvg(voteStr)}</tspan>`)
+    if (hasStar) {
+      tspan.push(`<tspan dx="${starGapDx}" dy="${starDy}" font-family="Noto Sans Symbols 2" font-weight="400" fill="#F59E0B">${escSvg("\u2605")}</tspan>`)
+      tspan.push(`<tspan dx="${dims.gapStar}" dy="${-starDy}">${escSvg(voteStr)}</tspan>`)
+    } else {
+      // Senza stella il voto prende lo spazio che la separava dal genere, e
+      // niente dy: non c'è nessuna linea di base da compensare.
+      tspan.push(`<tspan dx="${starGapDx}">${escSvg(voteStr)}</tspan>`)
+    }
     if (hasYear) tspan.push(bullet(dims.gap))
   }
   if (hasYear) {
@@ -249,21 +348,22 @@ export function fitTitleText(title: string, maxW: number, fs: number): { text: s
  * genere "shadow": il testo cade su artwork, non su una pill, e senza ombra
  * sparirebbe sui poster chiari.
  */
-export function buildTitleTextSvg(title: string, maxW: number, fs: number, textColor = "#ffffff") {
+export function buildTitleTextSvg(title: string, maxW: number, fs: number, textColor = "#ffffff", textStyle?: TextStyle) {
   const fit = fitTitleText(title, maxW, fs)
   if (!fit.text) return null
-  const shadowPad = 8
+  const { pad: shadowPad } = textShadowBox(textStyle)
   const renderW = Math.min(Math.round(estimateTextWidth(fit.text, fit.fs)) + shadowPad * 2, maxW + shadowPad * 2)
   const renderH = titleStripHeight(fit.fs)
-  const defs = `<defs><filter id="ts" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="rgba(0,0,0,0.8)"/><feDropShadow dx="0" dy="5" stdDeviation="4.5" flood-color="rgba(0,0,0,0.55)"/></filter></defs>`
-  const textEl = `<text x="${renderW / 2}" y="${renderH / 2}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(fit.text)}" font-weight="700" font-size="${fit.fs}" fill="${textColor}" filter="url(#ts)">${escSvg(fit.text)}</text>`
+  const defs = textShadowDefs("ts", textStyle)
+  const textEl = `<text x="${renderW / 2}" y="${renderH / 2}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(fit.text)}" font-weight="700" font-size="${fit.fs}" fill="${textColor}" filter="url(#ts)"${textOpacityAttr(textStyle)}>${escSvg(fit.text)}</text>`
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${renderH}">${defs}${textEl}</svg>`, w: renderW, h: renderH }
 }
 
-export function buildGenreTextSvg(genreName: string, voteStr: string, yearStr: string, fs: number, textColor: string, style: string, textOffsetX = 0, parts?: GenreParts) {
+export function buildGenreTextSvg(genreName: string, voteStr: string, yearStr: string, fs: number, textColor: string, style: string, textOffsetX = 0, parts?: GenreParts, textStyle?: TextStyle) {
   const dims = genreBadgeSvgDims(fs, genreName, voteStr, yearStr, parts)
-  const shadowPad = style === "shadow" ? 8 : 0
-  const shadowDrop = style === "shadow" ? 5 : 0
+  const box = textShadowBox(textStyle)
+  const shadowPad = style === "shadow" ? box.pad : 0
+  const shadowDrop = style === "shadow" ? box.drop : 0
   const safePad = genreBadgeSafePad(fs)
   const renderW = dims.totalW + shadowPad * 2 + safePad * 2
   const renderH = dims.svgH + shadowDrop
@@ -271,10 +371,10 @@ export function buildGenreTextSvg(genreName: string, voteStr: string, yearStr: s
   let defs = ""
   let filterAttr = ""
   if (style === "shadow") {
-    defs = `<defs><filter id="sh" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="rgba(0,0,0,0.8)"/><feDropShadow dx="0" dy="5" stdDeviation="4.5" flood-color="rgba(0,0,0,0.55)"/></filter></defs>`
+    defs = textShadowDefs("sh", textStyle)
     filterAttr = ' filter="url(#sh)"'
   }
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${renderH}">${defs}<g fill="${textColor}"${filterAttr}>${textParts}</g></svg>`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${renderH}">${defs}<g fill="${textColor}"${filterAttr}${textOpacityAttr(textStyle)}>${textParts}</g></svg>`
   return { svg, w: renderW, h: renderH }
 }
 

@@ -25,6 +25,11 @@ export interface StremioPosterParamsInput {
   readonly accentDominant?: boolean
   readonly badgeTopScale?: number
   readonly badgeBottomScale?: number
+  readonly textOpacity?: number
+  readonly textShadowOpacity?: number
+  readonly textShadowBlur?: number
+  readonly textShadowOffset?: number
+  readonly ratingStar?: boolean
   readonly badgeTopOffset?: number
   readonly badgeBottomOffset?: number
   readonly logoBottomOffset?: number
@@ -49,6 +54,10 @@ const DEFAULT_STREMIO_POSTER_PARAMS = {
   accentDominant: true,
   badgeTopScale: 100,
   badgeBottomScale: 100,
+  textOpacity: 100,
+  textShadowOpacity: 100,
+  textShadowBlur: 100,
+  textShadowOffset: 100,
   badgeTopOffset: 0,
   badgeBottomOffset: 0,
   logoBottomOffset: 0,
@@ -83,6 +92,11 @@ export function buildStremioPosterSearchParams(input: StremioPosterParamsInput):
   if (!accentDominant) params.set("ad", "0")
   params.set("bts", String(input.badgeTopScale ?? DEFAULT_STREMIO_POSTER_PARAMS.badgeTopScale))
   params.set("bbs", String(input.badgeBottomScale ?? DEFAULT_STREMIO_POSTER_PARAMS.badgeBottomScale))
+  params.set("to", String(input.textOpacity ?? DEFAULT_STREMIO_POSTER_PARAMS.textOpacity))
+  params.set("tso", String(input.textShadowOpacity ?? DEFAULT_STREMIO_POSTER_PARAMS.textShadowOpacity))
+  params.set("tsb", String(input.textShadowBlur ?? DEFAULT_STREMIO_POSTER_PARAMS.textShadowBlur))
+  params.set("tsf", String(input.textShadowOffset ?? DEFAULT_STREMIO_POSTER_PARAMS.textShadowOffset))
+  params.set("star", input.ratingStar !== false ? "1" : "0")
   params.set("bto", String(input.badgeTopOffset ?? DEFAULT_STREMIO_POSTER_PARAMS.badgeTopOffset))
   params.set("bbo", String(input.badgeBottomOffset ?? DEFAULT_STREMIO_POSTER_PARAMS.badgeBottomOffset))
   params.set("lbo", String(input.logoBottomOffset ?? DEFAULT_STREMIO_POSTER_PARAMS.logoBottomOffset))

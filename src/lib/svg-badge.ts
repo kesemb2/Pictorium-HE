@@ -1,7 +1,7 @@
 import fs from "fs"
 import { textColorForBg } from "./accent-color"
 import { FONT_FILES, FONT_INTER_REGULAR, FONT_INTER_BOLD, FONT_INTER_BLACK, FONT_SYMBOLS } from "./fonts"
-import { buildTitleTextSvg, estimateTextWidth, fontFamilyFor, genreBadgeSafePad, genreBadgeSvgDims, genrePillMaxW, buildGenreBarSvg, buildGenrePillSvg, buildGenreTextSvg, buildGenreBorderedSvg, buildGenreGlassSvg, buildRankingBarSvg, buildRankingDefaultSvg, buildRankingPillSvg, buildExtraBarSvg, buildExtraDefaultSvg, buildExtraPillSvg, buildExtraGlassSvg, buildQualityBadgeSvg, escSvg } from "./badge-svg-shared"
+import { buildTitleTextSvg, textShadowBox, type TextStyle, estimateTextWidth, fontFamilyFor, genreBadgeSafePad, genreBadgeSvgDims, genrePillMaxW, buildGenreBarSvg, buildGenrePillSvg, buildGenreTextSvg, buildGenreBorderedSvg, buildGenreGlassSvg, buildRankingBarSvg, buildRankingDefaultSvg, buildRankingPillSvg, buildExtraBarSvg, buildExtraDefaultSvg, buildExtraPillSvg, buildExtraGlassSvg, buildQualityBadgeSvg, escSvg } from "./badge-svg-shared"
 import type { GenreParts } from "./badge-svg-shared"
 import type { BadgeStyle, RankingBadgeStyle, ExtraBadgeStyle } from "./badge-styles"
 
@@ -166,6 +166,7 @@ export async function buildExtraBadgeSVG(
 export async function buildGenreBadgeSVG(
   genreName: string, voteAverage: number, pw: number,
   year?: string, style?: BadgeStyle, accentColor?: string, topLight?: boolean, parts?: GenreParts, scale = 100,
+  textStyle?: TextStyle,
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
   const s = style || "shadow"
   const voteStr = voteAverage ? voteAverage.toFixed(1) : ""
@@ -176,7 +177,7 @@ export async function buildGenreBadgeSVG(
   let dims = genreBadgeSvgDims(finalFs, genreName, voteStr, yearStr, parts)
   let safePad = genreBadgeSafePad(finalFs)
   // Per shadow, buildGenreTextSvg aggiunge shadowPad*2 al renderW finale
-  const extraShadowPad = style === "shadow" ? 8 : 0
+  const extraShadowPad = style === "shadow" ? textShadowBox(textStyle).pad : 0
   const estimatedRenderW = dims.totalW + safePad * 2 + extraShadowPad * 2
   if (estimatedRenderW > aestheticMaxW) {
     finalFs = Math.max(aestheticMaxW / estimatedRenderW * finalFs, 10)
@@ -214,7 +215,7 @@ export async function buildGenreBadgeSVG(
   } else if (isPill) {
     result = buildGenrePillSvg(genreName, voteStr, yearStr, fs, bgColor, textColor, 0, parts)
   } else {
-    result = buildGenreTextSvg(genreName, voteStr, yearStr, fs, textColor, s, 0, parts)
+    result = buildGenreTextSvg(genreName, voteStr, yearStr, fs, textColor, s, 0, parts, textStyle)
     // Per shadow, il renderW include shadowPad*2 + safePad*2 aggiuntivi
     // Assicuriamoci che non superi aestheticMaxW
     let attempts = 0
@@ -222,7 +223,7 @@ export async function buildGenreBadgeSVG(
       // Riduciamo fs proporzionalmente al surplus
       const targetFs = Math.max(Math.round(fs * (aestheticMaxW - 16) / result.w), 10)
       if (targetFs >= fs) { fs = 10 } else { fs = targetFs }
-      result = buildGenreTextSvg(genreName, voteStr, yearStr, fs, textColor, s, 0, parts)
+      result = buildGenreTextSvg(genreName, voteStr, yearStr, fs, textColor, s, 0, parts, textStyle)
       attempts++
     }
   }
@@ -233,8 +234,9 @@ export async function buildGenreBadgeSVG(
 export async function renderGenreBadge(
   genreName: string, voteAverage: number, pw: number,
   year?: string, style?: BadgeStyle, accentColor?: string, topLight?: boolean, parts?: GenreParts, scale = 100,
+  textStyle?: TextStyle,
 ): Promise<{ png: Buffer; w: number; h: number }> {
-  const r = await buildGenreBadgeSVG(genreName, voteAverage, pw, year, style, accentColor, topLight, parts, scale)
+  const r = await buildGenreBadgeSVG(genreName, voteAverage, pw, year, style, accentColor, topLight, parts, scale, textStyle)
   if (r) return r
   throw new Error(`SVG genre badge failed: ${genreName}`)
 }
@@ -409,9 +411,9 @@ export async function renderExtraBadge(
  * nulla senza casi speciali.
  */
 export async function renderTitleText(
-  title: string, maxW: number, fs: number, textColor?: string,
+  title: string, maxW: number, fs: number, textColor?: string, textStyle?: TextStyle,
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
-  const built = buildTitleTextSvg(title, maxW, fs, textColor)
+  const built = buildTitleTextSvg(title, maxW, fs, textColor, textStyle)
   if (!built) return null
   const png = await renderSVG(wrapSvg(built.svg), built.w)
   return { png, w: built.w, h: built.h }

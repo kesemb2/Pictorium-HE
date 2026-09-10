@@ -29,6 +29,11 @@ export interface DefaultsState {
   defaultAccentDominant: boolean
   defaultBadgeTopScale: number
   defaultBadgeBottomScale: number
+  defaultTextOpacity: number
+  defaultTextShadowOpacity: number
+  defaultTextShadowBlur: number
+  defaultTextShadowOffset: number
+  defaultRatingStar: boolean
   defaultBadgeTopOffset: number
   defaultBadgeBottomOffset: number
   defaultLogoBottomOffset: number
@@ -49,6 +54,11 @@ export interface DefaultsState {
   accentDominant: boolean
   badgeTopScale: number
   badgeBottomScale: number
+  textOpacity: number
+  textShadowOpacity: number
+  textShadowBlur: number
+  textShadowOffset: number
+  ratingStar: boolean
   badgeTopOffset: number
   badgeBottomOffset: number
   logoBottomOffset: number
@@ -84,6 +94,11 @@ const DEFAULTS: DefaultsState = {
   defaultAccentDominant: true,
   defaultBadgeTopScale: 100,
   defaultBadgeBottomScale: 100,
+  defaultTextOpacity: 100,
+  defaultTextShadowOpacity: 100,
+  defaultTextShadowBlur: 100,
+  defaultTextShadowOffset: 100,
+  defaultRatingStar: true,
   defaultBadgeTopOffset: 0,
   defaultBadgeBottomOffset: 0,
   defaultLogoBottomOffset: 0,
@@ -102,6 +117,11 @@ const DEFAULTS: DefaultsState = {
   accentDominant: true,
   badgeTopScale: 100,
   badgeBottomScale: 100,
+  textOpacity: 100,
+  textShadowOpacity: 100,
+  textShadowBlur: 100,
+  textShadowOffset: 100,
+  ratingStar: true,
   badgeTopOffset: 0,
   badgeBottomOffset: 0,
   logoBottomOffset: 0,
@@ -130,6 +150,16 @@ interface StoredDefaults {
   defaultBadgeTopScale?: number
   badgeBottomScale?: number
   defaultBadgeBottomScale?: number
+  textOpacity?: number
+  defaultTextOpacity?: number
+  textShadowOpacity?: number
+  defaultTextShadowOpacity?: number
+  textShadowBlur?: number
+  defaultTextShadowBlur?: number
+  textShadowOffset?: number
+  defaultTextShadowOffset?: number
+  ratingStar?: boolean
+  defaultRatingStar?: boolean
   badgeTopOffset?: number
   defaultBadgeTopOffset?: number
   badgeBottomOffset?: number
@@ -209,6 +239,11 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     defaultAccentDominant: d.defaultAccentDominant ?? d.accentDominant ?? true,
     defaultBadgeTopScale: d.defaultBadgeTopScale ?? d.badgeTopScale ?? 100,
     defaultBadgeBottomScale: d.defaultBadgeBottomScale ?? d.badgeBottomScale ?? 100,
+    defaultTextOpacity: d.defaultTextOpacity ?? d.textOpacity ?? 100,
+    defaultTextShadowOpacity: d.defaultTextShadowOpacity ?? d.textShadowOpacity ?? 100,
+    defaultTextShadowBlur: d.defaultTextShadowBlur ?? d.textShadowBlur ?? 100,
+    defaultTextShadowOffset: d.defaultTextShadowOffset ?? d.textShadowOffset ?? 100,
+    defaultRatingStar: d.defaultRatingStar ?? d.ratingStar ?? true,
     defaultBadgeTopOffset: d.defaultBadgeTopOffset ?? d.badgeTopOffset ?? 0,
     defaultBadgeBottomOffset: d.defaultBadgeBottomOffset ?? d.badgeBottomOffset ?? 0,
     defaultLogoBottomOffset: d.defaultLogoBottomOffset ?? d.logoBottomOffset ?? 0,
@@ -227,6 +262,11 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     accentDominant: d.accentDominant ?? d.defaultAccentDominant ?? true,
     badgeTopScale: d.badgeTopScale ?? d.defaultBadgeTopScale ?? 100,
     badgeBottomScale: d.badgeBottomScale ?? d.defaultBadgeBottomScale ?? 100,
+    textOpacity: d.textOpacity ?? d.defaultTextOpacity ?? 100,
+    textShadowOpacity: d.textShadowOpacity ?? d.defaultTextShadowOpacity ?? 100,
+    textShadowBlur: d.textShadowBlur ?? d.defaultTextShadowBlur ?? 100,
+    textShadowOffset: d.textShadowOffset ?? d.defaultTextShadowOffset ?? 100,
+    ratingStar: d.ratingStar ?? d.defaultRatingStar ?? true,
     badgeTopOffset: d.badgeTopOffset ?? d.defaultBadgeTopOffset ?? 0,
     badgeBottomOffset: d.badgeBottomOffset ?? d.defaultBadgeBottomOffset ?? 0,
     logoBottomOffset: d.logoBottomOffset ?? d.defaultLogoBottomOffset ?? 0,
@@ -270,6 +310,11 @@ function defaultsToPayload(d: DefaultsState): Record<string, unknown> {
     accentDominant: d.defaultAccentDominant,
     badgeTopScale: d.defaultBadgeTopScale,
     badgeBottomScale: d.defaultBadgeBottomScale,
+    textOpacity: d.defaultTextOpacity,
+    textShadowOpacity: d.defaultTextShadowOpacity,
+    textShadowBlur: d.defaultTextShadowBlur,
+    textShadowOffset: d.defaultTextShadowOffset,
+    ratingStar: d.defaultRatingStar,
     badgeTopOffset: d.defaultBadgeTopOffset,
     badgeBottomOffset: d.defaultBadgeBottomOffset,
     logoBottomOffset: d.defaultLogoBottomOffset,

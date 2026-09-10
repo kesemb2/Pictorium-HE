@@ -35,6 +35,11 @@ export function saveDefaults(p: { selected: PictoriumCtx["selected"]; mappingsMa
     accentDominant: ed.defaultAccentDominant,
     badgeTopScale: ed.defaultBadgeTopScale,
     badgeBottomScale: ed.defaultBadgeBottomScale,
+    textOpacity: ed.defaultTextOpacity,
+    textShadowOpacity: ed.defaultTextShadowOpacity,
+    textShadowBlur: ed.defaultTextShadowBlur,
+    textShadowOffset: ed.defaultTextShadowOffset,
+    ratingStar: ed.defaultRatingStar,
     badgeTopOffset: ed.defaultBadgeTopOffset,
     badgeBottomOffset: ed.defaultBadgeBottomOffset,
     logoBottomOffset: ed.defaultLogoBottomOffset,
@@ -70,6 +75,11 @@ export function saveDefaults(p: { selected: PictoriumCtx["selected"]; mappingsMa
   ed.setAccentDominant(d.accentDominant)
   ed.setBadgeTopScale(d.badgeTopScale)
   ed.setBadgeBottomScale(d.badgeBottomScale)
+  ed.setTextOpacity(d.textOpacity)
+  ed.setTextShadowOpacity(d.textShadowOpacity)
+  ed.setTextShadowBlur(d.textShadowBlur)
+  ed.setTextShadowOffset(d.textShadowOffset)
+  ed.setRatingStar(d.ratingStar)
   ed.setBadgeTopOffset(d.badgeTopOffset)
   ed.setBadgeBottomOffset(d.badgeBottomOffset)
   ed.setLogoBottomOffset(d.logoBottomOffset)

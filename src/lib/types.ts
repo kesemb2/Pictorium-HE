@@ -101,6 +101,11 @@ export interface Mapping {
   accentDominant?: boolean | null
   badgeTopScale?: number | null
   badgeBottomScale?: number | null
+  textOpacity?: number | null
+  textShadowOpacity?: number | null
+  textShadowBlur?: number | null
+  textShadowOffset?: number | null
+  ratingStar?: boolean | null
   badgeTopOffset?: number | null
   badgeBottomOffset?: number | null
   ribbonSide?: "left" | "right" | null

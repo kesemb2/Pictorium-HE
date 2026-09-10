@@ -860,6 +860,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       logoScale, logoOffsetX, logoOffsetY,
       queryExtra, qNetLogo, networkLogo, accentDominant, ribbonSide,
       badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset,
+      textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
     } = renderConfig
 
     const finalQuality = qQualityParam || liveQualityResult || null
@@ -1017,6 +1018,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       voteCount, nextEpisodeAirDate, tmdbTrending,
       accentDominant,
       badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset,
+      textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
       wikidataResult, tmdbKeywords, locale, t,
       qLabel, queryExtra, qNetLogo, networkLogo, sd,
       accentOverride, imdbTop250,

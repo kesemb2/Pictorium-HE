@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Check, XCircle, Ruler, Cloud, Minus, Circle, ChevronDown, Star, Trophy, Tv, Flame, Sparkles, Palette, Layers } from "lucide-react"
+import { Check, XCircle, Ruler, Cloud, Minus, Circle, ChevronDown, Star, Trophy, Tv, Flame, Sparkles, Palette, Layers, Type } from "lucide-react"
 import { usePSelector } from "@/lib/context"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { usePosterEditor } from "@/lib/contexts/PosterEditorContext"
@@ -290,6 +290,82 @@ export function BadgeControls() {
                 editingKey="glogoBottomOffset"
                 suffix="px"
               />
+              <SliderRow
+                icon={<Type className="w-3.5 h-3.5 text-accent-orange" />}
+                label={t("ui.textOpacity")}
+                value={ed.textOpacity}
+                min={0}
+                max={100}
+                boundsMin={0}
+                boundsMax={100}
+                onChange={(v) => ed.setTextOpacity(v)}
+                onDoubleClick={() => ed.setTextOpacity(100)}
+                editingValue={editingValue}
+                editText={editText}
+                setEditingValue={setEditingValue}
+                setEditText={setEditText}
+                editingKey="gtextOpacity"
+                suffix="%"
+              />
+              <SliderRow
+                icon={<Type className="w-3.5 h-3.5 text-accent-orange" />}
+                label={t("ui.textShadowOpacity")}
+                value={ed.textShadowOpacity}
+                min={0}
+                max={100}
+                boundsMin={0}
+                boundsMax={100}
+                onChange={(v) => ed.setTextShadowOpacity(v)}
+                onDoubleClick={() => ed.setTextShadowOpacity(100)}
+                editingValue={editingValue}
+                editText={editText}
+                setEditingValue={setEditingValue}
+                setEditText={setEditText}
+                editingKey="gtextShadowOpacity"
+                suffix="%"
+              />
+              <SliderRow
+                icon={<Type className="w-3.5 h-3.5 text-accent-orange" />}
+                label={t("ui.textShadowBlur")}
+                value={ed.textShadowBlur}
+                min={0}
+                max={200}
+                boundsMin={0}
+                boundsMax={200}
+                onChange={(v) => ed.setTextShadowBlur(v)}
+                onDoubleClick={() => ed.setTextShadowBlur(100)}
+                editingValue={editingValue}
+                editText={editText}
+                setEditingValue={setEditingValue}
+                setEditText={setEditText}
+                editingKey="gtextShadowBlur"
+                suffix="%"
+              />
+              <SliderRow
+                icon={<Type className="w-3.5 h-3.5 text-accent-orange" />}
+                label={t("ui.textShadowOffset")}
+                value={ed.textShadowOffset}
+                min={0}
+                max={200}
+                boundsMin={0}
+                boundsMax={200}
+                onChange={(v) => ed.setTextShadowOffset(v)}
+                onDoubleClick={() => ed.setTextShadowOffset(100)}
+                editingValue={editingValue}
+                editText={editText}
+                setEditingValue={setEditingValue}
+                setEditText={setEditText}
+                editingKey="gtextShadowOffset"
+                suffix="%"
+              />
+
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <span className="text-zinc-300 font-medium flex items-center gap-1.5 shrink-0">
+              <Star className="w-3.5 h-3.5 text-accent-orange" />
+              {t("ui.ratingStar")}
+            </span>
+            <Toggle value={ed.ratingStar} onChange={(v) => ed.setRatingStar(v)} label={t("ui.ratingStar")} />
+          </div>
 
           <div className="flex items-center justify-between gap-3 pt-1">
             <span className="text-zinc-300 font-medium flex items-center gap-1.5 shrink-0">

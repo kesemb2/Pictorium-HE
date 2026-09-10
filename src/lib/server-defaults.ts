@@ -31,6 +31,11 @@ export interface ServerDefaults {
   accentDominant?: boolean
   badgeTopScale?: number
   badgeBottomScale?: number
+  textOpacity?: number
+  textShadowOpacity?: number
+  textShadowBlur?: number
+  textShadowOffset?: number
+  ratingStar?: boolean
   badgeTopOffset?: number
   badgeBottomOffset?: number
   logoBottomOffset?: number
@@ -83,9 +88,14 @@ function defaultsFromEnv(): ServerDefaults {
   const blurEn = envBool("BLUR_ENABLED")
   const netLogo = envBool("NETWORK_LOGO")
   const accentDom = envBool("ACCENT_DOMINANT")
+  const ratingStarEnv = envBool("RATING_STAR")
   const geomEnv: [keyof ServerDefaults, number | undefined][] = [
     ["badgeTopScale", envNum("BADGE_TOP_SCALE")],
     ["badgeBottomScale", envNum("BADGE_BOTTOM_SCALE")],
+    ["textOpacity", envNum("TEXT_OPACITY")],
+    ["textShadowOpacity", envNum("TEXT_SHADOW_OPACITY")],
+    ["textShadowBlur", envNum("TEXT_SHADOW_BLUR")],
+    ["textShadowOffset", envNum("TEXT_SHADOW_OFFSET")],
     ["badgeTopOffset", envNum("BADGE_TOP_OFFSET")],
     ["badgeBottomOffset", envNum("BADGE_BOTTOM_OFFSET")],
     ["logoBottomOffset", envNum("LOGO_BOTTOM_OFFSET")],
@@ -103,6 +113,7 @@ function defaultsFromEnv(): ServerDefaults {
   if (blurEn !== undefined) d.blurEnabled = blurEn
   if (netLogo !== undefined) d.networkLogo = netLogo
   if (accentDom !== undefined) d.accentDominant = accentDom
+  if (ratingStarEnv !== undefined) d.ratingStar = ratingStarEnv
   for (const [key, val] of geomEnv) {
     if (val !== undefined) (d as Record<string, unknown>)[key] = val
   }

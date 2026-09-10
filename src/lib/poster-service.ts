@@ -23,6 +23,7 @@ const TOP_BADGE_MARGIN = 10
 /** Aria tra la base del logo e la riga del titolo. */
 const TITLE_BAND_GAP = 6
 import { renderGenreBadge, renderRankingBadge, renderExtraBadge, renderQualityBadge, renderTitleText } from "./svg-badge"
+import type { TextStyle } from "./badge-svg-shared"
 import { renderFirstMatchingNetworkLogoBadge, renderFirstMatchingNetworkRawBadge, renderFirstMatchingNetworkLogoBadgeHybrid, renderFirstMatchingNetworkRawBadgeHybrid, type NetworkCandidate } from "./network-svgs"
 import { computeLogoLayout } from "./logo-layout"
 import fs from "fs"
@@ -133,6 +134,16 @@ export interface GenerationInput {
   badgeBottomOffset?: number
   /** Scostamento verticale in px del logo; positivo = più in alto. */
   logoBottomOffset?: number
+  /**
+   * Aspetto del testo bianco su artwork (riga genere/voto/anno e titolo sotto
+   * il logo). Percentuali del default: 100 ovunque = resa storica invariata.
+   */
+  textOpacity?: number
+  textShadowOpacity?: number
+  textShadowBlur?: number
+  textShadowOffset?: number
+  /** Stellina davanti al voto nella riga in basso. */
+  ratingStar?: boolean
   releaseDate: string | null
   firstAirDate: string | null
   /** Ultima messa in onda + n. stagioni + origin country (badge Nuova stagione / K-Drama). */
@@ -481,6 +492,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     lastAirDate, seasonCount, originCountries,
     voteCount, nextEpisodeAirDate, tmdbTrending, accentDominant,
     badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset,
+    textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
     wikidataResult, tmdbKeywords, locale, t,
     qLabel, queryExtra, qNetLogo, networkLogo, sd, accentOverride, imdbTop250,
     posterSrc, logoSrc, backdropSrc,
@@ -529,6 +541,16 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     ? fitTitleText(title!, titleTextMaxW(STD_W), titleTextFontSize(STD_W))
     : null
   const titleBandH = titleFit ? titleStripHeight(titleFit.fs) + TITLE_BAND_GAP : 0
+
+  // Un unico oggetto per la riga in basso e per il titolo: le due scritte
+  // cadono sullo stesso artwork e devono avere lo stesso trattamento.
+  const textStyle: TextStyle = {
+    opacity: textOpacity,
+    shadowOpacity: textShadowOpacity,
+    shadowBlur: textShadowBlur,
+    shadowOffset: textShadowOffset,
+  }
+  const showRatingStar = ratingStar !== false
 
   // I colori si risolvono PRIMA del blur, non in parallelo: la fascia sfocata
   // ne ha bisogno per la tinta. L'estrazione è cachata per (poster, logo,
@@ -584,7 +606,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   composites.push({ input: vigBuf, top: 0, left: 0 })
   if (logoResult) composites.push(logoResult)
   if (titleFit && logoResult) {
-    const titleBadge = await renderTitleText(title!, titleTextMaxW(STD_W), titleFit.fs).catch(() => null)
+    const titleBadge = await renderTitleText(title!, titleTextMaxW(STD_W), titleFit.fs, undefined, textStyle).catch(() => null)
     if (titleBadge) {
       composites.push({
         input: titleBadge.png,
@@ -696,7 +718,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     : null
 
   const genreBadgeKey = hasGenreBadge
-    ? badgeCacheKey("genre", genreName, voteAverage, STD_W, year, badgeStyle, accentColorGenre, topLight, badgeGenre, badgeYear, badgeRating, badgeBottomScale)
+    ? badgeCacheKey("genre", genreName, voteAverage, STD_W, year, badgeStyle, accentColorGenre, topLight, badgeGenre, badgeYear, badgeRating, badgeBottomScale, showRatingStar, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset)
     : null
   const rankBadgeKey = topBadge
     ? badgeCacheKey("rank", topBadge.type === "extra" ? topBadge.label : `${(topBadge as { rank: number }).rank}:${topBadge!.label}`, STD_W, topLight, rankingBadgeStyle, accentColorRank, ribbonSide, isAnimeRank, badgeTopScale)
@@ -709,7 +731,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     genreBadgeKey
       ? (cacheGet<{ png: Buffer; w: number; h: number }>(genreBadgeKey)
           || coalesceBadgeRender(genreBadgeKey, () =>
-              renderGenreBadge(genreName ?? "", voteAverage ?? 0, STD_W, year, badgeStyle, accentColorGenre, topLight, { showGenre: badgeGenre, showYear: badgeYear, showRating: badgeRating }, badgeBottomScale)
+              renderGenreBadge(genreName ?? "", voteAverage ?? 0, STD_W, year, badgeStyle, accentColorGenre, topLight, { showGenre: badgeGenre, showYear: badgeYear, showRating: badgeRating, showStar: showRatingStar }, badgeBottomScale, textStyle)
                 .then((r) => { if (r) cacheSet(genreBadgeKey, r, ["badge"], BADGE_CACHE_TTL); return r })
             ))
       : Promise.resolve(null),

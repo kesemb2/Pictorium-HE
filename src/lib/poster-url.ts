@@ -30,6 +30,11 @@ interface BadgeParams {
   accentDominant?: boolean
   badgeTopScale?: number
   badgeBottomScale?: number
+  textOpacity?: number
+  textShadowOpacity?: number
+  textShadowBlur?: number
+  textShadowOffset?: number
+  ratingStar?: boolean
   badgeTopOffset?: number
   badgeBottomOffset?: number
   logoBottomOffset?: number
@@ -103,6 +108,11 @@ export function buildUrlPattern(bp: BadgeParams & { tmdbKey: string; lang: strin
     accentDominant: bp.accentDominant,
     badgeTopScale: bp.badgeTopScale,
     badgeBottomScale: bp.badgeBottomScale,
+    textOpacity: bp.textOpacity,
+    textShadowOpacity: bp.textShadowOpacity,
+    textShadowBlur: bp.textShadowBlur,
+    textShadowOffset: bp.textShadowOffset,
+    ratingStar: bp.ratingStar,
     badgeTopOffset: bp.badgeTopOffset,
     badgeBottomOffset: bp.badgeBottomOffset,
     logoBottomOffset: bp.logoBottomOffset,
@@ -174,6 +184,11 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
   params.push(`ad=${bp.accentDominant !== false ? "1" : "0"}`)
   params.push(`bts=${bp.badgeTopScale ?? 100}`)
   params.push(`bbs=${bp.badgeBottomScale ?? 100}`)
+  params.push(`to=${bp.textOpacity ?? 100}`)
+  params.push(`tso=${bp.textShadowOpacity ?? 100}`)
+  params.push(`tsb=${bp.textShadowBlur ?? 100}`)
+  params.push(`tsf=${bp.textShadowOffset ?? 100}`)
+  params.push(`star=${bp.ratingStar !== false ? "1" : "0"}`)
   params.push(`bto=${bp.badgeTopOffset ?? 0}`)
   params.push(`bbo=${bp.badgeBottomOffset ?? 0}`)
   params.push(`lbo=${bp.logoBottomOffset ?? 0}`)
