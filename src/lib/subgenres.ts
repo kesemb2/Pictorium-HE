@@ -29,7 +29,7 @@ const SUB_GENRES: SubGenreRule[] = [
     // NOTE: "detective" and "investigation" removed — they are too broad and
     // triggered false positives on generic police procedurals.
     keywords: ["whodunit", "murder mystery", "private investigator", "sleuth"],
-    labels: { it: "Giallo", en: "Whodunit", fr: "Whodunit", de: "Whodunit", es: "Whodunit", he: "מי הרוצח" },
+    labels: { it: "Giallo", en: "Whodunit", fr: "Whodunit", de: "Whodunit", es: "Whodunit", he: "מי הרוצח?" },
   },
   {
     key: "heist",
@@ -70,12 +70,12 @@ const SUB_GENRES: SubGenreRule[] = [
     keywords: ["found footage", "mockumentary", "handheld camera"],
     // NOTE: "mockumentary" can appear on comedy mockumentaries (This Is Spinal Tap),
     // but these rarely overlap with TMDB horror keywords. Acceptable low risk.
-    labels: { it: "Found Footage", en: "Found Footage", fr: "Found Footage", de: "Found Footage", es: "Metraje encontrado", he: "Found Footage" },
+    labels: { it: "Found Footage", en: "Found Footage", fr: "Found Footage", de: "Found Footage", es: "Metraje encontrado", he: "פאונד-פוטג'" },
   },
   {
     key: "noir",
     keywords: ["neo-noir", "film noir", "hardboiled", "femme fatale"],
-    labels: { it: "Film Noir", en: "Film Noir", fr: "Film Noir", de: "Film Noir", es: "Cine Negro", he: "Film Noir" },
+    labels: { it: "Film Noir", en: "Film Noir", fr: "Film Noir", de: "Film Noir", es: "Cine Negro", he: "פילם נואר" },
   },
   {
     key: "spaghettiwestern",
