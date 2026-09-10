@@ -49,6 +49,21 @@ describe("buildUrlPattern", () => {
     expect(url).toContain("/api/poster/{type}/{imdb_id}")
   })
 
+  // Le chiavi sono uscite dagli URL poster SERVITI, ma questo è il template che
+  // l'utente copia per sé: Stremio non invia header custom, quindi qui devono
+  // esserci, o il render resta senza chiave.
+  it("keeps both keys, because this is the template the user copies", () => {
+    const url = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "key", lang: "it", mdblistApiKey: "mdb" })
+    expect(url).toContain("api_key=key")
+    expect(url).toContain("mdblist_key=mdb")
+  })
+
+  it("omits each key when it is not configured", () => {
+    const url = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "", lang: "it" })
+    expect(url).not.toContain("api_key=")
+    expect(url).not.toContain("mdblist_key=")
+  })
+
   it("uses poster CDN base URL when configured", () => {
     process.env.NEXT_PUBLIC_POSTER_CDN_URL = "https://cdn.pictorium.example/"
 

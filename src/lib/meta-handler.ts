@@ -117,7 +117,6 @@ async function pictoriumPosterUrl(
     lang: posterLang,
     config: configParam || undefined,
     user: userParam || undefined,
-    mdblistKey: mdblistKeyParam || undefined,
   }).toString()
 }
 

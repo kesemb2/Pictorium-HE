@@ -181,7 +181,6 @@ async function pictoriumPosterUrl(req: NextRequest, type: "movie" | "series", id
     lang: posterLang,
     config: configParam || undefined,
     user: userParam || undefined,
-    mdblistKey: mdblistKeyParam || undefined,
     animerank: animeRankParam ?? undefined,
   }).toString()
 }

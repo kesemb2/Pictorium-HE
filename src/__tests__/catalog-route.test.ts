@@ -103,11 +103,15 @@ describe("GET /catalog/[type]/[id]", () => {
     })
   })
 
-  it("embeds the explicit mdblist_key in poster URLs of non-anime series catalogs", async () => {
-    // Un titolo anime può comparire nei cataloghi jw/platform: senza mdblist_key
-    // nell'URL poster il rank anime non sarebbe risolvibile su Stremio (il fetch
-    // MDBList keyless fallisce 503). Come nel catalogo anime, la chiave esplicita
-    // della richiesta va nell'URL poster.
+  it("never leaks mdblist_key into served poster URLs", async () => {
+    // Prima la chiave esplicita finiva nell'URL poster, perché un titolo anime
+    // in un catalogo jw/platform non poteva risolvere il rank senza (il fetch
+    // MDBList keyless torna 503). Il prezzo era la chiave nel DB di Stremio,
+    // nei log di CDN e proxy e in ogni link condiviso: troppo per un badge.
+    //
+    // REGRESSIONE ACCETTATA: in quel caso il badge rank anime sparisce. Nei
+    // cataloghi anime resta, perché lì `animerank` è già incorporato
+    // nell'URL, e un mapping salvato o la chiave d'istanza lo coprono altrove.
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(justWatchResponse(94997, "tt11198330"))
       .mockResolvedValueOnce(tmdbShowResponse(94997))
@@ -117,7 +121,9 @@ describe("GET /catalog/[type]/[id]", () => {
     const body = await res.json()
 
     expect(res.status).toBe(200)
-    expect(body.metas[0].poster).toContain("mdblist_key=mdblist-key")
+    expect(body.metas[0].poster).toContain("/api/poster/series/94997")
+    expect(body.metas[0].poster).not.toContain("mdblist_key")
+    expect(body.metas[0].poster).not.toContain("mdblist-key")
   })
 
   it("adds mapping version to catalog poster URLs for saved titles", async () => {

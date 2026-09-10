@@ -2,8 +2,12 @@ import { POSTER_URL_VERSION } from "@/lib/render-version"
 import type { BadgeStyle, RankingBadgeStyle } from "@/lib/badge-styles"
 
 export interface StremioPosterParamsInput {
-  readonly apiKey?: string
-  readonly mdblistKey?: string
+  // NOTA SICUREZZA: niente chiavi qui. Questo builder produce URL poster che
+  // finiscono nel database di Stremio, nei log di CDN e proxy e nei link
+  // condivisi: `api_key` e `mdblist_key` non devono mai comparirvi. Il server
+  // le risolve dalla propria env al momento del render. L'unica eccezione è
+  // `buildUrlPattern` (poster-url.ts), che è il template che l'utente copia
+  // per sé, come la URL del manifest, e se le accoda da solo.
   readonly animerank?: number
   readonly lang?: string | null
   readonly globalBadges?: boolean
@@ -73,10 +77,6 @@ export function buildStremioPosterSearchParams(input: StremioPosterParamsInput):
 
   if (input.config) params.set("config", input.config)
   if (input.user) params.set("u", input.user)
-  if (input.apiKey) params.set("api_key", input.apiKey)
-  // Chiave MDBList esplicita della richiesta catalogo (rank anime nei poster).
-  // La chiave del profilo NON va nell'URL: viene risolta server-side da ?u=.
-  if (input.mdblistKey) params.set("mdblist_key", input.mdblistKey)
   // Rank anime noto al catalogo (posizione in lista): rende il badge Anime
   // deterministico su Stremio, indipendentemente dalle chiavi lato server.
   if (input.animerank) params.set("animerank", String(input.animerank))

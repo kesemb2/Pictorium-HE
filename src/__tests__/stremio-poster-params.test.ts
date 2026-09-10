@@ -3,9 +3,21 @@ import { buildStremioPosterSearchParams } from "@/lib/stremio-poster-params"
 import { POSTER_URL_VERSION, RENDER_VERSION } from "@/lib/render-version"
 
 describe("buildStremioPosterSearchParams", () => {
+  // Questi URL finiscono nel database di Stremio, nei log di CDN e proxy e nei
+  // link condivisi: nessuna chiave deve poterci entrare, nemmeno passandola.
+  it("has no way to put a key in a served poster URL", () => {
+    const params = buildStremioPosterSearchParams(
+      { lang: "it", apiKey: "tmdb-key", mdblistKey: "mdb-key" } as Parameters<typeof buildStremioPosterSearchParams>[0],
+    )
+    const qs = params.toString()
+    expect(qs).not.toContain("api_key")
+    expect(qs).not.toContain("mdblist_key")
+    expect(qs).not.toContain("tmdb-key")
+    expect(qs).not.toContain("mdb-key")
+  })
+
   it("builds the exact visual params used by Stremio poster URLs", () => {
     const params = buildStremioPosterSearchParams({
-      apiKey: "tmdb-key",
       lang: "it",
       globalBadges: false,
       rankingBadges: false,
@@ -18,7 +30,7 @@ describe("buildStremioPosterSearchParams", () => {
       blurEnabled: false,
     })
 
-    expect(params.get("api_key")).toBe("tmdb-key")
+    expect(params.get("api_key")).toBeNull()
     expect(params.get("lang")).toBe("it")
     expect(params.get("badges")).toBe("0")
     expect(params.get("ranking")).toBe("0")

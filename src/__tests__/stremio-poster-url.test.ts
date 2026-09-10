@@ -25,14 +25,13 @@ describe("buildStremioPosterUrl", () => {
       id: 42,
       defaults: { badgeStyle: "bar" },
       mapping: mapping(updatedAt),
-      apiKey: "tmdb-key",
     })
 
     expect(url.pathname).toBe("/api/poster/movie/42")
     expect(url.searchParams.get("rv")).toBe(String(POSTER_URL_VERSION))
     expect(url.searchParams.get("mv")).toBe(String(Date.parse(updatedAt)))
     expect(url.searchParams.get("bs")).toBe("bar")
-    expect(url.searchParams.get("api_key")).toBe("tmdb-key")
+    expect(url.searchParams.get("api_key")).toBeNull()
   })
 
   it("omits mapping version for unsaved titles", () => {

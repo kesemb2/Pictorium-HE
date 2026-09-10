@@ -87,8 +87,6 @@ interface PosterState {
 export function buildUrlPattern(bp: BadgeParams & { tmdbKey: string; lang: string; mdblistApiKey?: string }): string {
   let url = `${getPosterPublicBaseUrl()}/api/poster/{type}/{imdb_id}`
   const params = buildStremioPosterSearchParams({
-    apiKey: bp.tmdbKey,
-    mdblistKey: bp.mdblistApiKey,
     lang: bp.lang,
     globalBadges: bp.globalBadges,
     rankingBadges: bp.rankingBadges,
@@ -119,6 +117,11 @@ export function buildUrlPattern(bp: BadgeParams & { tmdbKey: string; lang: strin
 
     ribbonSide: bp.ribbonSide,
   })
+  // Template che l'utente copia per sé, come la URL del manifest: qui le
+  // chiavi sono volute, perché Stremio non invia header custom e il server le
+  // legge dalla query. Mai negli URL poster SERVITI (stremio-poster-params.ts).
+  if (bp.tmdbKey) params.set("api_key", bp.tmdbKey)
+  if (bp.mdblistApiKey) params.set("mdblist_key", bp.mdblistApiKey)
   const str = params.toString()
   if (str) url += "?" + str
   return url

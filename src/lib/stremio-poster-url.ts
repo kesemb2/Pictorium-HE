@@ -3,6 +3,26 @@ import { buildStremioPosterSearchParams } from "@/lib/stremio-poster-params"
 import { isRankKey } from "@/lib/i18n"
 import type { ServerDefaults } from "@/lib/server-defaults"
 import type { Mapping } from "@/lib/types"
+import { envWithFallback } from "@/lib/env-compat"
+import { createLogger } from "@/lib/logger"
+
+const log = createLogger("stremio-poster-url")
+
+/**
+ * Ora che `api_key` non viaggia più nell'URL poster, la chiave TMDB del render
+ * può arrivare SOLO dall'env d'istanza: Stremio non invia header custom, e né
+ * il config token né il profilo `?u=` portano una chiave TMDB. Senza env, i
+ * poster dei cataloghi restano senza dati TMDB — meglio dirlo una volta a voce
+ * alta che scoprirlo da poster vuoti.
+ */
+let warnedNoInstanceKey = false
+function warnIfNoInstanceTmdbKey(): void {
+  if (warnedNoInstanceKey) return
+  const envKey = envWithFallback("TMDB_KEY") || process.env.TMDB_KEY || process.env.TMDB_API_KEY
+  if (envKey) return
+  warnedNoInstanceKey = true
+  log.warn("Nessuna chiave TMDB d'istanza: i poster serviti a Stremio non ne porteranno una. Imposta PICTORIUM_TMDB_KEY.")
+}
 
 export type StremioPosterType = "movie" | "series"
 
@@ -12,8 +32,8 @@ export interface BuildStremioPosterUrlInput {
   readonly id: number
   readonly defaults: ServerDefaults
   readonly mapping?: Mapping | null
-  readonly apiKey?: string
-  readonly mdblistKey?: string
+  // Niente chiavi (vedi stremio-poster-params.ts): questo URL viene servito a
+  // Stremio e persistito nel suo database — mai segreti dentro.
   readonly animerank?: number
   readonly lang?: string | null
   readonly config?: string | null
@@ -42,10 +62,9 @@ export function buildStremioPosterUrl(input: BuildStremioPosterUrlInput): URL {
   const customBadge = mapping?.customBadge && !isRankKey(mapping.customBadge)
     ? mapping.customBadge
     : undefined
+  warnIfNoInstanceTmdbKey()
   const params = buildStremioPosterSearchParams({
     config: input.config,
-    apiKey: input.apiKey,
-    mdblistKey: input.mdblistKey,
     animerank: input.animerank,
     user: input.user,
     lang: input.lang || "it",
