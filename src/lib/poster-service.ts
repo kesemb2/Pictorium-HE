@@ -672,6 +672,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     nominations: wikidataResult.nominations,
     studios: wikidataResult.studios,
     director: wikidataResult.director,
+    directorHe: wikidataResult.directorHe,
     tvType: tvType ?? null,
     tvStatus,
     keywords: [...tmdbKeywords],

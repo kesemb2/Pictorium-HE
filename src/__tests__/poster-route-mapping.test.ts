@@ -48,9 +48,10 @@ vi.mock("@/lib/stream-quality", () => ({
 }))
 
 vi.mock("@/lib/awards", () => ({
-  fetchAllWikidata: vi.fn(async () => ({ awards: [], nominations: [], studios: [], director: null })),
+  fetchAllWikidata: vi.fn(async () => ({ awards: [], nominations: [], studios: [], director: null, directorHe: null })),
   getAwardBadgeLabel: vi.fn(),
   getNominationBadgeLabel: vi.fn(),
+  directorBadgeLabel: vi.fn(() => null),
   matchTMDBStudios: vi.fn(() => []),
 }))
 

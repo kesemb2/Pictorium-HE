@@ -22,7 +22,16 @@ export interface WikidataResult {
   awards: string[]
   nominations: string[]
   studios: string[]
+  /**
+   * Nome canonico (inglese) del regista riconosciuto, o null. NON è
+   * l'etichetta da stampare: quella si compone al render, con la lingua della
+   * richiesta. Prima qui stava il testo GIÀ tradotto, mentre la cache di 24
+   * ore è per titolo e non per lingua: una richiesta in ebraico la riempiva e
+   * una in inglese ne riceveva l'ebraico.
+   */
   director: string | null
+  /** Etichetta ebraica dello stesso regista, quando Wikidata ce l'ha. */
+  directorHe: string | null
 }
 
 // ---- Circuit breaker ----
@@ -244,20 +253,71 @@ const DIRECTORS = [
   "Max Ophüls",
 ]
 
-function matchDirector(name: string | null, t?: (key: string, params?: Record<string, string | number>) => string): string | null {
+/**
+ * Nomi ebraici curati. Vincono sull'etichetta di Wikidata, che per alcuni
+ * registi manca e per altri usa una traslitterazione insolita. Non serve
+ * coprire tutta la lista: chi non è qui prende l'etichetta di Wikidata, e chi
+ * non ha nemmeno quella resta in inglese.
+ */
+const DIRECTOR_HE: Record<string, string> = {
+  "Alfred Hitchcock": "אלפרד היצ'קוק",
+  "Steven Spielberg": "סטיבן ספילברג",
+  "Stanley Kubrick": "סטנלי קובריק",
+  "Martin Scorsese": "מרטין סקורסזה",
+  "Quentin Tarantino": "קוונטין טרנטינו",
+  "Christopher Nolan": "כריסטופר נולאן",
+  "Akira Kurosawa": "אקירה קורוסאווה",
+  "Orson Welles": "אורסון וולס",
+  "Francis Ford Coppola": "פרנסיס פורד קופולה",
+  "Ridley Scott": "רידלי סקוט",
+  "James Cameron": "ג'יימס קמרון",
+  "David Lynch": "דיוויד לינץ'",
+  "Woody Allen": "וודי אלן",
+  "Tim Burton": "טים ברטון",
+  "Roman Polanski": "רומן פולנסקי",
+  "Billy Wilder": "בילי ויילדר",
+  "Ingmar Bergman": "אינגמר ברגמן",
+  "Federico Fellini": "פדריקו פליני",
+  "Charles Chaplin": "צ'רלי צ'פלין",
+  "Sergio Leone": "סרג'ו ליאונה",
+  "Paul Thomas Anderson": "פול תומאס אנדרסון",
+  "Sidney Lumet": "סידני לומט",
+}
+
+/**
+ * Il nome CANONICO del regista riconosciuto (una voce di DIRECTORS), o null.
+ * Non compone nessuna etichetta: quello è compito di `directorBadgeLabel`,
+ * che conosce la lingua della richiesta.
+ */
+function matchDirectorName(name: string | null): string | null {
   if (!name) return null
   const lower = name.toLowerCase().trim()
   for (const d of DIRECTORS) {
-    if (lower === d.toLowerCase() || lower.includes(d.toLowerCase())) {
-      return t ? t("badge.director", { name: d }) : `Di ${d}`
-    }
+    if (lower === d.toLowerCase() || lower.includes(d.toLowerCase())) return d
   }
   return null
 }
 
+/**
+ * Etichetta del badge regista nella lingua della richiesta. In ebraico prova
+ * prima la mappa curata, poi l'etichetta di Wikidata, e in ultimo ripiega sul
+ * nome inglese: un nome in latino è meglio di nessun badge.
+ */
+export function directorBadgeLabel(
+  name: string | null,
+  hebrewLabel: string | null | undefined,
+  t: (key: string, params?: Record<string, string | number>) => string,
+  locale?: string,
+): string | null {
+  if (!name) return null
+  const wantsHebrew = (locale || "").slice(0, 2).toLowerCase() === "he"
+  const localized = wantsHebrew ? (DIRECTOR_HE[name] || hebrewLabel || null) : null
+  return t("badge.director", { name: localized || name })
+}
+
 const WIKIDATA_CACHE_TTL = 24 * 60 * 60 * 1000
 
-export async function fetchAllWikidata(tmdbId: number, mediaType: "movie" | "tv", t?: (key: string, params?: Record<string, string | number>) => string): Promise<WikidataResult> {
+export async function fetchAllWikidata(tmdbId: number, mediaType: "movie" | "tv"): Promise<WikidataResult> {
   const cacheKey = `wikidata:${mediaType}:${tmdbId}`
 
   // Check shared cache first (typed, with TTL)
@@ -266,48 +326,61 @@ export async function fetchAllWikidata(tmdbId: number, mediaType: "movie" | "tv"
 
   const tmdbProp = mediaType === "movie" ? "P4947" : "P4983"
   const networkQuery = mediaType === "tv" ? `OPTIONAL { ?item wdt:P449 ?network . ?network rdfs:label ?networkLabel . FILTER(LANG(?networkLabel) = "en") }` : ""
-  const query = `SELECT ?awardLabel ?nominationLabel ?networkLabel ?directorLabel WHERE {
+  const query = `SELECT ?awardLabel ?nominationLabel ?networkLabel ?directorLabel ?directorLabelHe WHERE {
     ?item wdt:${tmdbProp} "${tmdbId}" .
     OPTIONAL { ?item wdt:P166 ?award . ?award rdfs:label ?awardLabel . FILTER(LANG(?awardLabel) = "en") }
     OPTIONAL { ?item wdt:P1411 ?nomination . ?nomination rdfs:label ?nominationLabel . FILTER(LANG(?nominationLabel) = "en") }
     ${networkQuery}
-    OPTIONAL { ?item wdt:P57 ?director . ?director rdfs:label ?directorLabel . FILTER(LANG(?directorLabel) = "en") }
+    OPTIONAL {
+      ?item wdt:P57 ?director .
+      ?director rdfs:label ?directorLabel . FILTER(LANG(?directorLabel) = "en")
+      OPTIONAL { ?director rdfs:label ?directorLabelHe . FILTER(LANG(?directorLabelHe) = "he") }
+    }
   }`
 
   try {
     const bindings = await sparqlQuery(query)
     if (bindings === null) {
       // Fallimento transitorio (breaker, timeout, 5xx): non inquinare la cache 24h
-      return { awards: [], nominations: [], studios: [], director: null }
+      return { awards: [], nominations: [], studios: [], director: null, directorHe: null }
     }
 
     const awardLabels = new Set<string>()
     const nominationLabels = new Set<string>()
     const networkLabels = new Set<string>()
-    const directorLabels = new Set<string>()
+    // Si scorrono TUTTI i registi finché uno è nella lista, invece di provare
+    // solo il primo: su un film co-diretto il nome noto poteva essere il secondo
+    // e il badge spariva. L'etichetta ebraica arriva dalla stessa riga, quindi
+    // appartiene per costruzione allo stesso regista.
+    let director: string | null = null
+    let directorHe: string | null = null
 
     for (const b of bindings) {
       if (b.awardLabel?.value) awardLabels.add(b.awardLabel.value)
       if (b.nominationLabel?.value) nominationLabels.add(b.nominationLabel.value)
       if (b.networkLabel?.value) networkLabels.add(b.networkLabel.value)
-      if (b.directorLabel?.value) directorLabels.add(b.directorLabel.value)
+      if (!director && b.directorLabel?.value) {
+        const matched = matchDirectorName(b.directorLabel.value)
+        if (matched) {
+          director = matched
+          directorHe = b.directorLabelHe?.value || null
+        }
+      }
     }
-
-    const director = [...directorLabels][0] || null
-    const directorBadge = matchDirector(director, t)
 
     const result: WikidataResult = {
       awards: matchRules([...awardLabels]),
       nominations: matchRules([...nominationLabels]),
       studios: matchStudios([...networkLabels]),
-      director: directorBadge,
+      director,
+      directorHe,
     }
 
     // Store in shared cache with tags for targeted invalidation
     cacheSet(cacheKey, result, ["wikidata"], WIKIDATA_CACHE_TTL)
     return result
   } catch {
-    return { awards: [], nominations: [], studios: [], director: null }
+    return { awards: [], nominations: [], studios: [], director: null, directorHe: null }
   }
 }
 

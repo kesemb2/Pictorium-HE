@@ -4,7 +4,7 @@
  * logic applies in preview (WYSIWYG) and final poster.
  */
 import { computeBadge, computeAbsoluteCinema, type BadgeResult } from "./badge-priority"
-import { getAwardBadgeLabel, getNominationBadgeLabel } from "./awards"
+import { getAwardBadgeLabel, getNominationBadgeLabel, directorBadgeLabel } from "./awards"
 import { formatReleaseDate, getUpcomingReleaseLabel, parseTmdbDate } from "./release-badge"
 import { getSubGenreLabel } from "./subgenres"
 
@@ -63,7 +63,10 @@ export interface BadgeInput {
   awards: string[]
   nominations: string[]
   studios: string[]
+  /** Nome canonico (inglese) del regista, non l'etichetta da stampare. */
   director: string | null
+  /** Etichetta ebraica dello stesso regista, da Wikidata. */
+  directorHe?: string | null
   tvType: string | null | undefined
   tvStatus: string | null | undefined
   networkLogoMatched?: boolean
@@ -199,6 +202,10 @@ export function computeTopBadge(input: BadgeInput, t: BadgeT, locale?: string): 
   const highlyRated = (input.voteAverage ?? 0) >= HIGHLY_RATED_MIN_SCORE
     && (input.voteCount ?? 0) >= HIGHLY_RATED_MIN_VOTES
   const ended = input.mediaType === "tv" && ENDED_STATUSES.has((input.tvStatus || "").toLowerCase())
+  // L'etichetta del regista si compone QUI, dove la lingua è nota. A monte
+  // (Wikidata) si conserva solo il nome canonico, così la cache per titolo non
+  // porta la lingua di chi l'ha riempita.
+  const directorBadge = directorBadgeLabel(input.director, input.directorHe, t, locale)
 
   const badge = computeBadge({
     mediaType: input.mediaType,
@@ -211,7 +218,7 @@ export function computeTopBadge(input: BadgeInput, t: BadgeT, locale?: string): 
     award: awardBadge,
     nomination,
     studio,
-    director: input.director,
+    director: directorBadge,
     subGenre: subGenreBadge,
     isKDrama,
     imdbTop250: !!input.imdbTop250,

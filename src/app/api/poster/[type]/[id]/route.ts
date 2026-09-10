@@ -740,7 +740,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
 
     // 5. Fetch all data in parallel: images + rankings + quality + wikidata + keywords + imdbTop250
     //    All dependencies are available before this point — no Block B depends on Block A
-    const emptyWikidata = { awards: [], nominations: [], studios: [], director: null }
+    const emptyWikidata = { awards: [], nominations: [], studios: [], director: null, directorHe: null }
     const WIKIDATA_TIMEOUT = Number(process.env.WIKIDATA_TIMEOUT) || 2500
     const [
       [originalBuf, logoFetch, backdropFetch, rankingResult, animeRankResult, liveQualityResult],
@@ -822,7 +822,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           })
           const result = await Promise.race([
             rankingEnabledEarly
-              ? fetchAllWikidata(tmdbId, mediaType, t).catch(() => emptyWikidata)
+              ? fetchAllWikidata(tmdbId, mediaType).catch(() => emptyWikidata)
               : Promise.resolve(emptyWikidata),
             wikidataTimeout,
           ])
@@ -1002,6 +1002,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         nominations: wikidataResult.nominations,
         studios: tmdbStudios.length ? [...tmdbStudios] : [...productionCompanies, ...tmdbNetworks],
         director: wikidataResult.director,
+        directorHe: wikidataResult.directorHe,
         tvType: tvType ?? null,
         tvStatus,
         keywords: [...tmdbKeywords],
