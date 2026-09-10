@@ -83,3 +83,47 @@ describe("PUT /api/defaults", () => {
     expect(body.gradientHeight).toBe(55)
   })
 })
+
+describe("GET /api/defaults — instance keys", () => {
+  function get(headers: Record<string, string> = {}): Request {
+    return new Request("http://localhost:3000/api/defaults", { headers })
+  }
+
+  // La falla: `checkAdminToken` è true per CHIUNQUE quando l'istanza è
+  // pubblica, quindi un GET anonimo tornava le chiavi TMDB/MDBList/TVDB
+  // dell'istanza. Ora serve un ADMIN_TOKEN valido.
+  it("does not hand the instance keys to an anonymous caller on a public instance", async () => {
+    process.env.PICTORIUM_PUBLIC_INSTANCE = "1"
+    process.env.PICTORIUM_TMDB_KEY = "secret-tmdb"
+    try {
+      const body = await (await GET(get() as unknown as NextRequest)).json()
+      expect(body.serverKeys).toBeUndefined()
+      expect(JSON.stringify(body)).not.toContain("secret-tmdb")
+    } finally {
+      delete process.env.PICTORIUM_PUBLIC_INSTANCE
+      delete process.env.PICTORIUM_TMDB_KEY
+    }
+  })
+
+  it("withholds them without a token even on a private instance", async () => {
+    const body = await (await GET(get() as unknown as NextRequest)).json()
+    expect(body.serverKeys).toBeUndefined()
+  })
+
+  it("still serves them to a real admin token", async () => {
+    process.env.ADMIN_TOKEN = "let-me-in"
+    process.env.PICTORIUM_TMDB_KEY = "secret-tmdb"
+    try {
+      const body = await (await GET(get({ "x-admin-token": "let-me-in" }) as unknown as NextRequest)).json()
+      expect(body.serverKeys?.tmdbKey).toBe("secret-tmdb")
+    } finally {
+      delete process.env.PICTORIUM_TMDB_KEY
+    }
+  })
+
+  it("rejects a wrong token", async () => {
+    process.env.ADMIN_TOKEN = "let-me-in"
+    const body = await (await GET(get({ "x-admin-token": "wrong-token" }) as unknown as NextRequest)).json()
+    expect(body.serverKeys).toBeUndefined()
+  })
+})
