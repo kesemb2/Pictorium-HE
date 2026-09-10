@@ -46,14 +46,17 @@ import {
 import {
   STD_H,
   STD_W,
+  cropToPoster,
   fetchImg,
   hashKey,
   imgSrc,
+  isAllowedImageUrl,
   isValidHex,
   topLuminance,
 } from "@/lib/poster-render-helpers"
 import { generatePosterBuffer, type GenerationInput } from "@/lib/poster-service"
 import { containsHebrew } from "@/lib/badge-svg-shared"
+import { getFanartMovie, getFanartTv, isFanartEnabled, textlessOnly, type FanartImage } from "@/lib/fanart"
 import { isTmdbTrending } from "@/lib/tmdb-trending-badge"
 import { computeTopBadge } from "@/lib/poster-badge"
 
@@ -433,16 +436,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       const sessionData = getTMDBSessionCache(mediaType, tmdbId)
       let details: Awaited<ReturnType<typeof getDetails>>
       let images: Awaited<ReturnType<typeof getImages>>
-      let extIds: { imdb_id: string | null }
+      let extIds: { imdb_id: string | null; tvdb_id?: number | null }
       if (sessionData?.details && sessionData.images) {
         details = sessionData.details
         images = sessionData.images
-        extIds = sessionData.externalIds ?? { imdb_id: null }
+        extIds = sessionData.externalIds ?? { imdb_id: null, tvdb_id: null }
       } else {
         const baseLangs = `${preferredLanguage},en,null`
         const [det, ext, imgs] = await Promise.all([
           getDetails(mediaType, tmdbId, preferredLanguage, apiKey, renderAbort.signal),
-          getExternalIds(mediaType, tmdbId, apiKey, renderAbort.signal).catch(() => ({ imdb_id: null })),
+          getExternalIds(mediaType, tmdbId, apiKey, renderAbort.signal).catch(() => ({ imdb_id: null, tvdb_id: null })),
           getImages(mediaType, tmdbId, baseLangs, apiKey, renderAbort.signal),
         ])
         details = det
@@ -495,20 +498,52 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           return posterErrorResponse(503)
         }
       }
+      // fanart.tv colma i buchi di TMDB. Si interroga PRIMA di scegliere, così i
+      // suoi loghi entrano nella stessa graduatoria per lingua di quelli TMDB
+      // (spesso è l'unico posto dove esiste un logo ebraico) e i suoi poster
+      // textless sono disponibili quando TMDB non ne ha nessuno.
+      // Senza FANART_API_KEY ritorna vuoto e tutto si comporta come prima.
+      const fanart = isFanartEnabled()
+        ? await (mediaType === "tv"
+            ? (extIds.tvdb_id ? getFanartTv(extIds.tvdb_id, renderAbort.signal) : Promise.resolve(null))
+            : getFanartMovie(imdbId || tmdbId, renderAbort.signal)).catch(() => null)
+        : null
+
+      // I loghi fanart entrano come TMDBImage sintetici (file_path = URL
+      // assoluto, che `imgSrc` accetta perché sul CDN in allowlist), in coda a
+      // quelli TMDB: a parità di lingua TMDB resta preferito.
+      const fanartLogos: TMDBImage[] = (fanart?.logos ?? []).map((l: FanartImage) => ({
+        file_path: l.url,
+        iso_639_1: l.lang && l.lang !== "00" ? l.lang : null,
+        width: 0,
+        height: 0,
+        aspect_ratio: 0,
+        vote_average: l.likes,
+        vote_count: l.likes,
+      }))
+      const allLogos: TMDBImage[] = [...images.logos, ...fanartLogos]
+      if (!hasLangLogo) hasLangLogo = fanartLogos.some((l) => l.iso_639_1 === preferredLanguage)
+
+      // Il logo si risolve PRIMA del poster. Serve a due cose: i livelli con
+      // backdrop valgono solo se c'è un logo da appoggiarci sopra (un backdrop
+      // ritagliato senza logo è un'immagine senza titolo), e prima il logo
+      // veniva scelto solo dentro il ramo "esiste un poster clean", quindi il
+      // ramo senza clean non ne aveva mai uno.
+      if (queryLogo) {
+        const exact = allLogos.find((l: TMDBImage) => l.file_path === queryLogo)
+        if (exact) logoPath = exact.file_path
+      }
+      if (!logoPath) {
+        const chosenLogo = selectBestLogo(allLogos, preferredLanguage, details.original_language)
+        const reason = logoBestLogoFallbackReason(chosenLogo, preferredLanguage, details.original_language)
+        if (reason === "origLang") log.info("Logo fallback to original_language", { lang: details.original_language, mediaType, tmdbId })
+        else if (reason === "any") log.info("Logo fallback to any (first available)", { mediaType, tmdbId })
+        else if (reason === "none") log.info("No logo available", { mediaType, tmdbId })
+        if (chosenLogo) logoPath = chosenLogo.file_path
+      }
+
       const clean = images.posters.find((p: TMDBImage) => p.iso_639_1 === null)
       if (clean) {
-        if (queryLogo) {
-          const exact = images.logos.find((l: TMDBImage) => l.file_path === queryLogo)
-          if (exact) logoPath = exact.file_path
-        }
-        if (!logoPath) {
-          const chosenLogo = selectBestLogo(images.logos, preferredLanguage, details.original_language)
-          const reason = logoBestLogoFallbackReason(chosenLogo, preferredLanguage, details.original_language)
-          if (reason === "origLang") log.info("Logo fallback to original_language", { lang: details.original_language, mediaType, tmdbId })
-          else if (reason === "any") log.info("Logo fallback to any (first available)", { mediaType, tmdbId })
-          else if (reason === "none") log.info("No logo available", { mediaType, tmdbId })
-          if (chosenLogo) logoPath = chosenLogo.file_path
-        }
         const qLogoFit = req.nextUrl.searchParams.get("logoFit")
         // Override globale dell'istanza (PICTORIUM_BEST_FIT_ENABLED): vince su
         // query, config token e server defaults. Utile su Vercel/HF dove il
@@ -527,7 +562,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
                 return Buffer.from(await res.arrayBuffer())
               },
               fetchCandidateImage: async (path: string) => {
-                if (path.startsWith("http") && !path.startsWith("https://image.tmdb.org/t/p/")) {
+                if (path.startsWith("http") && !isAllowedImageUrl(path)) {
                   throw new Error("Blocked external URL in fetchCandidateImage")
                 }
                 const url = path.startsWith("http") ? path : `https://image.tmdb.org/t/p/w342${path}`
@@ -567,10 +602,49 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           posterPath = fallbackPoster.file_path
         }
       } else {
-        const langPoster = images.posters.find((p: TMDBImage) => p.iso_639_1 === preferredLanguage)
-        const origPoster = details.original_language ? images.posters.find((p: TMDBImage) => p.iso_639_1 === details.original_language) : undefined
-        const chosen = langPoster || origPoster || images.posters[0]
-        if (chosen) posterPath = chosen.file_path
+        // Nessun poster senza testo su TMDB. Prima si finiva subito su un poster
+        // con il titolo già stampato; ora ci sono livelli intermedi.
+        //
+        //   1. poster textless di fanart.tv (lang "None")
+        //   2. backdrop TMDB ritagliato a 2:3      — solo se c'è un logo
+        //   3. sfondo fanart.tv ritagliato a 2:3   — solo se c'è un logo
+        //   4. poster TMDB con il testo            — come prima, ultima spiaggia
+        //
+        // I due livelli con backdrop richiedono il logo perché un backdrop
+        // ritagliato senza logo è un'immagine senza titolo: peggio di un poster
+        // con il testo, non meglio.
+        const fanartPoster = textlessOnly(fanart?.posters ?? [])[0]
+        if (fanartPoster) {
+          log.info("Fallback: textless fanart poster", { mediaType, tmdbId })
+          posterPath = fanartPoster.url
+        }
+
+        if (!posterPath && logoPath) {
+          // Il ritaglio usa `position: "attention"`, non il centro: su un 16:9
+          // portato a 2:3 il centro geometrico è spesso cielo o sfondo vuoto.
+          const backdropCandidates: string[] = [
+            ...images.backdrops.filter((b: TMDBImage) => b.iso_639_1 === null).map((b: TMDBImage) => b.file_path),
+            ...(fanart?.backgrounds ?? []).map((b: FanartImage) => b.url),
+          ]
+          for (const candidate of backdropCandidates) {
+            try {
+              const raw = await fetchImg(imgSrc(candidate), renderAbort.signal)
+              posterPathBuffer = await cropToPoster(raw)
+              posterPath = candidate
+              log.info("Fallback: backdrop cropped to poster", { mediaType, tmdbId, backdrop: candidate })
+              break
+            } catch (e) {
+              log.info("Fallback: backdrop candidate failed", { mediaType, tmdbId, error: e instanceof Error ? e.message : String(e) })
+            }
+          }
+        }
+
+        if (!posterPath) {
+          const langPoster = images.posters.find((p: TMDBImage) => p.iso_639_1 === preferredLanguage)
+          const origPoster = details.original_language ? images.posters.find((p: TMDBImage) => p.iso_639_1 === details.original_language) : undefined
+          const chosen = langPoster || origPoster || images.posters[0]
+          if (chosen) posterPath = chosen.file_path
+        }
       }
     } catch (e) {
       autoFetchFailed = true

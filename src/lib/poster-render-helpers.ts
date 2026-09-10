@@ -1,5 +1,6 @@
 import crypto from "node:crypto"
 import sharp from "sharp"
+import { FANART_ASSET_PREFIX } from "./fanart"
 import { findAccentColor, type AccentHueMode } from "@/lib/accent-color"
 import { GENRE_FALLBACK } from "@/lib/badges"
 // Batch B: STD_W/STD_H ora provengono da image-utils.ts (single source of truth)
@@ -56,15 +57,41 @@ export function isValidHex(color: string): boolean {
   return /^#([0-9A-Fa-f]{3}){1,2}$/.test(color)
 }
 
+/**
+ * Host di immagini ammessi, per prefisso ESATTO e solo https. Un path relativo
+ * resta TMDB; qualunque altro URL assoluto viene rifiutato.
+ */
+const ALLOWED_IMAGE_PREFIXES = [
+  "https://image.tmdb.org/t/p/",
+  FANART_ASSET_PREFIX,
+] as const
+
+export function isAllowedImageUrl(url: string): boolean {
+  return ALLOWED_IMAGE_PREFIXES.some((p) => url.startsWith(p))
+}
+
 export function imgSrc(path: string): string {
   if (path.startsWith("http")) {
-    // SSRF protection: only allow TMDB image CDN
-    if (!path.startsWith("https://image.tmdb.org/t/p/")) {
+    // SSRF protection: solo i CDN immagine noti (TMDB, fanart.tv)
+    if (!isAllowedImageUrl(path)) {
       throw new Error(`Blocked external image URL: ${path.slice(0, 60)}...`)
     }
     return path
   }
   return `${IMG_BASE}/w500${path}`
+}
+
+/**
+ * Riquadra un'immagine qualsiasi al formato poster 2:3. Serve ai livelli di
+ * fallback che usano un backdrop (16:9) al posto di un poster mancante:
+ * `position: "attention"` tiene la zona con più dettaglio invece del centro
+ * geometrico, che su un 16:9 tagliato a 2:3 spesso è cielo o sfondo vuoto.
+ */
+export async function cropToPoster(buf: Buffer): Promise<Buffer> {
+  return sharp(buf)
+    .resize(STD_W, STD_H, { fit: "cover", position: "attention" })
+    .jpeg({ quality: 92 })
+    .toBuffer()
 }
 
 export async function fitBadgeToCanvas<T extends BadgeRender>(badge: T, maxW: number, maxH: number): Promise<T> {
