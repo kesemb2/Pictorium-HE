@@ -16,13 +16,13 @@ interface RootColorsSetters {
 }
 
 /**
- * Frazione inferiore del poster campionata per l'accent. Deve restare
- * allineata al crop del server (`extractBadgeColor`, region 'bottom', che
- * ritaglia gli ultimi 120px di una miniatura 200×300): il badge e la fascia
- * sfocata stanno in basso, e campionare tutto il poster dava un colore
- * diverso da quello poi renderizzato.
+ * Frazione inferiore campionata quando la fascia sfocata è spenta (nessuna
+ * altezza da seguire): è il default storico del server.
  */
 const ACCENT_BOTTOM_FRACTION = 0.4
+
+/** Minimo di applyBlur: la fascia non scende mai sotto 100px su 750. */
+const MIN_BAND_FRACTION = 100 / 750
 
 export function useRootColors(
   previewPoster: TMDBImage | null,
@@ -30,6 +30,7 @@ export function useRootColors(
   posterUrl: (path: string, size?: string) => string,
   { setAccentColor, setAutoAccentColor, setTopEdgeColor }: RootColorsSetters,
   accentDominant = true,
+  bandFraction: number = ACCENT_BOTTOM_FRACTION,
 ): void {
   useEffect(() => {
     const root = document.documentElement
@@ -76,7 +77,10 @@ export function useRootColors(
         const pixels = ctx.getImageData(0, 0, w, h).data
         // L'accent si campiona SOLO dalla fascia bassa, come il server; il
         // bordo superiore (per `tl`) continua a servirsi dall'immagine intera.
-        const bottomH = Math.max(1, Math.round(h * ACCENT_BOTTOM_FRACTION))
+        const frac = Number.isFinite(bandFraction)
+          ? Math.min(Math.max(bandFraction, MIN_BAND_FRACTION), 1)
+          : ACCENT_BOTTOM_FRACTION
+        const bottomH = Math.max(1, Math.round(h * frac))
         const bottomPixels = ctx.getImageData(0, h - bottomH, w, bottomH).data
         const hueMode: AccentHueMode = accentDominant ? "dominant" : "complement"
         const result = findAccentColor(bottomPixels, w, bottomH, genreName || '', hueMode)
@@ -90,8 +94,8 @@ export function useRootColors(
     return () => { cancelled = true }
     // La semantica dell'effetto originale: gira solo quando cambia il poster
     // (genreName è letto dalla closure, non è una dependency). `accentDominant`
-    // invece SÌ: cambia il colore estratto, e senza di esso il toggle non
-    // avrebbe effetto finché non si cambia poster.
+    // e `bandFraction` invece SÌ: cambiano il colore estratto, e senza di essi
+    // toggle e slider non avrebbero effetto finché non si cambia poster.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewPoster, accentDominant])
+  }, [previewPoster, accentDominant, bandFraction])
 }

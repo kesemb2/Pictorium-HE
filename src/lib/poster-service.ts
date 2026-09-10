@@ -6,6 +6,8 @@ import type { AccentHueMode } from "./accent-color"
 import { applyBlur } from "./blur"
 import {
   STD_W, STD_H,
+  clampAccentRegionFraction,
+  DEFAULT_ACCENT_REGION_FRACTION,
   extractBadgeColor,
   fitBadgeToCanvas,
   fitCompositeToCanvas,
@@ -385,15 +387,17 @@ export async function resolveBadgeColors(
   posterSrc?: string | null,
   logoSrc?: string | null,
   hueMode: AccentHueMode = "complement",
+  bottomFraction: number = DEFAULT_ACCENT_REGION_FRACTION,
 ): Promise<BadgeColorsResult> {
-  // `hueMode` entra nella chiave: le due modalità producono colori diversi
-  // dallo stesso poster, e senza distinguerle un cambio di toggle servirebbe
-  // il colore cachato dalla modalità precedente.
-  const key = posterSrc ? `extract:${posterSrc}:${logoSrc ?? "x"}:${genreName ?? "x"}:${hueMode}` : null
+  // `hueMode` e `bottomFraction` entrano nella chiave: cambiano il colore
+  // estratto dallo stesso poster, e senza distinguerli un cambio di toggle (o
+  // dell'altezza fascia) servirebbe il colore cachato dai valori precedenti.
+  const frac = clampAccentRegionFraction(bottomFraction)
+  const key = posterSrc ? `extract:${posterSrc}:${logoSrc ?? "x"}:${genreName ?? "x"}:${hueMode}:${frac.toFixed(3)}` : null
   const cached = key ? cacheGet<BadgeColorsResult>(key) : null
   if (cached) return cached
   const [gColor, rColor] = await Promise.all([
-    extractBadgeColor(posterBuf, logoFetch, genreName, 'bottom', hueMode),
+    extractBadgeColor(posterBuf, logoFetch, genreName, 'bottom', hueMode, frac),
     extractBadgeColor(posterBuf, logoFetch, null, 'top', hueMode),
   ])
   const colors: BadgeColorsResult = {
@@ -534,10 +538,17 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   const accentTintEnabled = accentDominant !== false
   const accentHueMode: AccentHueMode = accentDominant !== false ? "dominant" : "complement"
   const needColors = hasGenreBadge || (accentTintEnabled && blurEnabled)
+  // La fascia campionata è quella che il blur copre davvero: `blurHeight` è in
+  // percentuale del poster, e applyBlur la clampa a un minimo di 100px su 750.
+  // Campionare un 40% fisso mentre la fascia ne copriva il 30% dava un colore
+  // preso anche da pixel che restavano scoperti.
+  const accentBottomFraction = blurEnabled
+    ? Math.min(Math.max(blurHeight / 100, 100 / STD_H), 1)
+    : DEFAULT_ACCENT_REGION_FRACTION
   const badgeColors = needColors
     ? (accentOverride
         ? accentOverride
-        : await resolveBadgeColors(posterBuf, logoFetch, genreName, posterSrc, logoSrc, accentHueMode))
+        : await resolveBadgeColors(posterBuf, logoFetch, genreName, posterSrc, logoSrc, accentHueMode, accentBottomFraction))
     : undefined
   const tintColor = accentTintEnabled ? badgeColors?.genreColor ?? null : null
 

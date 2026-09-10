@@ -24,6 +24,11 @@ export interface BlurParams {
  */
 const TINT_STRENGTH = 0.22
 
+/** Luminanza Rec.709 su byte sRGB (stessi coefficienti di image-utils.luma). */
+function luma(r: number, g: number, b: number): number {
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
 function parseHex(hex?: string | null): { r: number; g: number; b: number } | null {
   if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return null
   return {
@@ -97,6 +102,13 @@ export async function applyBlur(params: BlurParams): Promise<BlurOverlay | null>
   const tintR = tint?.r ?? 0
   const tintG = tint?.g ?? 0
   const tintB = tint?.b ?? 0
+  // La tinta viene riscalata alla luminanza del pixel su cui cade, così sposta
+  // SOLO tinta e croma. Senza questo, l'accent di un poster scuro (che
+  // `findAccentColor` porta di proposito a L=0.88 perché il badge resti
+  // leggibile) veniva miscelato a piena luminosità e schiariva la fascia:
+  // 30·0.78 + 224·0.22 ≈ 72, cioè il fondo del poster diventava più chiaro
+  // dell'artwork sopra.
+  const tintLuma = luma(tintR, tintG, tintB)
   const overlay = Buffer.alloc(gh * STD_W * 4)
   for (let y = 0; y < gh; y++) {
     const yPct = gh <= 1 ? 1 : y / (gh - 1)
@@ -110,9 +122,15 @@ export async function applyBlur(params: BlurParams): Promise<BlurOverlay | null>
     for (let x = 0; x < STD_W; x++) {
       const si = (y * STD_W + x) * 3
       const di = (y * STD_W + x) * 4
-      overlay[di] = Math.round(blurPx[si] * shade * (1 - k) + tintR * k)
-      overlay[di + 1] = Math.round(blurPx[si + 1] * shade * (1 - k) + tintG * k)
-      overlay[di + 2] = Math.round(blurPx[si + 2] * shade * (1 - k) + tintB * k)
+      const bR = blurPx[si] * shade
+      const bG = blurPx[si + 1] * shade
+      const bB = blurPx[si + 2] * shade
+      // Fattore che porta la tinta alla stessa luminanza del pixel: il mix
+      // cambia il colore senza toccare quanto è chiaro o scuro.
+      const f = k > 0 && tintLuma > 0 ? luma(bR, bG, bB) / tintLuma : 0
+      overlay[di] = Math.min(255, Math.round(bR * (1 - k) + tintR * f * k))
+      overlay[di + 1] = Math.min(255, Math.round(bG * (1 - k) + tintG * f * k))
+      overlay[di + 2] = Math.min(255, Math.round(bB * (1 - k) + tintB * f * k))
       overlay[di + 3] = alpha
     }
   }

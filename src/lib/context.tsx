@@ -625,7 +625,7 @@ export function usePictorium(): PictoriumCtx {
   }, [navigation.selected, buildPreviewUrlCb])
 
   // --- Color detection ---
-  useRootColors(navigation.previewPoster, metaInfo.genres[0]?.name, posterUrl, { setAccentColor, setAutoAccentColor, setTopEdgeColor }, accentDominant !== false)
+  useRootColors(navigation.previewPoster, metaInfo.genres[0]?.name, posterUrl, { setAccentColor, setAutoAccentColor, setTopEdgeColor }, accentDominant !== false, blurEnabled ? gradientHeight / 100 : undefined)
 
   // --- Caricamento dati item corrente (M16) ---
   // Condiviso tra openPosterBrowser e l'effetto cambio lingua: ricarica

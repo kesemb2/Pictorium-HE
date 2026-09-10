@@ -112,12 +112,27 @@ export async function topLuminance(buf: Buffer): Promise<number> {
   return stats.mean / 255
 }
 
+/**
+ * Frazione del poster campionata per l'accent quando `region` è impostata.
+ * Il default 0.4 è il valore storico; i chiamanti che tingono anche la fascia
+ * sfocata passano l'altezza REALE della fascia, così il colore esce dai pixel
+ * su cui verrà poi steso.
+ */
+export const DEFAULT_ACCENT_REGION_FRACTION = 0.4
+
+/** Frazione valida e non degenere (almeno una riga del thumb 200×300). */
+export function clampAccentRegionFraction(fraction: number | null | undefined): number {
+  if (!Number.isFinite(fraction as number)) return DEFAULT_ACCENT_REGION_FRACTION
+  return Math.min(Math.max(fraction as number, 1 / 300), 1)
+}
+
 export async function extractBadgeColor(
   posterBuf: Buffer,
   logoBuf?: Buffer | null,
   fallbackGenre?: string | null,
   region?: 'bottom' | 'top',
   hueMode: AccentHueMode = "complement",
+  regionFraction: number = DEFAULT_ACCENT_REGION_FRACTION,
 ): Promise<string> {
   async function extractFrom(buf: Buffer, w: number, h: number, genre: string): Promise<string> {
     const pixels = await sharp(buf).ensureAlpha().raw().toBuffer()
@@ -131,13 +146,17 @@ export async function extractBadgeColor(
   let posterAnalysisBuf = thumbBuf
   const posterW = 200
   let posterH = 300
+  // Il ritaglio segue `regionFraction`: per la fascia bassa i chiamanti passano
+  // l'altezza vera del blur, così l'accent nasce dagli stessi pixel che poi
+  // verranno tinti. Con il default 0.4 il ritaglio resta 120px come prima.
+  const regionH = Math.max(1, Math.min(300, Math.round(300 * clampAccentRegionFraction(regionFraction))))
   if (region === 'bottom') {
-    posterH = 120  // bottom 40%
+    posterH = regionH
     posterAnalysisBuf = await sharp(thumbBuf)
-      .extract({ left: 0, top: 180, width: 200, height: posterH })
+      .extract({ left: 0, top: 300 - posterH, width: 200, height: posterH })
       .toBuffer()
   } else if (region === 'top') {
-    posterH = 120  // top 40%
+    posterH = regionH
     posterAnalysisBuf = await sharp(thumbBuf)
       .extract({ left: 0, top: 0, width: 200, height: posterH })
       .toBuffer()
