@@ -24,6 +24,7 @@ const TOP_BADGE_MARGIN = 10
 const TITLE_BAND_GAP = 6
 import { renderGenreBadge, renderRankingBadge, renderExtraBadge, renderQualityBadge, renderTitleText } from "./svg-badge"
 import type { TextStyle } from "./badge-svg-shared"
+import { buildLogoScrim, logoContrast, logoInkLuminance, logoScrimStrength, posterLogoZoneLuminance } from "./logo-contrast"
 import { renderFirstMatchingNetworkLogoBadge, renderFirstMatchingNetworkRawBadge, renderFirstMatchingNetworkLogoBadgeHybrid, renderFirstMatchingNetworkRawBadgeHybrid, type NetworkCandidate } from "./network-svgs"
 import { computeLogoLayout } from "./logo-layout"
 import fs from "fs"
@@ -144,6 +145,8 @@ export interface GenerationInput {
   textShadowOffset?: number
   /** Stellina davanti al voto nella riga in basso. */
   ratingStar?: boolean
+  /** Disattiva la velatura di sicurezza sotto al logo (default: attiva). */
+  logoScrimDisabled?: boolean
   releaseDate: string | null
   firstAirDate: string | null
   /** Ultima messa in onda + n. stagioni + origin country (badge Nuova stagione / K-Drama). */
@@ -493,6 +496,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     voteCount, nextEpisodeAirDate, tmdbTrending, accentDominant,
     badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset,
     textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
+    logoScrimDisabled,
     wikidataResult, tmdbKeywords, locale, t,
     qLabel, queryExtra, qNetLogo, networkLogo, sd, accentOverride, imdbTop250,
     posterSrc, logoSrc, backdropSrc,
@@ -604,7 +608,36 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // -----------------------------------------------------------------------
   const vigBuf = await getVignette()
   composites.push({ input: vigBuf, top: 0, left: 0 })
-  if (logoResult) composites.push(logoResult)
+  if (logoResult) {
+    // Rete di sicurezza per la leggibilità: quando il logo e la fascia di poster
+    // sotto hanno quasi la stessa luminosità, il logo sparisce. La selezione a
+    // monte prova già a evitarlo, ma su un titolo con un solo logo e un solo
+    // poster non c'è niente da scegliere. La velatura è proporzionale a quanto
+    // manca alla soglia: sopra 3:1 non dipinge nemmeno un pixel.
+    const scrim = await (async () => {
+      if (logoScrimDisabled) return null
+      const [inkLum, zoneLum] = await Promise.all([
+        logoInkLuminance(logoFetch!),
+        posterLogoZoneLuminance(posterBuf, { left: logoResult.left, top: logoResult.top, width: logoResult.w, height: logoResult.h }),
+      ])
+      const strength = logoScrimStrength(logoContrast(inkLum, zoneLum))
+      if (strength <= 0) return null
+      const png = await buildLogoScrim(logoResult.w, logoResult.h, strength, (inkLum ?? 0) > 0.5, STD_W, STD_H)
+      if (!png) return null
+      const meta = await sharp(png).metadata()
+      const sw = meta.width ?? 0
+      const sh = meta.height ?? 0
+      // Anche centrata, la velatura può sporgere: sharp rifiuta un composite che
+      // esce dalla tela, quindi la posizione si blocca dentro i bordi.
+      return {
+        input: png,
+        top: Math.min(Math.max(0, Math.round(logoResult.top + logoResult.h / 2 - sh / 2)), Math.max(0, STD_H - sh)),
+        left: Math.min(Math.max(0, Math.round(logoResult.left + logoResult.w / 2 - sw / 2)), Math.max(0, STD_W - sw)),
+      }
+    })().catch(() => null)
+    if (scrim) composites.push(scrim)
+    composites.push(logoResult)
+  }
   if (titleFit && logoResult) {
     const titleBadge = await renderTitleText(title!, titleTextMaxW(STD_W), titleFit.fs, undefined, textStyle).catch(() => null)
     if (titleBadge) {
