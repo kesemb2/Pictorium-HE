@@ -116,6 +116,15 @@ export function encodeConfig(config: PictoriumUserConfig): string {
 }
 
 /**
+ * Tetto dimensionale del token: `Buffer.from` e `JSON.parse` su una stringa
+ * arbitrariamente lunga (il path `/c/<config>/...`) sono lavoro di CPU e
+ * memoria non limitato, e avviene PRIMA di qualunque validazione. 32KB stanno
+ * due ordini di grandezza sopra un token legittimo, anche con decine di
+ * cataloghi personalizzati.
+ */
+export const MAX_CONFIG_TOKEN_LENGTH = 32768
+
+/**
  * Decode a config token back to a PictoriumUserConfig.
  * Verifica la firma HMAC se presente e se HMAC_SECRET è configurato.
  * Accetta token legacy (senza firma) solo in assenza di HMAC_SECRET.
@@ -123,6 +132,7 @@ export function encodeConfig(config: PictoriumUserConfig): string {
  */
 export function decodeConfig(token: string): PictoriumUserConfig | null {
   try {
+    if (typeof token !== "string" || token.length > MAX_CONFIG_TOKEN_LENGTH) return null
     // Batch E (fail-closed): in produzione senza HMAC_SECRET rifiuta QUALSIASI
     // token — anche in formato firmato `b64.sig`. Senza secret non possiamo
     // verificare la firma, quindi un token firmato sarebbe indistinguibile da

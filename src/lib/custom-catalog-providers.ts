@@ -335,7 +335,13 @@ export async function fetchUnifiedCatalogItems(
   const detection = detectCatalogProvider(trimmed)
   const provider = detection?.provider ?? "mdblist"
 
-  const cacheKey = `custom_cat:${provider}:${crypto.createHash("sha1").update(trimmed).digest("hex").slice(0, 10)}:${limit}`
+  // Le chiavi cambiano il payload (liste private, quote diverse), quindi
+  // entrano nella cache key come hash, mai in chiaro — stesso schema di
+  // mdblist.ts. Senza, un fallback pubblico senza chiave avvelenava la vista
+  // con chiave, e viceversa.
+  const hashFragment = (value: string | undefined): string =>
+    value ? crypto.createHash("sha1").update(value).digest("hex").slice(0, 8) : "none"
+  const cacheKey = `custom_cat:${provider}:${crypto.createHash("sha1").update(trimmed).digest("hex").slice(0, 10)}:${limit}:ak${hashFragment(options?.apiKey)}:mk${hashFragment(options?.mdblistKey)}`
   const cached = cacheGet<MDBListEntry[]>(cacheKey)
   if (cached) return cached
 

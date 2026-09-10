@@ -40,6 +40,9 @@ const POSTER_MAX_TOKENS = (() => {
 })()
 
 const limits: Record<string, BucketConfig> = {
+  // Validate-key è un oracolo di validità per chiavi rubate: burst contenuto e
+  // ~5/min sostenuti (un token ogni 12s). La UI legittima ne fa una manciata.
+  "validate-key": { maxTokens: 10, refillRate: 1, refillWindow: 12000 },
   default: { maxTokens: 120, refillRate: 10, refillWindow: 1000 },
   tmdb:    { maxTokens: 60,  refillRate: 5,  refillWindow: 1000 },
   poster:  { maxTokens: POSTER_MAX_TOKENS, refillRate: 20, refillWindow: 1000 },

@@ -218,4 +218,11 @@ describe("defensive clamping on decode", () => {
     expect(decoded).not.toBeNull()
     expect(decoded!.blurIntensity).toBe(6)
   })
+  it("returns null for oversized tokens without decoding (C5)", async () => {
+    const { decodeConfig, MAX_CONFIG_TOKEN_LENGTH } = await importConfigToken()
+    expect(MAX_CONFIG_TOKEN_LENGTH).toBe(32768)
+    expect(decodeConfig("x".repeat(MAX_CONFIG_TOKEN_LENGTH + 1))).toBeNull()
+    expect(decodeConfig("x".repeat(1_000_000))).toBeNull()
+  })
+
 })

@@ -56,6 +56,7 @@ import {
 } from "@/lib/poster-render-helpers"
 import { generatePosterBuffer, type GenerationInput } from "@/lib/poster-service"
 import { containsHebrew } from "@/lib/badge-svg-shared"
+import { validatePosterQuery } from "@/lib/validation"
 import { getFanartMovie, getFanartTv, isFanartEnabled, textlessOnly, type FanartImage } from "@/lib/fanart"
 import { logoContrast, logoInkLuminance, posterLogoZoneLuminance } from "@/lib/logo-contrast"
 import { isTmdbTrending } from "@/lib/tmdb-trending-badge"
@@ -160,6 +161,30 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
 
   if (isNaN(tmdbId) || tmdbId <= 0) {
     return new Response("Invalid ID", { status: 400, headers: corsHeaders() })
+  }
+
+  // Bound anti-DoS/cache-flood sui query param, PRIMA di cache key, slot e
+  // inflight: la cache key contiene i param grezzi e i testi finiscono negli
+  // SVG, quindi un `extra` da 10KB significherebbe render enorme, entry di
+  // cache enorme e una key nuova per ogni valore distinto.
+  const invalidQuery = validatePosterQuery(req.nextUrl.searchParams)
+  if (invalidQuery) {
+    return new Response(invalidQuery, { status: 400, headers: corsHeaders() })
+  }
+
+  // I path immagine passano per la stessa allowlist SSRF del render (`imgSrc`,
+  // che ammette TMDB e assets.fanart.tv), così non c'è deriva fra i due punti.
+  // Prima un URL esterno falliva dentro il try del render: 500 e negative-cache
+  // per un errore del CLIENT, con log e slot occupati. Ora 400 e basta.
+  for (const imgKey of ["poster", "logo", "backdrop"] as const) {
+    const imgPath = req.nextUrl.searchParams.get(imgKey)
+    if (imgPath) {
+      try {
+        imgSrc(imgPath)
+      } catch {
+        return new Response(`Invalid query parameter: ${imgKey}`, { status: 400, headers: corsHeaders() })
+      }
+    }
   }
 
   // 1. Get mapping + server defaults (no network)
