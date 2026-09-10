@@ -1,6 +1,7 @@
 import crypto from "node:crypto"
 import sharp from "sharp"
 import { FANART_ASSET_PREFIX } from "./fanart"
+import { combineAbortSignals } from "./abort-signal"
 import { findAccentColor, type AccentHueMode } from "@/lib/accent-color"
 import { GENRE_FALLBACK } from "@/lib/badges"
 // Batch B: STD_W/STD_H ora provengono da image-utils.ts (single source of truth)
@@ -28,23 +29,7 @@ export async function fetchImg(url: string, signal?: AbortSignal): Promise<Buffe
   // Se il chiamante passa un signal esterno, unirlo al timeout interno invece
   // di sostituirlo: un signal mai abortito (es. renderAbort a render riuscito)
   // lascerebbe il fetch senza tetto in background. Il limite resta 15s.
-  const timeoutSignal = AbortSignal.timeout(15000)
-  let combined: AbortSignal = timeoutSignal
-  if (signal) {
-    if (typeof (AbortSignal as unknown as { any?: unknown }).any === "function") {
-      combined = (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any([signal, timeoutSignal])
-    } else {
-      const ctrl = new AbortController()
-      const onAbort = () => ctrl.abort((signal as unknown as { reason?: unknown })?.reason ?? timeoutSignal.reason)
-      if (signal.aborted || timeoutSignal.aborted) ctrl.abort()
-      else {
-        signal.addEventListener("abort", onAbort, { once: true })
-        timeoutSignal.addEventListener("abort", onAbort, { once: true })
-      }
-      combined = ctrl.signal
-    }
-  }
-  const res = await fetch(url, { signal: combined })
+  const res = await fetch(url, { signal: combineAbortSignals(signal, 15000) })
   if (!res.ok) throw new Error(`fetch failed: ${res.status}`)
   const cl = res.headers.get("content-length")
   if (cl && Number(cl) > MAX_IMG_SIZE) throw new Error("image too large")

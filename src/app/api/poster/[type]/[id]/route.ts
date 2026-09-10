@@ -781,7 +781,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           : logoPath ? fetchImg(imgSrc(logoPath), renderAbort.signal).catch(() => null) : Promise.resolve(null),
         backdropPath ? fetchImg(imgSrc(backdropPath), renderAbort.signal).catch(() => null) : Promise.resolve(null),
         rankingEnabledEarly
-          ? getJWRankings(mediaType === "movie" ? "MOVIE" : "SHOW", "IT")
+          ? getJWRankings(mediaType === "movie" ? "MOVIE" : "SHOW", "IT", undefined, undefined, undefined, renderAbort.signal)
             .then((r) => r.find((x) => x.tmdbId === tmdbId)?.rank ?? null)
             // Solo il FETCH FALLITO (rete/outage) ripiega sul rank salvato nel
             // mapping (degraded esplicito). La miss genuina (fetch riuscito, il
@@ -804,7 +804,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
               ? Promise.resolve(qAnimeRank)
               : fetchMDBList(
                   mediaType === "movie" ? "mdblistAnimeMovie" : "mdblistAnime",
-                  req.nextUrl.searchParams.get("mdblist_key") || envWithFallback("MDBLIST_KEY") || process.env.MDBLIST_KEY || process.env.MDBLIST_API_KEY || undefined
+                  req.nextUrl.searchParams.get("mdblist_key") || envWithFallback("MDBLIST_KEY") || process.env.MDBLIST_KEY || process.env.MDBLIST_API_KEY || undefined,
+                  renderAbort.signal,
                 )
                   .then((entries) => {
                     // Shape inattesa → come failure: fallback al salvato.
@@ -847,7 +848,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           })
           const result = await Promise.race([
             rankingEnabledEarly
-              ? fetchAllWikidata(tmdbId, mediaType).catch(() => emptyWikidata)
+              ? fetchAllWikidata(tmdbId, mediaType, renderAbort.signal).catch(() => emptyWikidata)
               : Promise.resolve(emptyWikidata),
             wikidataTimeout,
           ])
@@ -866,7 +867,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
             if (extIds?.imdb_id) imdbId = extIds.imdb_id
           }
           if (!imdbId) return false
-          return isImdbTop250(imdbId)
+          return isImdbTop250(imdbId, renderAbort.signal)
         })(),
         // Classifica settimanale TMDB. Cachata a monte (lista per media type,
         // non per titolo), quindi una griglia catalogo paga una fetch sola.

@@ -1,3 +1,4 @@
+import { combineAbortSignals } from "./abort-signal"
 import { cacheGet, cacheSet } from "./cache"
 import { createLogger } from "@/lib/logger"
 
@@ -119,7 +120,9 @@ function release(): void {
 
 // ---- SPARQL helper ----
 
-async function sparqlQuery(query: string): Promise<Record<string, { value: string; type: string }>[] | null> {
+async function sparqlQuery(query: string, signal?: AbortSignal): Promise<Record<string, { value: string; type: string }>[] | null> {
+  // Signal esterno già abortito: niente rete inutile.
+  if (signal?.aborted) return null
   if (isBreakerOpen()) return null
 
   await acquire()
@@ -134,7 +137,7 @@ async function sparqlQuery(query: string): Promise<Record<string, { value: strin
       try {
         const res = await fetch(url, {
           headers: { "User-Agent": "Pictorium/1.0" },
-          signal: AbortSignal.timeout(timeout),
+          signal: combineAbortSignals(signal, timeout),
         })
         if (res.status === 429) {
           recordFailure()
@@ -317,7 +320,13 @@ export function directorBadgeLabel(
 
 const WIKIDATA_CACHE_TTL = 24 * 60 * 60 * 1000
 
-export async function fetchAllWikidata(tmdbId: number, mediaType: "movie" | "tv"): Promise<WikidataResult> {
+export async function fetchAllWikidata(
+  tmdbId: number,
+  mediaType: "movie" | "tv",
+  // Signal esterno, es. la deadline del render: senza, il fetch sopravvive al
+  // watchdog e continua in background dopo che la route ha già risposto 503.
+  signal?: AbortSignal,
+): Promise<WikidataResult> {
   const cacheKey = `wikidata:${mediaType}:${tmdbId}`
 
   // Check shared cache first (typed, with TTL)
@@ -339,7 +348,7 @@ export async function fetchAllWikidata(tmdbId: number, mediaType: "movie" | "tv"
   }`
 
   try {
-    const bindings = await sparqlQuery(query)
+    const bindings = await sparqlQuery(query, signal)
     if (bindings === null) {
       // Fallimento transitorio (breaker, timeout, 5xx): non inquinare la cache 24h
       return { awards: [], nominations: [], studios: [], director: null, directorHe: null }
