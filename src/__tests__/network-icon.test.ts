@@ -222,4 +222,22 @@ describe("network-svgs", () => {
     expect(pngRes!.w).toBeGreaterThan(0)
     expect(pngRes!.h).toBeGreaterThan(0)
   })
+  it("matches the DC labels TMDB actually returns", () => {
+    for (const name of ["DC Studios", "DC Films", "DC Entertainment", "DC Comics", "DC Universe", "DC"]) {
+      expect(getNetworkSvgResult(name, 500)?.networkKey, name).toBe("dc")
+    }
+  })
+
+  // MGM used to resolve to the Prime Video logo, because the Amazon rule
+  // swallowed it. Now it has its own.
+  it("gives MGM its own logo instead of Prime's", () => {
+    expect(getNetworkSvgResult("Metro-Goldwyn-Mayer", 500)?.networkKey).toBe("mgm")
+    expect(getNetworkSvgResult("MGM", 500)?.networkKey).toBe("mgm")
+  })
+
+  it("still matches Amazon and Prime Video to prime", () => {
+    expect(getNetworkSvgResult("Prime Video", 500)?.networkKey).toBe("prime")
+    expect(getNetworkSvgResult("Amazon Studios", 500)?.networkKey).toBe("prime")
+  })
+
 })

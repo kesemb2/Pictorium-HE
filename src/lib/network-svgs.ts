@@ -75,6 +75,7 @@ const NETWORK_FILES: Record<string, string> = {
   fandango: "Fandango_logotipo.svg",
   medusa: "Medusa_Film_-_logo_(Italy,_2017-).svg",
   ghibli: "Studio_Ghibli.svg",
+  mgm: "metro-goldwyn-mayer.svg",
   mgm_plus: "MGM+_logo.svg",
   lucasfilm: "Lucasfilm_logo.svg",
   miramax: "Miramax_logo.svg",
@@ -87,6 +88,7 @@ const NETWORK_FILES: Record<string, string> = {
   mappa: "MAPPA_Logo.svg",
   skydance: "Skydance_Media_2020.svg",
   dg_cinema: "direzione-generale-cinema-e-audiovisivo-vector-logo.svg",
+  dc: "DC_Studios_logo.svg",
 }
 
 // Falso positivo NBC giapponese (Jujutsu Kaisen tmdb 95479): network list contiene 25+ regionali tra cui "NBC" (Nagasaki Broadcasting).
@@ -153,6 +155,7 @@ const NETWORK_TARGET_W: Record<string, number> = {
   fandango: 54,
   medusa: 40,
   ghibli: 62,
+  mgm: 56,
   mgm_plus: 54,
   lucasfilm: 62,
   miramax: 54,
@@ -165,6 +168,7 @@ const NETWORK_TARGET_W: Record<string, number> = {
   mappa: 58,
   skydance: 62,
   dg_cinema: 48,
+  dc: 46,
 }
 
 function getNetworkKey(networkName: string): string | null {
@@ -176,7 +180,7 @@ function getNetworkKey(networkName: string): string | null {
   // Walt Disney Pictures va prima di Disney generico per non clashare con Disney+
   if (lower.includes("walt disney")) return "disney_pictures"
   if (lower.includes("disney")) return "disney"
-  if (lower.includes("prime") || lower.includes("amazon") || lower.includes("mgm") || lower.includes("metro-goldwyn") || lower.includes("metro goldwyn")) return "prime"
+  if (lower.includes("prime") || lower.includes("amazon")) return "prime"
   if (lower.includes("apple")) return "apple"
   if (lower.includes("paramount")) return "paramount"
   if (lower === "rai" || lower.startsWith("rai ")) return "rai"
@@ -218,6 +222,14 @@ function getNetworkKey(networkName: string): string | null {
   if (lower.includes("universal pictures")) return "universal"
   if (lower.includes("columbia pictures")) return "columbia"
   if (lower.includes("marvel")) return "marvel"
+  if (
+    lower.includes("dc studios") ||
+    lower.includes("dc films") ||
+    lower.includes("dc entertainment") ||
+    lower.includes("dc comics") ||
+    lower.includes("dc universe") ||
+    lower === "dc"
+  ) return "dc"
   if (lower.includes("pixar")) return "pixar"
   // Filtro Sony Music (anime) vs Sony Pictures (film) — non mostrare Sony per OST anime
   if (lower.includes("sony music")) return null
@@ -230,6 +242,7 @@ function getNetworkKey(networkName: string): string | null {
   if (lower.includes("ghibli") || lower.includes("studio ghibli")) return "ghibli"
   if (lower.includes("lucasfilm")) return "lucasfilm"
   if (lower.includes("miramax")) return "miramax"
+  if (lower.includes("metro-goldwyn") || lower.includes("metro goldwyn") || /\bmgm\b/.test(lower)) return "mgm"
   if (lower.includes("castle rock")) return "castle_rock"
   if (lower.includes("dreamworks")) return "dreamworks"
   if (lower.includes("indiana")) return "indiana"
@@ -273,7 +286,7 @@ async function loadNetworkPng(networkKey: string, pw: number, topLight: boolean 
       const aspect = w / h
       const isFlatWide = ["lionsgate", "sony", "legendary", "fandango", "pixar", "dreamworks", "taodue", "mappa", "skydance", "castle_rock"].includes(networkKey)
       // La "N" Netflix è un'icona verticale: ad area uniforme uscirebbe altissima (~80px) → area -60%
-      const areaScale = isFlatWide ? 0.62 : networkKey === "netflix" ? 0.4 : 1 // Lionsgate, Pixar e simili troppo larghi → area -38%
+      const areaScale = isFlatWide ? 0.62 : networkKey === "netflix" ? 0.4 : networkKey === "dc" ? 0.75 : 1 // Lionsgate, Pixar e simili troppo larghi → area -38%
       const desiredArea = 3600 * areaScale * (pw / 500) * (pw / 500)
       const desiredH = Math.round(Math.sqrt(desiredArea / aspect))
       const desiredW = Math.round(desiredH * aspect)
@@ -292,7 +305,7 @@ async function loadNetworkPng(networkKey: string, pw: number, topLight: boolean 
       .toBuffer({ resolveWithObject: true })
 
     // Logo SVG: colore originale con ombra adattiva (richiesta: svg originale, TMDB bianco)
-    const keepColor = networkKey === "marvel"
+    const keepColor = networkKey === "marvel" || networkKey === "dc"
     let recolored: Buffer
     if (keepColor) {
       recolored = data
@@ -632,7 +645,7 @@ async function loadNetworkRawPng(networkKey: string, pw: number, topLight: boole
       const aspect = w / h
       const isFlatWide2 = ["lionsgate", "sony", "legendary", "fandango", "pixar", "dreamworks", "taodue", "mappa", "skydance", "castle_rock"].includes(networkKey)
       // La "N" Netflix è un'icona verticale: ad area uniforme uscirebbe altissima (~80px) → area -60%
-      const areaScale2 = isFlatWide2 ? 0.62 : networkKey === "netflix" ? 0.4 : 1
+      const areaScale2 = isFlatWide2 ? 0.62 : networkKey === "netflix" ? 0.4 : networkKey === "dc" ? 0.75 : 1
       const desiredArea = 3600 * areaScale2 * (pw / 500) * (pw / 500)
       const desiredH = Math.round(Math.sqrt(desiredArea / aspect))
       const desiredW = Math.round(desiredH * aspect)
