@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest"
 import {
+  buildExtraDefaultSvg,
+  estimateTextWidth,
+  rtlSafe,
   buildGenreTextSvg,
   buildTitleTextSvg,
   genreBadgeSvgDims,
@@ -107,5 +110,39 @@ describe("rating star toggle", () => {
     const a = buildGenreTextSvg(GENRE, VOTE, YEAR, 28, "#e5e7eb", "shadow", 0, { showRating: false, showStar: true })
     const b = buildGenreTextSvg(GENRE, VOTE, YEAR, 28, "#e5e7eb", "shadow", 0, { showRating: false, showStar: false })
     expect(a.svg).toBe(b.svg)
+  })
+})
+
+describe("trailing bidi mark", () => {
+  const RLM = "‏"
+
+  // resvg impagina il paragrafo come LTR, quindi un segno NEUTRO finale — il
+  // geresh di "לבינג'", il punto interrogativo di "מי הרוצח?" — finiva a destra
+  // di tutta la parola invece che a sinistra. `direction="rtl"` e
+  // `unicode-bidi="embed"` sono stati provati: resvg li ignora. L'RLM è dato
+  // dell'algoritmo bidi, non del renderer.
+  it("appends the mark to Hebrew text", () => {
+    expect(rtlSafe("מוכן לבינג'")).toBe("מוכן לבינג'" + RLM)
+    expect(rtlSafe("מי הרוצח?")).toBe("מי הרוצח?" + RLM)
+  })
+
+  it("leaves Latin text exactly as it was", () => {
+    for (const s of ["K-Drama", "Absolute Cinema", "4K", ""]) expect(rtlSafe(s)).toBe(s)
+  })
+
+  it("costs no width, so estimates and textLength are untouched", () => {
+    expect(estimateTextWidth("מוכן" + RLM, 28)).toBe(estimateTextWidth("מוכן", 28))
+  })
+
+  it("reaches the rendered badge markup", () => {
+    const hebrew = buildExtraDefaultSvg("מוכן לבינג'", 28, "#fff", "#000")
+    expect(hebrew.svg).toContain("'" + RLM + "</text>")
+    const latin = buildExtraDefaultSvg("K-Drama", 28, "#fff", "#000")
+    expect(latin.svg).not.toContain(RLM)
+  })
+
+  it("closes the genre line, which is one bidi paragraph across its tspans", () => {
+    expect(buildGenreTextSvg("דרמה", "8.1", "2024", 28, "#fff", "shadow").svg).toContain(RLM + "</text>")
+    expect(buildGenreTextSvg("Drama", "8.1", "2024", 28, "#fff", "shadow").svg).not.toContain(RLM)
   })
 })

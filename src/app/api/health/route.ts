@@ -7,6 +7,7 @@ import { getAll, getStorageMode } from "@/lib/store"
 import { checkTmdbEndpoint } from "@/lib/tmdb"
 import { getJWRankings } from "@/lib/justwatch"
 import { getTop10 } from "@/lib/flixpatrol"
+import { getFanartMovie, isFanartEnabled } from "@/lib/fanart"
 
 // Fix L15: i campi streaming devono testare DAVVERO JustWatch e FlixPatrol
 // (prima testavano due endpoint TMDB, fuorviante). I probe girano solo con
@@ -34,6 +35,27 @@ async function probeJustWatch(): Promise<{ ok: boolean; status: number; time: nu
     return { ok: true, status: 200, time: Date.now() - start }
   } catch {
     return { ok: false, status: 0, time: Date.now() - start }
+  }
+}
+
+/**
+ * fanart.tv: prima "c'è una chiave?", poi "risponde?". Le due domande sono
+ * diverse e finora nessuna aveva una risposta visibile — l'unico segnale era un
+ * log a fallimento, quindi un'integrazione funzionante e una spenta si
+ * assomigliavano.
+ *
+ * Il titolo del probe è Fight Club (TMDB 550), che su fanart ha artwork da
+ * sempre: una risposta vuota qui significa chiave rifiutata, non film ignoto.
+ */
+async function probeFanart(): Promise<{ configured: boolean; ok: boolean; status: number; time: number }> {
+  if (!isFanartEnabled()) return { configured: false, ok: false, status: 0, time: 0 }
+  const start = Date.now()
+  try {
+    const art = await withTimeout(() => getFanartMovie(550))
+    const ok = art.posters.length > 0 || art.backgrounds.length > 0 || art.logos.length > 0
+    return { configured: true, ok, status: ok ? 200 : 404, time: Date.now() - start }
+  } catch {
+    return { configured: true, ok: false, status: 0, time: Date.now() - start }
   }
 }
 
@@ -108,6 +130,9 @@ export async function GET(request: Request) {
   const flixpatrol = apiKey
     ? await probeFlixPatrol()
     : { ok: false, status: 401, time: 0 }
+  // Non dipende dalla chiave TMDB dell'utente: è un'integrazione d'istanza, e
+  // il suo stato va detto anche a chi non ha ancora messo la chiave TMDB.
+  const fanart = await probeFanart()
 
   const mappingsFile = path.join(DATA_DIR, "mappings.json")
   const defaultsFile = path.join(DATA_DIR, "defaults.json")
@@ -148,6 +173,7 @@ export async function GET(request: Request) {
     // aiuterebbe a bersagliare CVE note. L'endpoint dice solo se l'istanza
     // risponde e se le dipendenze esterne sono raggiungibili.
     streaming: { justwatch, flixpatrol },
+    artwork: { fanart },
     storage,
   }
 

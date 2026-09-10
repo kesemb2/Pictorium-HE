@@ -2,6 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 import { cacheClear, cacheGet } from "@/lib/cache"
 
+// La chiave di cache porta in coda `:x` (fanart spento) o `:fa` (acceso):
+// accendere la chiave d'istanza deve cambiare la risposta, non riusare quella
+// calcolata senza fanart.
+
 vi.mock("@/lib/rate-limit", () => ({
   rateLimit: vi.fn(() => ({ ok: true, retAfter: 0 })),
   rateLimitKey: vi.fn(() => "test"),
@@ -45,7 +49,7 @@ describe("GET /api/tmdb/[id]/images (H4: niente cache poisoning su errore upstre
     expect(res.status).toBe(502)
     // Nessun record in cache per la chiave della richiesta (prima il catch
     // cacettava la lista vuota per 30 minuti, avvelenando l'editor).
-    expect(cacheGet(`images:movie:42:en,null`)).toBeNull()
+    expect(cacheGet(`images:movie:42:en,null:x`)).toBeNull()
   })
 
   it("risponde 200 e mette in cache quando il fetch TMDB riesce (anche con liste vuote valide)", async () => {
@@ -68,8 +72,8 @@ describe("GET /api/tmdb/[id]/images (H4: niente cache poisoning su errore upstre
 
     const res = await GET(req("43"), { params: Promise.resolve({ id: "43" }) })
     expect(res.status).toBe(502)
-    expect(cacheGet(`images:movie:43:en,null`)).toBeNull()
+    expect(cacheGet(`images:movie:43:en,null:x`)).toBeNull()
     // La cache chiave 42 resta valida.
-    expect(cacheGet(`images:movie:42:en,null`)).toEqual(VALID_DATA)
+    expect(cacheGet(`images:movie:42:en,null:x`)).toEqual(VALID_DATA)
   })
 })

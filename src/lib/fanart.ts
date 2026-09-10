@@ -51,7 +51,13 @@ export interface FanartArtwork {
 const EMPTY: FanartArtwork = { posters: [], backgrounds: [], logos: [] }
 
 export function fanartApiKey(): string | undefined {
-  return envWithFallback("FANART_API_KEY")?.trim() || undefined
+  // Anche il nome NUDO, come ogni altro provider della casa (mdblist.ts,
+  // tmdb.ts, meta-handler.ts). Prima si leggeva solo `PICTORIUM_FANART_API_KEY`
+  // e una chiave messa come `FANART_API_KEY` veniva ignorata in silenzio.
+  const raw = envWithFallback("FANART_API_KEY")
+    || process.env.FANART_API_KEY
+    || process.env.FANART_KEY
+  return raw?.trim() || undefined
 }
 
 export function isFanartEnabled(): boolean {
@@ -124,6 +130,37 @@ async function fetchArtwork(path: string, cacheKey: string, signal?: AbortSignal
   }
   cacheSet(cacheKey, artwork, [CACHE_TAG], CACHE_TTL)
   return artwork
+}
+
+/**
+ * Immagine fanart nella forma che l'editor già sa disegnare. `file_path` è un
+ * URL assoluto: `posterUrl` (utils.ts) lo lascia passare intatto, `imgSrc` lo
+ * ammette perché assets.fanart.tv è in allowlist, e la CSP lo consente.
+ * `source: "fanart"` serve alla griglia per marcare la provenienza.
+ */
+export interface FanartAsTmdbImage {
+  readonly file_path: string
+  readonly iso_639_1: string | null
+  readonly width: number
+  readonly height: number
+  readonly vote_average: number
+  readonly source: "fanart"
+}
+
+/**
+ * `lang` "00" (senza testo) diventa `iso_639_1: null`, che è esattamente come
+ * TMDB marca i poster puliti: così i filtri "clean" dell'editor funzionano sui
+ * due insiemi senza sapere da dove vengono.
+ */
+export function toTmdbShape(images: readonly FanartImage[]): FanartAsTmdbImage[] {
+  return images.map((i) => ({
+    file_path: i.url,
+    iso_639_1: i.lang && i.lang !== TEXTLESS_LANG ? i.lang : null,
+    width: 0,
+    height: 0,
+    vote_average: i.likes,
+    source: "fanart" as const,
+  }))
 }
 
 /** Artwork di un film, per id TMDB o IMDb (fanart accetta entrambi). */

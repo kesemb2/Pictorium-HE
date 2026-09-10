@@ -416,11 +416,13 @@ export function BadgeControls() {
               onBlur={() => { const v = editText.trim(); ed.setCustomBadge(v || null); setEditingValue(null) }}
               onKeyDown={(e) => { if (e.key === "Enter") { (e.target as HTMLInputElement).blur() } }}
               maxLength={40}
+              dir="auto"
               className="editor-input w-44 max-w-[55%] min-w-0 text-right px-2 py-1 font-medium"
               placeholder={t("ui.customBadgePlaceholder")}
             />
           ) : (
             <select
+              dir="auto"
               value={ed.customBadge ?? "__auto__"}
               onChange={(e) => {
                 const v = e.target.value
@@ -487,10 +489,13 @@ export function BadgeControls() {
                   <>
                     {options.map((o) => {
                       const display = isPrefixedKey(o) ? t(badgeKey(o)) : o
-                      return <option key={o} value={o}>{display}</option>
+                      // dir="auto": l'interfaccia è LTR, e senza di questo
+                      // un'etichetta ebraica che finisce con geresh o punto
+                      // interrogativo mostra il segno dal lato sbagliato.
+                      return <option key={o} value={o} dir="auto">{display}</option>
                     })}
                     {savedMissing && (
-                      <option value={savedMissing}>{isPrefixedKey(savedMissing) ? t(badgeKey(savedMissing)) : savedMissing}</option>
+                      <option value={savedMissing} dir="auto">{isPrefixedKey(savedMissing) ? t(badgeKey(savedMissing)) : savedMissing}</option>
                     )}
                   </>
                 )

@@ -30,6 +30,25 @@ describe("fanart api key gate", () => {
   it("is enabled with a key", () => {
     expect(isFanartEnabled()).toBe(true)
   })
+
+  // La chiave arrivava solo come PICTORIUM_FANART_API_KEY, mentre ogni altro
+  // provider accetta anche il nome nudo: una chiave messa come FANART_API_KEY
+  // veniva ignorata senza dire niente.
+  it("accepts the bare env name too", () => {
+    delete process.env.PICTORIUM_FANART_API_KEY
+    process.env.FANART_API_KEY = "bare-key"
+    expect(isFanartEnabled()).toBe(true)
+    delete process.env.FANART_API_KEY
+  })
+
+  it("prefers the prefixed name when both are set", async () => {
+    process.env.PICTORIUM_FANART_API_KEY = "prefixed"
+    process.env.FANART_API_KEY = "bare"
+    httpMock.mockResolvedValue({})
+    await getFanartMovie(603)
+    expect(httpMock.mock.calls[0][0]).toContain("api_key=prefixed")
+    delete process.env.FANART_API_KEY
+  })
 })
 
 describe("textlessOnly", () => {
