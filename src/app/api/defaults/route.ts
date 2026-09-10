@@ -42,6 +42,16 @@ const defaultsSchema = z.object({
   accentDominant: z.boolean().optional(),
   badgeTopScale: z.number().optional(),
   badgeBottomScale: z.number().optional(),
+  // Controlli del testo bianco: senza queste chiavi Zod le SCARTA in silenzio
+  // (z.object fa strip, non errore) e il PUT torna 200 mentre i default
+  // d'istanza restano senza — i poster dei cataloghi su Stremio ignoravano
+  // opacita', ombra e stella. I valori sono comunque clampati a valle da
+  // `normalizeTextStyle` (badge-svg-shared.ts).
+  textOpacity: z.number().optional(),
+  textShadowOpacity: z.number().optional(),
+  textShadowBlur: z.number().optional(),
+  textShadowOffset: z.number().optional(),
+  ratingStar: z.boolean().optional(),
   badgeTopOffset: z.number().optional(),
   badgeBottomOffset: z.number().optional(),
   logoBottomOffset: z.number().optional(),

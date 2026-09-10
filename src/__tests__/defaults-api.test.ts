@@ -1,14 +1,24 @@
 import type { NextRequest } from "next/server"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { rm } from "node:fs/promises"
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { GET, PUT } from "@/app/api/defaults/route"
 import { cacheClear, cacheGet, cacheSet } from "@/lib/cache"
 
 // I PUT di questo file scrivono i defaults via file; isoliamo lo store in una
 // dir temporanea (test-results/, gitignored) così i config di test non toccano
 // il reale data/defaults.json dell'istanza.
+const STORE_DIR = `${process.cwd()}/test-results/data-defaults-test`
+
 vi.mock("@/lib/data-dir", () => ({
   DATA_DIR: `${process.cwd()}/test-results/data-defaults-test`,
 }))
+
+// Lo store sopravvive tra i run: senza questa pulizia un valore scritto da un
+// run precedente resta su disco e una GET lo rilegge, facendo passare test che
+// verificano la persistenza di una chiave anche quando il PUT la scarta.
+beforeAll(async () => {
+  await rm(STORE_DIR, { recursive: true, force: true })
+})
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -81,6 +91,31 @@ describe("PUT /api/defaults", () => {
     const body = (await resGet.json()) as Record<string, unknown>
     expect(body.badgeStyle).toBe("bar")
     expect(body.gradientHeight).toBe(55)
+  })
+
+  // Regressione: le cinque chiavi del testo bianco mancavano da defaultsSchema.
+  // z.object fa strip (non errore), quindi il PUT tornava 200 e i valori
+  // sparivano — su Stremio i poster dei cataloghi restavano ai default.
+  it("persiste i controlli del testo bianco invece di scartarli", async () => {
+    delete process.env.ADMIN_TOKEN
+    const res = await PUT(
+      mockPutRequest({
+        textOpacity: 80,
+        textShadowOpacity: 40,
+        textShadowBlur: 150,
+        textShadowOffset: 60,
+        ratingStar: false,
+      }) as unknown as NextRequest,
+    )
+    expect(res.status).toBe(200)
+
+    const resGet = await GET(new Request("http://localhost:3000/api/defaults") as unknown as NextRequest)
+    const body = (await resGet.json()) as Record<string, unknown>
+    expect(body.textOpacity).toBe(80)
+    expect(body.textShadowOpacity).toBe(40)
+    expect(body.textShadowBlur).toBe(150)
+    expect(body.textShadowOffset).toBe(60)
+    expect(body.ratingStar).toBe(false)
   })
 })
 
