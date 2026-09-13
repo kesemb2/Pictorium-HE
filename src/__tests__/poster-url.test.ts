@@ -13,6 +13,18 @@ const baseBadgeParams = {
   blurFade: 60,
   blurDarkness: 40,
   blurEnabled: true,
+  topBadgeScale: 100,
+  topBadgeOffsetX: 0,
+  topBadgeOffsetY: 0,
+  genreBadgeScale: 100,
+  qualityBadgeScale: 100,
+  networkLogoScale: 100,
+  genreBadgeOffsetX: 0,
+  genreBadgeOffsetY: 0,
+  qualityBadgeOffsetX: 0,
+  qualityBadgeOffsetY: 0,
+  networkLogoOffsetX: 0,
+  networkLogoOffsetY: 0,
 }
 
 const basePosterState = {
@@ -154,6 +166,19 @@ describe("buildPreviewUrl", () => {
     expect(url).toContain("poster=%2Fposter.jpg")
   })
 
+  it("includes title for JustWatch matching", () => {
+    const url = buildPreviewUrl(basePosterState, baseBadgeParams)
+    expect(url).toContain("title=Test%20Movie")
+  })
+
+  it("falls back to name when title is missing", () => {
+    const url = buildPreviewUrl({
+      ...basePosterState,
+      selected: { id: 123, media_type: "movie" as const, name: "Serie X", poster_path: "/poster.jpg" },
+    }, baseBadgeParams)
+    expect(url).toContain("title=Serie%20X")
+  })
+
   it("includes genreName from metaInfo", () => {
     const url = buildPreviewUrl(basePosterState, baseBadgeParams)
     expect(url).toContain("genreName=Azione")
@@ -162,6 +187,12 @@ describe("buildPreviewUrl", () => {
   it("includes voteAverage when > 0", () => {
     const url = buildPreviewUrl(basePosterState, baseBadgeParams)
     expect(url).toContain("voteAverage=7.5")
+  })
+
+  it("rounds voteAverage to 1 decimal (long floats tripped the query bound → 400)", () => {
+    const url = buildPreviewUrl({ ...basePosterState, metaInfo: { ...basePosterState.metaInfo, voteAverage: 7.080000000000001 } }, baseBadgeParams)
+    expect(url).toContain("voteAverage=7.1")
+    expect(url).not.toContain("7.080000000000001")
   })
 
   it("does not include voteAverage when 0", () => {
@@ -364,6 +395,15 @@ describe("buildPreviewUrl", () => {
   it("includes customBadge as extra param", () => {
     const url = buildPreviewUrl(basePosterState, { ...baseBadgeParams, customBadge: "Custom Label" })
     expect(url).toContain("extra=Custom%20Label")
+  })
+
+  it("always emits cr in preview (WYSIWYG), only-OFF in pattern", () => {
+    expect(buildPreviewUrl(basePosterState, baseBadgeParams)).toContain("cr=1")
+    expect(buildPreviewUrl(basePosterState, { ...baseBadgeParams, customRatings: false })).toContain("cr=0")
+    const patternUrl = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "k", lang: "it", customRatings: false })
+    expect(patternUrl).toContain("cr=0")
+    const patternDefault = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "k", lang: "it" })
+    expect(patternDefault).not.toContain("cr=")
   })
 
   it("includes rsrc param in buildPreviewUrl and buildUrlPattern when ratingSources is set", () => {

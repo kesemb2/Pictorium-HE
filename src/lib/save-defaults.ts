@@ -1,4 +1,3 @@
-import type { PictoriumCtx } from "@/lib/context"
 import type { PosterEditorCtx } from "@/lib/contexts/PosterEditorContext"
 
 function safeSetItem(key: string, val: string) {
@@ -6,10 +5,12 @@ function safeSetItem(key: string, val: string) {
 }
 
 /** Salva i default in localStorage e li sincronizza col server.
+ *  Scrive SOLO i default: il poster eventualmente aperto non viene toccato
+ *  (i suoi valori per-titolo restano congelati nel mapping al save).
  *  Ritorna `true` se il PUT /api/defaults è andato a buon fine, `false` se è
  *  fallito (rete, 401 admin fail-closed, 5xx): in quel caso i default D'ISTANZA
  *  usati dai poster dei cataloghi su Stremio restano quelli vecchi. */
-export function saveDefaults(p: { selected: PictoriumCtx["selected"]; mappingsMap: PictoriumCtx["mappingsMap"] }, ed: PosterEditorCtx): Promise<boolean> {
+export function saveDefaults(ed: PosterEditorCtx): Promise<boolean> {
   const d = {
     globalBadges: ed.defaultGlobalBadges,
     rankingBadges: ed.defaultRankingBadges,
@@ -17,6 +18,9 @@ export function saveDefaults(p: { selected: PictoriumCtx["selected"]; mappingsMa
     badgeYear: ed.defaultBadgeYear,
     badgeRating: ed.defaultBadgeRating,
     badgeQuality: ed.defaultBadgeQuality,
+    customRatings: ed.defaultCustomRatings,
+    customRatingEndpoint: ed.defaultCustomRatingEndpoint ?? "",
+    customRatingApiKeyHeader: ed.defaultCustomRatingApiKeyHeader ?? "",
     ratingSources: ed.defaultRatingSources,
     badgeStyle: ed.defaultBadgeStyle,
     rankingBadgeStyle: ed.defaultRankingBadgeStyle,
@@ -25,6 +29,32 @@ export function saveDefaults(p: { selected: PictoriumCtx["selected"]; mappingsMa
     blurFade: ed.defaultBlurFade,
     blurDarkness: ed.defaultBlurDarkness,
     gradientHeight: ed.defaultGradientHeight,
+    topBadgeScale: ed.defaultTopBadgeScale,
+    topBadgeOffsetX: ed.defaultTopBadgeOffsetX,
+    topBadgeOffsetY: ed.defaultTopBadgeOffsetY,
+    genreBadgeScale: ed.defaultGenreBadgeScale,
+    qualityBadgeScale: ed.defaultQualityBadgeScale,
+    networkLogoScale: ed.defaultNetworkLogoScale,
+    genreBadgeOffsetX: ed.defaultGenreBadgeOffsetX,
+    genreBadgeOffsetY: ed.defaultGenreBadgeOffsetY,
+    qualityBadgeOffsetX: ed.defaultQualityBadgeOffsetX,
+    qualityBadgeOffsetY: ed.defaultQualityBadgeOffsetY,
+    networkLogoOffsetX: ed.defaultNetworkLogoOffsetX,
+    networkLogoOffsetY: ed.defaultNetworkLogoOffsetY,
+    // Controlli del fork: accent dominante, scale/offset di gruppo e
+    // aspetto del testo bianco. Senza queste righe il salvataggio dei
+    // default li lascerebbe indietro (il PUT torna 200 e i valori spariscono).
+    accentDominant: ed.defaultAccentDominant,
+    badgeTopScale: ed.defaultBadgeTopScale,
+    badgeBottomScale: ed.defaultBadgeBottomScale,
+    badgeTopOffset: ed.defaultBadgeTopOffset,
+    badgeBottomOffset: ed.defaultBadgeBottomOffset,
+    logoBottomOffset: ed.defaultLogoBottomOffset,
+    textOpacity: ed.defaultTextOpacity,
+    textShadowOpacity: ed.defaultTextShadowOpacity,
+    textShadowBlur: ed.defaultTextShadowBlur,
+    textShadowOffset: ed.defaultTextShadowOffset,
+    ratingStar: ed.defaultRatingStar,
     autoRotateClean: ed.defaultAutoRotateClean,
     defaultLogoFitEnabled: ed.defaultLogoFitEnabled,
     defaultNetworkLogo: ed.defaultNetworkLogo,
@@ -32,17 +62,6 @@ export function saveDefaults(p: { selected: PictoriumCtx["selected"]; mappingsMa
     defaultEpisodeMetadataSource: ed.defaultEpisodeMetadataSource,
     region: ed.defaultRegion,
     networkLogo: ed.defaultNetworkLogo,
-    accentDominant: ed.defaultAccentDominant,
-    badgeTopScale: ed.defaultBadgeTopScale,
-    badgeBottomScale: ed.defaultBadgeBottomScale,
-    textOpacity: ed.defaultTextOpacity,
-    textShadowOpacity: ed.defaultTextShadowOpacity,
-    textShadowBlur: ed.defaultTextShadowBlur,
-    textShadowOffset: ed.defaultTextShadowOffset,
-    ratingStar: ed.defaultRatingStar,
-    badgeTopOffset: ed.defaultBadgeTopOffset,
-    badgeBottomOffset: ed.defaultBadgeBottomOffset,
-    logoBottomOffset: ed.defaultLogoBottomOffset,
     ribbonSide: ed.defaultRibbonSide,
     episodeMetadataSource: ed.defaultEpisodeMetadataSource,
   }
@@ -61,33 +80,5 @@ export function saveDefaults(p: { selected: PictoriumCtx["selected"]; mappingsMa
       console.warn(`[defaults] Failed to sync server defaults: ${message}`)
       return false
     })
-  const key = p.selected ? `${p.selected.media_type}:${p.selected.id}` : null
-  const mapping = key ? p.mappingsMap.get(key) : undefined
-  if (!mapping?.badgeStyle) ed.setBadgeStyle(d.badgeStyle)
-  if (!mapping?.rankingBadgeStyle) ed.setRankingBadgeStyle(d.rankingBadgeStyle)
-  ed.setGlobalBadges(d.globalBadges)
-  ed.setRankingBadges(d.rankingBadges)
-  ed.setBadgeGenre(d.badgeGenre)
-  ed.setBadgeYear(d.badgeYear)
-  ed.setBadgeRating(d.badgeRating)
-  ed.setBadgeQuality(d.badgeQuality)
-  ed.setNetworkLogo(d.networkLogo)
-  ed.setAccentDominant(d.accentDominant)
-  ed.setBadgeTopScale(d.badgeTopScale)
-  ed.setBadgeBottomScale(d.badgeBottomScale)
-  ed.setTextOpacity(d.textOpacity)
-  ed.setTextShadowOpacity(d.textShadowOpacity)
-  ed.setTextShadowBlur(d.textShadowBlur)
-  ed.setTextShadowOffset(d.textShadowOffset)
-  ed.setRatingStar(d.ratingStar)
-  ed.setBadgeTopOffset(d.badgeTopOffset)
-  ed.setBadgeBottomOffset(d.badgeBottomOffset)
-  ed.setLogoBottomOffset(d.logoBottomOffset)
-  ed.setRibbonSide(d.ribbonSide)
-  ed.setBlurEnabled(d.blurEnabled)
-  ed.setBlurIntensity(d.blurIntensity)
-  ed.setBlurFade(d.blurFade)
-  ed.setBlurDarkness(d.blurDarkness)
-  ed.setGradientHeight(d.gradientHeight)
   return syncPromise
 }

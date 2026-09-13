@@ -1,20 +1,18 @@
 "use client"
 
 import { useState } from "react"
-import { Check, XCircle, Ruler, Cloud, Minus, Circle, ChevronDown, Star, Trophy, Tv, Flame, Sparkles, Palette, Layers, Type } from "lucide-react"
+import { ChevronDown, Star, Trophy, Tv, Sparkles, Palette, Layers, Cloud } from "lucide-react"
 import { usePSelector } from "@/lib/context"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { usePosterEditor } from "@/lib/contexts/PosterEditorContext"
 import { Toggle } from "@/components/Toggle"
-import { SliderRow } from "@/components/SliderRow"
 import { BadgeStyleSelector } from "@/components/ui"
 import { getAwardBadgeLabel, getNominationBadgeLabel } from "@/lib/awards"
 import { getSubGenreLabel } from "@/lib/subgenres"
 import { getUpcomingReleaseLabel } from "@/lib/release-badge"
-import { getNewSeasonLabel, getNextEpisodeLabel, isKDramaOrigin } from "@/lib/poster-badge"
+import { getNewSeasonLabel, isKDramaOrigin } from "@/lib/poster-badge"
 import { isPrefixedKey, badgeKey } from "@/lib/i18n"
 import { getAllBadgeOptions } from "@/lib/badge-priority"
-import { defaultGradientHeightForPoster } from "@/lib/gradient-defaults"
 import { UI_RATING_SOURCES } from "@/lib/ratings"
 import { RatingSourceIcon } from "@/components/RatingSourceIcon"
 
@@ -27,7 +25,6 @@ export function BadgeControls() {
   const trendRank = usePSelector((v) => v.trendRank)
   const imdbTop250 = usePSelector((v) => v.imdbTop250)
   const setAccentColor = usePSelector((v) => v.setAccentColor)
-  const previewPoster = usePSelector((v) => v.previewPoster)
   const { t, lang } = useT()
   const ed = usePosterEditor()
   const [now] = useState(() => Date.now())
@@ -52,9 +49,10 @@ export function BadgeControls() {
         <div className="flex items-center justify-between">
           <span className="font-semibold text-zinc-200 flex items-center gap-1.5">
             <Layers className="w-3.5 h-3.5 text-accent-orange" />
-            {t("ui.badgeSection")}
+            {t("ui.badgeSectionPoster")}
           </span>
         </div>
+        <p className="text-[10px] text-zinc-500 italic -mt-1">{t("ui.badgePosterHint")}</p>
 
         {/* Master Toggle Genere / Rating */}
         <div className="space-y-2">
@@ -189,6 +187,14 @@ export function BadgeControls() {
             <Toggle value={ed.badgeQuality} onChange={(v) => ed.setBadgeQuality(v)} label={t("ui.badgeQuality")} />
           </div>
 
+          <div className="flex items-center justify-between" title={t("ui.customRatingsHint")}>
+            <span className="text-zinc-300 font-medium flex items-center gap-1.5">
+              <Star className="w-3.5 h-3.5 text-teal-400" />
+              {t("ui.customRatings")}
+            </span>
+            <Toggle value={ed.customRatings} onChange={(v) => ed.setCustomRatings(v)} label={t("ui.customRatings")} />
+          </div>
+
           <div className="flex items-center justify-between">
             <span className="text-zinc-300 font-medium flex items-center gap-1.5">
               <Tv className="w-3.5 h-3.5 text-sky-400" />
@@ -197,205 +203,28 @@ export function BadgeControls() {
             <Toggle value={ed.networkLogo} onChange={(v) => ed.setNetworkLogo(v)} label={t("ui.networkLogo")} />
           </div>
 
-          <div className="flex items-center justify-between gap-3 pt-1">
-            <span className="text-zinc-300 font-medium flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-300 font-medium flex items-center gap-1.5">
               <Palette className="w-3.5 h-3.5 text-accent-orange" />
               {t("ui.accentDominant")}
             </span>
             <Toggle value={ed.accentDominant} onChange={(v) => ed.setAccentDominant(v)} label={t("ui.accentDominant")} />
           </div>
 
-              <SliderRow
-                icon={<Ruler className="w-3.5 h-3.5 text-accent-orange" />}
-                label={t("ui.badgeTopScale")}
-                value={ed.badgeTopScale}
-                min={50}
-                max={200}
-                boundsMin={50}
-                boundsMax={200}
-                onChange={(v) => ed.setBadgeTopScale(v)}
-                onDoubleClick={() => ed.setBadgeTopScale(100)}
-                editingValue={editingValue}
-                editText={editText}
-                setEditingValue={setEditingValue}
-                setEditText={setEditText}
-                editingKey="gbadgeTopScale"
-                suffix="%"
-              />
-              <SliderRow
-                icon={<Ruler className="w-3.5 h-3.5 text-accent-orange" />}
-                label={t("ui.badgeBottomScale")}
-                value={ed.badgeBottomScale}
-                min={50}
-                max={200}
-                boundsMin={50}
-                boundsMax={200}
-                onChange={(v) => ed.setBadgeBottomScale(v)}
-                onDoubleClick={() => ed.setBadgeBottomScale(100)}
-                editingValue={editingValue}
-                editText={editText}
-                setEditingValue={setEditingValue}
-                setEditText={setEditText}
-                editingKey="gbadgeBottomScale"
-                suffix="%"
-              />
-              <SliderRow
-                icon={<Ruler className="w-3.5 h-3.5 text-accent-orange" />}
-                label={t("ui.badgeTopOffset")}
-                value={ed.badgeTopOffset}
-                min={-50}
-                max={150}
-                boundsMin={-50}
-                boundsMax={150}
-                onChange={(v) => ed.setBadgeTopOffset(v)}
-                onDoubleClick={() => ed.setBadgeTopOffset(0)}
-                editingValue={editingValue}
-                editText={editText}
-                setEditingValue={setEditingValue}
-                setEditText={setEditText}
-                editingKey="gbadgeTopOffset"
-                suffix="px"
-              />
-              <SliderRow
-                icon={<Ruler className="w-3.5 h-3.5 text-accent-orange" />}
-                label={t("ui.badgeBottomOffset")}
-                value={ed.badgeBottomOffset}
-                min={-100}
-                max={100}
-                boundsMin={-100}
-                boundsMax={100}
-                onChange={(v) => ed.setBadgeBottomOffset(v)}
-                onDoubleClick={() => ed.setBadgeBottomOffset(0)}
-                editingValue={editingValue}
-                editText={editText}
-                setEditingValue={setEditingValue}
-                setEditText={setEditText}
-                editingKey="gbadgeBottomOffset"
-                suffix="px"
-              />
-              <SliderRow
-                icon={<Ruler className="w-3.5 h-3.5 text-accent-orange" />}
-                label={t("ui.logoBottomOffset")}
-                value={ed.logoBottomOffset}
-                min={-150}
-                max={150}
-                boundsMin={-150}
-                boundsMax={150}
-                onChange={(v) => ed.setLogoBottomOffset(v)}
-                onDoubleClick={() => ed.setLogoBottomOffset(0)}
-                editingValue={editingValue}
-                editText={editText}
-                setEditingValue={setEditingValue}
-                setEditText={setEditText}
-                editingKey="glogoBottomOffset"
-                suffix="px"
-              />
-              <SliderRow
-                icon={<Type className="w-3.5 h-3.5 text-accent-orange" />}
-                label={t("ui.textOpacity")}
-                value={ed.textOpacity}
-                min={0}
-                max={100}
-                boundsMin={0}
-                boundsMax={100}
-                onChange={(v) => ed.setTextOpacity(v)}
-                onDoubleClick={() => ed.setTextOpacity(100)}
-                editingValue={editingValue}
-                editText={editText}
-                setEditingValue={setEditingValue}
-                setEditText={setEditText}
-                editingKey="gtextOpacity"
-                suffix="%"
-              />
-              <SliderRow
-                icon={<Type className="w-3.5 h-3.5 text-accent-orange" />}
-                label={t("ui.textShadowOpacity")}
-                value={ed.textShadowOpacity}
-                min={0}
-                max={100}
-                boundsMin={0}
-                boundsMax={100}
-                onChange={(v) => ed.setTextShadowOpacity(v)}
-                onDoubleClick={() => ed.setTextShadowOpacity(100)}
-                editingValue={editingValue}
-                editText={editText}
-                setEditingValue={setEditingValue}
-                setEditText={setEditText}
-                editingKey="gtextShadowOpacity"
-                suffix="%"
-              />
-              <SliderRow
-                icon={<Type className="w-3.5 h-3.5 text-accent-orange" />}
-                label={t("ui.textShadowBlur")}
-                value={ed.textShadowBlur}
-                min={0}
-                max={200}
-                boundsMin={0}
-                boundsMax={200}
-                onChange={(v) => ed.setTextShadowBlur(v)}
-                onDoubleClick={() => ed.setTextShadowBlur(100)}
-                editingValue={editingValue}
-                editText={editText}
-                setEditingValue={setEditingValue}
-                setEditText={setEditText}
-                editingKey="gtextShadowBlur"
-                suffix="%"
-              />
-              <SliderRow
-                icon={<Type className="w-3.5 h-3.5 text-accent-orange" />}
-                label={t("ui.textShadowOffset")}
-                value={ed.textShadowOffset}
-                min={0}
-                max={200}
-                boundsMin={0}
-                boundsMax={200}
-                onChange={(v) => ed.setTextShadowOffset(v)}
-                onDoubleClick={() => ed.setTextShadowOffset(100)}
-                editingValue={editingValue}
-                editText={editText}
-                setEditingValue={setEditingValue}
-                setEditText={setEditText}
-                editingKey="gtextShadowOffset"
-                suffix="%"
-              />
-
-          <div className="flex items-center justify-between gap-3 pt-1">
-            <span className="text-zinc-300 font-medium flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-300 font-medium flex items-center gap-1.5">
               <Star className="w-3.5 h-3.5 text-accent-orange" />
               {t("ui.ratingStar")}
             </span>
             <Toggle value={ed.ratingStar} onChange={(v) => ed.setRatingStar(v)} label={t("ui.ratingStar")} />
           </div>
 
-          <div className="flex items-center justify-between gap-3 pt-1">
-            <span className="text-zinc-300 font-medium flex items-center gap-1.5 shrink-0">
-              <Flame className="w-3.5 h-3.5 text-accent-orange" />
-              {t("ui.badgePosition")}
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-300 font-medium flex items-center gap-1.5">
+              <Cloud className="w-3.5 h-3.5 text-cyan-400" />
+              {t("ui.blurSection")}
             </span>
-            <div className="grid grid-cols-2 gap-1 w-36 shrink-0">
-              <button
-                type="button"
-                onClick={() => ed.setRibbonSide("left")}
-                className={`w-full py-1 text-center rounded-lg text-[11px] font-semibold transition-all duration-150 ${
-                  ed.ribbonSide === "left"
-                    ? "bg-white/20 text-white shadow-sm"
-                    : "bg-white/5 text-muted hover:bg-white/10 hover:text-zinc-200"
-                }`}
-              >
-                Nuvio
-              </button>
-              <button
-                type="button"
-                onClick={() => ed.setRibbonSide("right")}
-                className={`w-full py-1 text-center rounded-lg text-[11px] font-semibold transition-all duration-150 ${
-                  ed.ribbonSide === "right"
-                    ? "bg-white/20 text-white shadow-sm"
-                    : "bg-white/5 text-muted hover:bg-white/10 hover:text-zinc-200"
-                }`}
-              >
-                Stremio
-              </button>
-            </div>
+            <Toggle value={ed.blurEnabled} onChange={(v) => ed.setBlurEnabled(v)} label={t("ui.blurSection")} />
           </div>
         </div>
       </div>
@@ -416,13 +245,11 @@ export function BadgeControls() {
               onBlur={() => { const v = editText.trim(); ed.setCustomBadge(v || null); setEditingValue(null) }}
               onKeyDown={(e) => { if (e.key === "Enter") { (e.target as HTMLInputElement).blur() } }}
               maxLength={40}
-              dir="auto"
               className="editor-input w-44 max-w-[55%] min-w-0 text-right px-2 py-1 font-medium"
               placeholder={t("ui.customBadgePlaceholder")}
             />
           ) : (
             <select
-              dir="auto"
               value={ed.customBadge ?? "__auto__"}
               onChange={(e) => {
                 const v = e.target.value
@@ -464,22 +291,10 @@ export function BadgeControls() {
                   ...(metaInfo.networksDetailed ?? []),
                   ...(metaInfo.productionCompaniesDetailed ?? []),
                 ].map((c) => c.origin_country).filter((c): c is string => !!c))
-                const nextEpisode = selected.media_type === "tv" ? getNextEpisodeLabel({
-                  airDate: metaInfo.next_episode_to_air?.air_date,
-                  locale: lang,
-                  t,
-                }) : null
-                const highlyRated = metaInfo.voteAverage >= 8 && (metaInfo.voteCount ?? 0) >= 1000
-                const ended = selected.media_type === "tv"
-                  && ["ended", "canceled", "cancelled"].includes((tvStatus || "").toLowerCase())
-                // `tmdbTrending` non è tra le opzioni: il client non ha la lista
-                // di tendenza e chiederla costerebbe una richiesta per titolo
-                // solo per popolare una voce di menu. Il badge resta automatico.
                 const options = getAllBadgeOptions({
                   upcomingRelease, isNewMovie, isNewSeries, newSeason, animeRank, trendRank: trendRank,
                   award, nomination, studio,
                   director: metaInfo.director || null, subGenre, isKDrama, extra,
-                  nextEpisode, highlyRated, ended,
                   mediaType: selected.media_type === "tv" ? "tv" : "movie",
                   voteAverage: metaInfo.voteAverage, tvType, tvStatus,
                   imdbTop250: !!imdbTop250,
@@ -489,13 +304,10 @@ export function BadgeControls() {
                   <>
                     {options.map((o) => {
                       const display = isPrefixedKey(o) ? t(badgeKey(o)) : o
-                      // dir="auto": l'interfaccia è LTR, e senza di questo
-                      // un'etichetta ebraica che finisce con geresh o punto
-                      // interrogativo mostra il segno dal lato sbagliato.
-                      return <option key={o} value={o} dir="auto">{display}</option>
+                      return <option key={o} value={o}>{display}</option>
                     })}
                     {savedMissing && (
-                      <option value={savedMissing} dir="auto">{isPrefixedKey(savedMissing) ? t(badgeKey(savedMissing)) : savedMissing}</option>
+                      <option value={savedMissing}>{isPrefixedKey(savedMissing) ? t(badgeKey(savedMissing)) : savedMissing}</option>
                     )}
                   </>
                 )
@@ -572,105 +384,6 @@ export function BadgeControls() {
             )}
           </div>
         </div>
-      </div>
-
-      {/* CARD 4: Sfumatura & Blur di Sfondo */}
-      <div className="bg-surface/50 border border-surface2/60 rounded-xl p-3 space-y-2.5 shadow-sm">
-        <button
-          type="button"
-          aria-label={ed.blurEnabled ? t("ui.blurDisabled") : t("ui.blurEnabled")}
-          onClick={() => ed.setBlurEnabled(!ed.blurEnabled)}
-          className={`w-full py-2 px-3 text-xs font-semibold rounded-lg transition-all duration-150 flex items-center justify-center gap-1.5 ${
-            ed.blurEnabled
-              ? "bg-white/15 text-white shadow-sm border border-white/10"
-              : "bg-white/5 text-muted hover:bg-white/10 hover:text-zinc-200 border border-transparent"
-          }`}
-        >
-          {ed.blurEnabled ? (
-            <>
-              <Check className="w-3.5 h-3.5 text-accent-orange" />
-              {t("ui.blurEnabled")}
-            </>
-          ) : (
-            <>
-              <XCircle className="w-3.5 h-3.5 text-zinc-500" />
-              {t("ui.blurDisabled")}
-            </>
-          )}
-        </button>
-
-        {ed.blurEnabled && (
-          <div className="space-y-1.5 pt-1 animate-fade-in">
-            <SliderRow
-              icon={<Ruler className="w-3.5 h-3.5" />}
-              label={t("ui.height")}
-              value={ed.gradientHeight}
-              min={5}
-              max={100}
-              boundsMin={5}
-              boundsMax={100}
-              onChange={(v) => ed.setGradientHeight(v)}
-              onDoubleClick={() => ed.setGradientHeight(defaultGradientHeightForPoster(previewPoster))}
-              editingValue={editingValue}
-              editText={editText}
-              setEditingValue={setEditingValue}
-              setEditText={setEditText}
-              editingKey="gradHeight"
-              suffix="%"
-            />
-            <SliderRow
-              icon={<Cloud className="w-3.5 h-3.5" />}
-              label={t("ui.intensity")}
-              value={ed.blurIntensity}
-              min={1}
-              max={50}
-              boundsMin={1}
-              boundsMax={50}
-              onChange={(v) => ed.setBlurIntensity(v)}
-              onDoubleClick={() => ed.setBlurIntensity(5)}
-              editingValue={editingValue}
-              editText={editText}
-              setEditingValue={setEditingValue}
-              setEditText={setEditText}
-              editingKey="blurIntensity"
-              suffix="px"
-            />
-            <SliderRow
-              icon={<Minus className="w-3.5 h-3.5" />}
-              label={t("ui.fade")}
-              value={ed.blurFade}
-              min={0}
-              max={100}
-              boundsMin={0}
-              boundsMax={100}
-              onChange={(v) => ed.setBlurFade(v)}
-              onDoubleClick={() => ed.setBlurFade(60)}
-              editingValue={editingValue}
-              editText={editText}
-              setEditingValue={setEditingValue}
-              setEditText={setEditText}
-              editingKey="blurFade"
-              suffix="%"
-            />
-            <SliderRow
-              icon={<Circle className="w-3.5 h-3.5" />}
-              label={t("ui.darkness")}
-              value={ed.blurDarkness}
-              min={0}
-              max={100}
-              boundsMin={0}
-              boundsMax={100}
-              onChange={(v) => ed.setBlurDarkness(v)}
-              onDoubleClick={() => ed.setBlurDarkness(40)}
-              editingValue={editingValue}
-              editText={editText}
-              setEditingValue={setEditingValue}
-              setEditText={setEditText}
-              editingKey="blurDarkness"
-              suffix="%"
-            />
-          </div>
-        )}
       </div>
     </div>
   )

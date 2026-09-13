@@ -1,7 +1,7 @@
 import sharp from "sharp"
 import { describe, expect, it } from "vitest"
 import { buildGenrePillSvg, buildGenreTextSvg, buildRankingDefaultSvg, buildExtraDefaultSvg } from "@/lib/badge-svg-shared"
-import { buildGenreBadgeSVG, buildRankingBadgeSVG, buildExtraBadgeSVG, buildNetflixRankBadgeSVG, netflixRibbonFontSize } from "@/lib/svg-badge"
+import { buildGenreBadgeSVG, buildRankingBadgeSVG, buildExtraBadgeSVG, buildNetflixRankBadgeSVG, renderComingSoonRibbon, comingSoonRibbonLayout } from "@/lib/svg-badge"
 
 async function alphaBounds(png: Buffer) {
   const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
@@ -61,6 +61,25 @@ describe("buildGenreBadgeSVG", () => {
 
     expect(badge).not.toBeNull()
     expect(badge!.w).toBeLessThanOrEqual(860)
+  })
+
+  it("scales bar badges natively (full-width kept, height shrinks)", async () => {
+    const full = await buildGenreBadgeSVG("Dramma", 6.4, 380, undefined, "bar", "#555555", false, undefined, 100)
+    const slim = await buildGenreBadgeSVG("Dramma", 6.4, 380, undefined, "bar", "#555555", false, undefined, 70)
+    expect(full).not.toBeNull()
+    expect(slim).not.toBeNull()
+    expect(full!.w).toBe(380)
+    expect(slim!.w).toBe(380)
+    expect(slim!.h).toBeLessThan(full!.h)
+  })
+
+  it("ignores the scale param for non-bar styles (bitmap scaling lives in the service)", async () => {
+    const a = await buildGenreBadgeSVG("Dramma", 6.4, 380, undefined, "shadow", "#555555", false, undefined, 100)
+    const b = await buildGenreBadgeSVG("Dramma", 6.4, 380, undefined, "shadow", "#555555", false, undefined, 70)
+    expect(a).not.toBeNull()
+    expect(b).not.toBeNull()
+    expect(b!.w).toBe(a!.w)
+    expect(b!.h).toBe(a!.h)
   })
 
   it.each([
@@ -260,19 +279,18 @@ describe("buildRankingBadgeSVG", () => {
     expect(svg).toContain(">TOP</text>")
     expect(svg).toContain(">4</text>")
     expect(svg).toContain(">Oggi</text>")
-    // Nastro esteso (h × 1.55) come quello anime: il testo ha bisogno di spazio
-    const fs = netflixRibbonFontSize(1000)
-    const w = Math.round(fs * 2.6)
-    const subFs = Math.round(w * 0.20)
-    const extendedH = Math.round(w * 1.55) + Math.round(fs * 0.4) + Math.round(subFs * 0.6)
+    // Nastro esteso (h × 1.65): il testo ha bisogno di spazio
+    const fs = Math.round(Math.max(24 * 1000 / 380, 16))
+    const w = Math.round(fs * 2.65)
+    const extendedH = Math.round(w * 1.65) + Math.round(fs * 0.4)
     expect(h).toBe(extendedH)
   })
 
   it("stays compact without label and not anime", () => {
     const { svg, h } = buildNetflixRankBadgeSVG(4, 1000, false)
     expect(svg).not.toContain(">anime</text>")
-    const fs = netflixRibbonFontSize(1000)
-    const w = Math.round(fs * 2.6)
+    const fs = Math.round(Math.max(24 * 1000 / 380, 16))
+    const w = Math.round(fs * 2.65)
     expect(h).toBe(Math.round(w * 1.35) + Math.round(fs * 0.4))
   })
 
@@ -286,6 +304,29 @@ describe("buildRankingBadgeSVG", () => {
   it("auto-fits a long label under the number", () => {
     const { svg } = buildNetflixRankBadgeSVG(4, 1000, false, "left", false, "Supercalifragilistichespiralidoso")
     expect(svg).toContain(">Supercalifragilistichespiralidoso</text>")
+  })
+
+  it("constrains sub-labels across languages to prevent ribbon overflow", () => {
+    const labels = ["Película", "Serie", "Film", "Series", "Série", "Serie de TV", "Série de TV", "TV series", "סרט", "סדרה"]
+    for (const label of labels) {
+      const { svg, w } = buildNetflixRankBadgeSVG(1, 500, false, "left", false, label)
+      expect(svg).toContain(`>${label}</text>`)
+      expect(w).toBeGreaterThan(95)
+    }
+  })
+})
+
+describe("top badge uniformity (rank vs extra)", () => {
+  it("renders extra badges at 90% of the rank size", async () => {
+    // Rank a fs 23, extra al 90% (~fs 21): un'etichetta lunga a 100%
+    // risultava troppo grande. h extra ≈ 60, h rank ≈ 66.
+    const rank = await buildRankingBadgeSVG(3, 380, "Oggi", false, "default", "#555555")
+    const extra = await buildExtraBadgeSVG("Oscar 2024", 380, false, "default", "#555555")
+    expect(rank).not.toBeNull()
+    expect(extra).not.toBeNull()
+    expect(extra!.h).toBeLessThan(rank!.h)
+    expect(extra!.h / rank!.h).toBeCloseTo(0.9, 1)
+    expect(extra!.h).toBeGreaterThan(50)
   })
 })
 
@@ -335,3 +376,86 @@ describe("buildExtraDefaultSvg", () => {
     expect(svg).toContain('lengthAdjust="spacingAndGlyphs"')
   })
 })
+
+describe("comingSoonRibbonLayout", () => {
+  it("scales with poster width", () => {
+    const l380 = comingSoonRibbonLayout(380)
+    expect(l380).toEqual({ size: 200, offset: 20, extent: 155 })
+    const l190 = comingSoonRibbonLayout(190)
+    expect(l190).toEqual({ size: 100, offset: 10, extent: 78 })
+  })
+})
+
+describe("renderComingSoonRibbon", () => {
+  it("rasterizes a red diagonal band touching the top-left corner", async () => {
+    const { png, w, h } = await renderComingSoonRibbon("Coming Soon", 380)
+    expect(w).toBe(200)
+    expect(h).toBe(200)
+    const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    expect(info.width).toBe(200)
+    // Banda rossa presente nei pressi dell'angolo (pixel con rosso dominante)
+    let redCount = 0
+    for (let y = 0; y < 120; y++) {
+      for (let x = 0; x < 120; x++) {
+        const i = (y * info.width + x) * 4
+        if (data[i] > 150 && data[i + 1] < 100 && data[i + 2] < 100 && data[i + 3] > 200) redCount++
+      }
+    }
+    expect(redCount).toBeGreaterThan(500)
+    // Centro del canvas: testo chiaro sulla banda (pixel quasi bianchi)
+    let whiteCount = 0
+    for (let y = 40; y < 100; y++) {
+      for (let x = 40; x < 100; x++) {
+        const i = (y * info.width + x) * 4
+        if (data[i] > 220 && data[i + 1] > 220 && data[i + 2] > 220 && data[i + 3] > 200) whiteCount++
+      }
+    }
+    expect(whiteCount).toBeGreaterThan(50)
+  }, 30000)
+
+  it("rasterizes a red diagonal band touching the top-right corner when side=right", async () => {
+    const { png, w, h } = await renderComingSoonRibbon("Coming Soon", 380, "right")
+    expect(w).toBe(200)
+    expect(h).toBe(200)
+    const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    expect(info.width).toBe(200)
+    let redCount = 0
+    for (let y = 0; y < 120; y++) {
+      for (let x = 80; x < 200; x++) {
+        const i = (y * info.width + x) * 4
+        if (data[i] > 150 && data[i + 1] < 100 && data[i + 2] < 100 && data[i + 3] > 200) redCount++
+      }
+    }
+    expect(redCount).toBeGreaterThan(500)
+  }, 30000)
+
+  it("rasterizes Coming Soon ribbon for all 10 supported translations", async () => {
+    const labels = [
+      "Coming Soon",
+      "Prossimamente",
+      "Próximamente",
+      "Prochainement",
+      "Demnächst",
+      "Em breve",
+      "近日公開",
+      "개봉 예정",
+      "בקרוב",
+      "Brzy",
+    ]
+    for (const label of labels) {
+      const { png, w, h } = await renderComingSoonRibbon(label, 380)
+      expect(w).toBe(200)
+      expect(h).toBe(200)
+      const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+      let whiteCount = 0
+      for (let y = 30; y < 110; y++) {
+        for (let x = 30; x < 110; x++) {
+          const i = (y * info.width + x) * 4
+          if (data[i] > 200 && data[i + 1] > 200 && data[i + 2] > 200 && data[i + 3] > 180) whiteCount++
+        }
+      }
+      expect(whiteCount, `White text pixels for ${label}`).toBeGreaterThan(20)
+    }
+  }, 30000)
+})
+

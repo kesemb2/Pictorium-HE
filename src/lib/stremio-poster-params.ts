@@ -2,12 +2,12 @@ import { POSTER_URL_VERSION } from "@/lib/render-version"
 import type { BadgeStyle, RankingBadgeStyle } from "@/lib/badge-styles"
 
 export interface StremioPosterParamsInput {
-  // NOTA SICUREZZA: niente chiavi qui. Questo builder produce URL poster che
-  // finiscono nel database di Stremio, nei log di CDN e proxy e nei link
-  // condivisi: `api_key` e `mdblist_key` non devono mai comparirvi. Il server
-  // le risolve dalla propria env al momento del render. L'unica eccezione è
-  // `buildUrlPattern` (poster-url.ts), che è il template che l'utente copia
-  // per sé, come la URL del manifest, e se le accoda da solo.
+  // NOTA SICUREZZA (M2): niente chiavi qui. Questo builder serve URL poster
+  // che finiscono nel DB di Stremio, log CDN/proxy e link condivisi: api_key
+  // e mdblist_key non devono mai comparirvi. Il server le legge dalla
+  // richiesta catalogo/meta (query) o dall'env d'istanza al momento del
+  // render. Unico caso con chiavi in URL: `buildUrlPattern` (template che
+  // l'utente copia per sé, come la manifest URL) le accoda da solo.
   readonly animerank?: number
   readonly lang?: string | null
   readonly globalBadges?: boolean
@@ -17,6 +17,8 @@ export interface StremioPosterParamsInput {
   readonly badgeYear?: boolean
   readonly badgeRating?: boolean
   readonly badgeQuality?: boolean
+  /** Riga rating custom provider (display). `false` emette `cr=0`. */
+  readonly customRatings?: boolean
   readonly ratingSources?: string[]
   readonly badgeStyle?: BadgeStyle
   readonly rankingBadgeStyle?: RankingBadgeStyle
@@ -37,11 +39,37 @@ export interface StremioPosterParamsInput {
   readonly badgeTopOffset?: number
   readonly badgeBottomOffset?: number
   readonly logoBottomOffset?: number
+  /** Scala % del badge superiore (default 100). */
+  readonly topBadgeScale?: number
+  /** Offset px del badge superiore, solo stili centrati (default 0). */
+  readonly topBadgeOffsetX?: number
+  readonly topBadgeOffsetY?: number
+  /** Scala % del badge genere/rating in basso (default 100). */
+  readonly genreBadgeScale?: number
+  /** Offset px del badge genere/rating, solo stili non-bar (default 0). */
+  readonly genreBadgeOffsetX?: number
+  readonly genreBadgeOffsetY?: number
+  /** Scala % del badge qualità streaming (default 100). */
+  readonly qualityBadgeScale?: number
+  /** Offset px del badge qualità (default 0). */
+  readonly qualityBadgeOffsetX?: number
+  readonly qualityBadgeOffsetY?: number
+  /** Scala % del logo network (default 100). */
+  readonly networkLogoScale?: number
+  /** Offset px del logo network (default 0). */
+  readonly networkLogoOffsetX?: number
+  readonly networkLogoOffsetY?: number
+  /** Effetto pre-digitale (darken + Coming Soon, solo film). Default OFF. */
+  readonly preRelease?: boolean
   readonly ribbonSide?: "left" | "right"
   /** Badge extra testuale per-titolo (dal mapping): emesso come `extra`. */
   readonly customBadge?: string | null
+  /** Titolo per-titolo (dal mapping): match JustWatch per rilevamento
+   *  pre-digitale e qualità. Senza, il server ripiega su valori generici. */
+  readonly title?: string | null
   readonly config?: string | null
   readonly user?: string | null
+  readonly region?: string | null
 }
 
 const DEFAULT_STREMIO_POSTER_PARAMS = {
@@ -65,6 +93,18 @@ const DEFAULT_STREMIO_POSTER_PARAMS = {
   badgeTopOffset: 0,
   badgeBottomOffset: 0,
   logoBottomOffset: 0,
+  topBadgeScale: 100,
+  topBadgeOffsetX: 0,
+  topBadgeOffsetY: 0,
+  genreBadgeScale: 100,
+  genreBadgeOffsetX: 0,
+  genreBadgeOffsetY: 0,
+  qualityBadgeScale: 100,
+  qualityBadgeOffsetX: 0,
+  qualityBadgeOffsetY: 0,
+  networkLogoScale: 100,
+  networkLogoOffsetX: 0,
+  networkLogoOffsetY: 0,
 } as const
 
 export function buildStremioPosterSearchParams(input: StremioPosterParamsInput): URLSearchParams {
@@ -77,6 +117,7 @@ export function buildStremioPosterSearchParams(input: StremioPosterParamsInput):
 
   if (input.config) params.set("config", input.config)
   if (input.user) params.set("u", input.user)
+  if (input.region) params.set("region", input.region)
   // Rank anime noto al catalogo (posizione in lista): rende il badge Anime
   // deterministico su Stremio, indipendentemente dalle chiavi lato server.
   if (input.animerank) params.set("animerank", String(input.animerank))
@@ -86,8 +127,10 @@ export function buildStremioPosterSearchParams(input: StremioPosterParamsInput):
   if (input.badgeYear === false) params.set("by", "0")
   if (input.badgeRating === false) params.set("br", "0")
   if (input.badgeQuality === false) params.set("bq", "0")
+  if (input.customRatings === false) params.set("cr", "0")
   if (input.ratingSources && input.ratingSources.length > 0) params.set("rsrc", input.ratingSources.join(","))
   if (input.customBadge) params.set("extra", input.customBadge)
+  if (input.title) params.set("title", input.title)
   if (!networkLogo) params.set("netLogo", "0")
   if (!accentDominant) params.set("ad", "0")
   params.set("bts", String(input.badgeTopScale ?? DEFAULT_STREMIO_POSTER_PARAMS.badgeTopScale))
@@ -100,6 +143,7 @@ export function buildStremioPosterSearchParams(input: StremioPosterParamsInput):
   params.set("bto", String(input.badgeTopOffset ?? DEFAULT_STREMIO_POSTER_PARAMS.badgeTopOffset))
   params.set("bbo", String(input.badgeBottomOffset ?? DEFAULT_STREMIO_POSTER_PARAMS.badgeBottomOffset))
   params.set("lbo", String(input.logoBottomOffset ?? DEFAULT_STREMIO_POSTER_PARAMS.logoBottomOffset))
+  if (input.preRelease) params.set("pre", "1")
   if (input.ribbonSide === "right") params.set("side", "right")
   else if (input.ribbonSide === "left") params.set("side", "left")
   params.set("lang", input.lang || "it")
@@ -110,6 +154,18 @@ export function buildStremioPosterSearchParams(input: StremioPosterParamsInput):
   params.set("bd", String(input.blurDarkness ?? DEFAULT_STREMIO_POSTER_PARAMS.blurDarkness))
   params.set("bs", input.badgeStyle || DEFAULT_STREMIO_POSTER_PARAMS.badgeStyle)
   params.set("rs", input.rankingBadgeStyle || DEFAULT_STREMIO_POSTER_PARAMS.rankingBadgeStyle)
+  params.set("tscale", String(input.topBadgeScale ?? DEFAULT_STREMIO_POSTER_PARAMS.topBadgeScale))
+  params.set("tox", String(input.topBadgeOffsetX ?? DEFAULT_STREMIO_POSTER_PARAMS.topBadgeOffsetX))
+  params.set("toy", String(input.topBadgeOffsetY ?? DEFAULT_STREMIO_POSTER_PARAMS.topBadgeOffsetY))
+  params.set("gscale", String(input.genreBadgeScale ?? DEFAULT_STREMIO_POSTER_PARAMS.genreBadgeScale))
+  params.set("gox", String(input.genreBadgeOffsetX ?? DEFAULT_STREMIO_POSTER_PARAMS.genreBadgeOffsetX))
+  params.set("goy", String(input.genreBadgeOffsetY ?? DEFAULT_STREMIO_POSTER_PARAMS.genreBadgeOffsetY))
+  params.set("qscale", String(input.qualityBadgeScale ?? DEFAULT_STREMIO_POSTER_PARAMS.qualityBadgeScale))
+  params.set("qox", String(input.qualityBadgeOffsetX ?? DEFAULT_STREMIO_POSTER_PARAMS.qualityBadgeOffsetX))
+  params.set("qoy", String(input.qualityBadgeOffsetY ?? DEFAULT_STREMIO_POSTER_PARAMS.qualityBadgeOffsetY))
+  params.set("netscale", String(input.networkLogoScale ?? DEFAULT_STREMIO_POSTER_PARAMS.networkLogoScale))
+  params.set("nox", String(input.networkLogoOffsetX ?? DEFAULT_STREMIO_POSTER_PARAMS.networkLogoOffsetX))
+  params.set("noy", String(input.networkLogoOffsetY ?? DEFAULT_STREMIO_POSTER_PARAMS.networkLogoOffsetY))
   params.set("rv", String(POSTER_URL_VERSION))
   return params
 }

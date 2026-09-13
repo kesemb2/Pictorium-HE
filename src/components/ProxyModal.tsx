@@ -4,6 +4,7 @@ import React, { useState } from "react"
 import { toast } from "sonner"
 import { X, Copy, ExternalLink, Sparkles, Check, Link2 } from "lucide-react"
 import { useT } from "@/lib/contexts/TranslationContext"
+import { copyText } from "@/lib/clipboard"
 import { Modal } from "@/components/ui/Modal"
 
 interface Props {
@@ -26,13 +27,13 @@ export function ProxyModal({ isOpen, onClose }: Props) {
 
   const domain = typeof window !== "undefined" ? window.location.origin : ""
   const proxyUrl = targetUrl.trim()
-    ? `${domain}/api/proxy/manifest?url=${encodeURIComponent(targetUrl.trim())}`
+    ? `${domain}/api/proxy/manifest.json?url=${encodeURIComponent(targetUrl.trim())}`
     : ""
 
   const handleCopy = async () => {
     if (!proxyUrl) return
     try {
-      await navigator.clipboard.writeText(proxyUrl)
+      if (!(await copyText(proxyUrl))) throw new Error("copy failed")
       setCopied(true)
       toast.success(t("ui.copied"))
       setTimeout(() => setCopied(false), 2000)
@@ -106,6 +107,9 @@ export function ProxyModal({ isOpen, onClose }: Props) {
             <div className="p-3 rounded-xl bg-black/60 border border-accent-orange/20 break-all text-[11px] font-mono text-zinc-200">
               {proxyUrl}
             </div>
+            <p className="text-[11px] text-muted leading-relaxed">
+              {t("ui.proxyMappingNote")}
+            </p>
 
             <div className="grid grid-cols-2 gap-2 pt-2">
               <button

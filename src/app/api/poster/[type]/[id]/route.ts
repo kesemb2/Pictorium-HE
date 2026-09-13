@@ -1,11 +1,13 @@
 import { NextRequest } from "next/server"
 import sharp from "sharp"
 import { initSharp } from "@/lib/sharp-config"
-import { getImages, getDetails, getExternalIds, getKeywords, resolveRequestApiKey, type TMDBImage, type TMDBCompany } from "@/lib/tmdb"
-import { getJWRankings } from "@/lib/justwatch"
+import { getImages, getDetails, getExternalIds, getKeywords, getReleaseDates, resolveRequestApiKey, type TMDBImage, type TMDBCompany } from "@/lib/tmdb"
+import { getJWRankings, hasJWOffers } from "@/lib/justwatch"
+import { extractDigitalReleaseDate, isDigitalPreRelease } from "@/lib/pre-release"
 import { getById } from "@/lib/store"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { getServerDefaults } from "@/lib/server-defaults"
+import { getRegionDef, normalizeRegion, parseRegion, defaultRegionForLang } from "@/lib/regions"
 import { BEST_FIT_GLOBAL } from "@/lib/best-fit-config"
 import { warmFonts } from "@/lib/svg-badge"
 import { selectBestLogoFitPosterPath } from "@/lib/poster-auto-fit"
@@ -31,6 +33,8 @@ import {
   posterHeaders,
   posterNotModifiedHeaders,
   posterResponse,
+  convertPosterFormat,
+  variantEtagFor,
   readCachedPoster,
   readPosterError,
   recordZombieRenderStart,
@@ -76,6 +80,9 @@ import { selectLogoTier, pickReadableLogo, logoBestLogoFallbackReason } from "@/
  */
 const TITLE_UNDER_LOGO_LANGS = new Set(["he"])
 import { resolveStreamQuality } from "@/lib/stream-quality"
+import { combineAbortSignals } from "@/lib/abort-signal"
+import { createHash } from "node:crypto"
+import { fetchCustomRatings, resolveCustomRatingConfig, type RatingItem } from "@/lib/custom-rating"
 
 // Vercel: limite massimo di esecuzione della funzione. Il render poster ha un
 // deadline interno di 30s (PICTORIUM_RENDER_TIMEOUT_MS) → 40s copre il caso
@@ -103,6 +110,11 @@ const RENDER_TIMEOUT_MS = (() => {
   // limite della funzione serverless non avrebbe mai tempo di scattare (finding 11).
   return Number.isFinite(n) && n >= 1000 && n <= 40000 ? n : 30000
 })()
+
+// D5: tetto TMDB nel path poster (slot-bound). Un singolo fetch TMDB appeso
+// teneva 1 slot di render fino a 30s; a 8s il render degrada (fallback) o
+// fallisce in fretta liberando lo slot. Cataloghi/meta/search restano a 30s.
+const POSTER_TMDB_TIMEOUT_MS = 8000
 
 // Tetto massimo per l'attesa del voto medio TMDB+IMDb (MDBList) prima del
 // render: se il fetch è lento, il poster usa il voto TMDB senza bloccarsi.
@@ -151,6 +163,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   const configToken = req.nextUrl.searchParams.get("config") || req.nextUrl.searchParams.get("c")
   const configOverride = configToken ? decodeConfig(configToken) : null
 
+  // IMDb ID dal path (es. /api/poster/movie/tt1375666): preservato subito così
+  // il provider custom rating (e il ramo mapping) lo usano senza dipendere
+  // da getExternalIds — che richiede una chiave TMDB assente negli URL Stremio.
+  const pathImdbId = typeof id === "string" && /^tt\d+$/.test(id) ? id : null
   let tmdbId = Number(id)
   if (isNaN(tmdbId) || tmdbId <= 0) {
     if (typeof id === "string" && id.startsWith("tt")) {
@@ -163,19 +179,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     return new Response("Invalid ID", { status: 400, headers: corsHeaders() })
   }
 
-  // Bound anti-DoS/cache-flood sui query param, PRIMA di cache key, slot e
-  // inflight: la cache key contiene i param grezzi e i testi finiscono negli
-  // SVG, quindi un `extra` da 10KB significherebbe render enorme, entry di
-  // cache enorme e una key nuova per ogni valore distinto.
+  // R1: bound anti-DoS/cache-flood sui query param — PRIMA di cache key,
+  // slot e inflight: input oltre i bound → 400 immediato, mai render/cache.
+  // (I path immagine vengono validati anche contro l'allowlist in R2.)
   const invalidQuery = validatePosterQuery(req.nextUrl.searchParams)
   if (invalidQuery) {
     return new Response(invalidQuery, { status: 400, headers: corsHeaders() })
   }
 
-  // I path immagine passano per la stessa allowlist SSRF del render (`imgSrc`,
-  // che ammette TMDB e assets.fanart.tv), così non c'è deriva fra i due punti.
-  // Prima un URL esterno falliva dentro il try del render: 500 e negative-cache
-  // per un errore del CLIENT, con log e slot occupati. Ora 400 e basta.
+  // R2: i path immagine passano per l'allowlist SSRF di imgSrc() (stessa
+  // funzione usata dal render — nessuna deriva). Prima un URL esterno
+  // falliva dentro il try del render → 500 + negative-cache per un errore
+  // del client, intasando log e slot. Ora 400 immediato.
   for (const imgKey of ["poster", "logo", "backdrop"] as const) {
     const imgPath = req.nextUrl.searchParams.get(imgKey)
     if (imgPath) {
@@ -190,6 +205,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // 1. Get mapping + server defaults (no network)
   let mapping = await getById(mediaType, tmdbId)
   const sd = getServerDefaults()
+  const qRegion = parseRegion(req.nextUrl.searchParams.get("region") ?? req.nextUrl.searchParams.get("country"))
+  const configRegion = parseRegion(configOverride?.region)
+  const langParam = req.nextUrl.searchParams.get("lang") || mapping?.language
+  const langRegion = langParam ? (parseRegion(langParam) ?? defaultRegionForLang(langParam)) : null
+  const posterRegion = getRegionDef(qRegion ?? configRegion ?? langRegion ?? normalizeRegion(sd.region))
 
   // Auto-rotate clean poster
   const rotationState = getEffectiveRotationState(mapping)
@@ -204,7 +224,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   }
 
   // 2. Cache key
-  const sdHash = hashKey(JSON.stringify(sd))
+  // Riga rating custom: il provider deve essere configurato (env) E il display
+  // abilitato (catena query `cr` > mapping > config > defaults > true, come
+  // bg/by/br — vedi resolvePosterRenderConfig). `cr` resta nei cacheParams e
+  // `mv`/configHash coprono mapping/token, quindi niente stale.
+  const qCr = req.nextUrl.searchParams.get("cr")
+  const customRatingsDisplay = qCr !== null
+    ? qCr !== "0"
+    : (mapping?.customRatings ?? configOverride?.customRatings ?? sd.customRatings ?? true)
+  const envRatingConfig = resolveCustomRatingConfig({}, sd)
+  const customRatingConfig = { ...envRatingConfig, enabled: envRatingConfig.enabled && customRatingsDisplay }
+  const customRatingHash = customRatingConfig.enabled
+    ? createHash("sha256").update(JSON.stringify(customRatingConfig)).digest("hex") : ""
+  const sdHash = hashKey(JSON.stringify(sd) + customRatingHash)
   const cacheParams = normalizePosterCacheParams(req.nextUrl.searchParams)
   cacheParams.delete("config")
   cacheParams.delete("c")
@@ -219,11 +251,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   const mapVersion = mapping?.updatedAt ? `:mu${mapping.updatedAt}` : ""
   const configHash = configOverride ? hashKey(JSON.stringify(configOverride)) : ""
   const outputFormat = resolveImageFormat(req.headers.get("accept"), req.nextUrl.searchParams.get("fmt") || req.nextUrl.searchParams.get("format"))
-  const formatKey = outputFormat !== "jpeg" ? `:fmt${outputFormat}` : ""
-  const cacheKey = `poster:v${RENDER_VERSION}:${mediaType}:${tmdbId}:r${cachedRank ?? "x"}:sd${sdHash}:${cacheParams.toString()}${rotateKey}${mapVersion}${configHash ? `:cfg${configHash}` : ""}${formatKey}`
-  const etagBase = hashKey(`v${RENDER_VERSION}:${mediaType}:${tmdbId}:r${cachedRank ?? "x"}:sd${sdHash}:${cacheParams.toString()}${configHash ? `:${configHash}` : ""}:${outputFormat}`)
+  // C3: render canonico jpeg (il webp è variante di risposta convertita
+  // on-the-fly); solo ?fmt=avif esplicito mantiene chiave+render dedicati.
+  const legacyAvif = outputFormat === "avif"
+  const formatKey = legacyAvif ? ":fmtavif" : ""
+  const cacheKey = `poster:v${RENDER_VERSION}:${mediaType}:${tmdbId}:reg${posterRegion.code}:r${cachedRank ?? "x"}:sd${sdHash}:${cacheParams.toString()}${rotateKey}${mapVersion}${configHash ? `:cfg${configHash}` : ""}${formatKey}`
+  const variantKey = outputFormat === "webp" ? `${cacheKey}:fmtwebp` : cacheKey
+  const etagBase = hashKey(`v${RENDER_VERSION}:${mediaType}:${tmdbId}:reg${posterRegion.code}:r${cachedRank ?? "x"}:sd${sdHash}:${cacheParams.toString()}${configHash ? `:${configHash}` : ""}`)
   const currentMappingVersion = mappingVersionParam(mapping)
-  const immutablePoster = isImmutablePosterRequest(req.nextUrl.searchParams, {
+  // Rating dinamici: con provider abilitato niente cache immutable annuale
+  // (i rating cambiano) — vale anche il display-aware locale: solo la riga
+  // davvero renderizzata rinuncia all'immutable.
+  const immutablePoster = !customRatingConfig.enabled && isImmutablePosterRequest(req.nextUrl.searchParams, {
     hasMapping: !!mapping,
     isRotating,
     mappingVersionMatches: !!currentMappingVersion && req.nextUrl.searchParams.get("mv") === currentMappingVersion,
@@ -234,22 +273,56 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // invece delle 24h del path mappato, così rank/IMDb Top 250 non restano
   // stantii per un giorno intero. Il flag non cambia per tutta la richiesta.
   const dynamicPoster = !mapping
+  const mappingTag = mapping ? `poster:${mediaType}:${tmdbId}` : undefined
+
+  // C3: risposta webp da payload canonico jpeg (cache variante o conversione).
+  const serveWebpVariant = async (canonical: PosterCachePayload): Promise<Response> => {
+    const variantHit = readCachedPoster(variantKey)
+    if (variantHit.payload) {
+      return posterResponse(variantHit.payload, immutablePoster, isPreview, dynamicPoster, outputFormat)
+    }
+    const converted = await convertPosterFormat(canonical.buffer)
+    const variant: PosterCachePayload = { buffer: converted, etag: variantEtagFor(canonical.etag) }
+    writeCachedPoster(variantKey, variant, mappingTag)
+    return posterResponse(variant, immutablePoster, isPreview, dynamicPoster, outputFormat)
+  }
 
   // 3. Memory cache check
+  // C3: la variante webp ha fast-path dedicato; il canonico jpeg resta il
+  // fallback (conversione) quando la variante è assente/evicted.
+  if (outputFormat === "webp" && !refreshRequest) {
+    const variantHit = readCachedPoster(variantKey)
+    if (variantHit.payload) {
+      recordPosterRequest(true, outputFormat)
+      if (!isPreview && req.headers.get("If-None-Match") === variantHit.payload.etag) {
+        log.debug("Poster cache: 304 (variant)", { mediaType, tmdbId, ms: Date.now() - startTime })
+        return new Response(null, { status: 304, headers: posterNotModifiedHeaders(variantHit.payload.etag, immutablePoster, dynamicPoster) })
+      }
+      if (!variantHit.stale) {
+        log.debug("Poster cache: fresh variant hit", { mediaType, tmdbId, ms: Date.now() - startTime })
+        return posterResponse(variantHit.payload, immutablePoster, isPreview, dynamicPoster, outputFormat)
+      }
+      schedulePosterRefresh(req, isPreview)
+      log.debug("Poster cache: stale variant hit (refresh scheduled)", { mediaType, tmdbId, ms: Date.now() - startTime })
+      return posterResponse(variantHit.payload, immutablePoster, isPreview, dynamicPoster, outputFormat)
+    }
+  }
   const cachedPoster = readCachedPoster(cacheKey)
   if (cachedPoster.payload) {
     recordPosterRequest(true, outputFormat)
-    if (!isPreview && req.headers.get("If-None-Match") === cachedPoster.payload.etag) {
+    if (!isPreview && outputFormat !== "webp" && req.headers.get("If-None-Match") === cachedPoster.payload.etag) {
       log.debug("Poster cache: 304", { mediaType, tmdbId, ms: Date.now() - startTime })
       return new Response(null, { status: 304, headers: posterNotModifiedHeaders(cachedPoster.payload.etag, immutablePoster, dynamicPoster) })
     }
     if (!cachedPoster.stale) {
       log.debug("Poster cache: fresh hit", { mediaType, tmdbId, ms: Date.now() - startTime })
+      if (outputFormat === "webp") return serveWebpVariant(cachedPoster.payload)
       return posterResponse(cachedPoster.payload, immutablePoster, isPreview, dynamicPoster, outputFormat)
     }
     if (!refreshRequest) {
       schedulePosterRefresh(req, isPreview)
       log.debug("Poster cache: stale hit (refresh scheduled)", { mediaType, tmdbId, ms: Date.now() - startTime })
+      if (outputFormat === "webp") return serveWebpVariant(cachedPoster.payload)
       return posterResponse(cachedPoster.payload, immutablePoster, isPreview, dynamicPoster, outputFormat)
     }
   }
@@ -271,6 +344,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       recordPosterRequest(true, outputFormat)
       // Finding 5: il waiter della preview deve ricevere gli header no-store
       // anche quando si coalesce con un render in flight (era hardcoded false).
+      // C3: il payload condiviso è canonico jpeg — il waiter webp converte.
+      if (outputFormat === "webp" && !legacyAvif) return serveWebpVariant(payload)
       return posterResponse(payload, immutablePoster, isPreview, dynamicPoster, outputFormat)
     }
     // Coalesce scaduto: o il render è fallito (negative cache) o è ancora in
@@ -320,7 +395,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   const renderDeadline = setTimeout(() => {
     deadlineFired = true
     renderAbort.abort()
-    completePosterRender(null)
+    // R4: risolve i waiter con null ma TIENE l'entry inflight prenotata allo
+    // zombie (keepEntry) — i nuovi arrivati fanno 503 immediato invece di
+    // duplicare il render. L'entry si libera alla fine dello zombie o al
+    // timeout 60s di beginPosterRender.
+    completePosterRender(null, true)
     endZombieRender = recordZombieRenderStart()
     releaseSlotOnce()
   }, RENDER_TIMEOUT_MS)
@@ -354,6 +433,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // renderAbort non viene mai abortito a render riuscito → il controller va
   // abortito subito dopo la race per non lasciare il fetch orfano in background.
   let aggregatedRating: ReturnType<typeof fetchAggregatedRating> | null = null
+  let multiRatingOnly = false
+  const ratings: RatingItem[] = []
   let ratingAbort: AbortController | null = null
   let showBadges = true
   let rankingBadges = true
@@ -371,7 +452,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   let productionCompanies: string[] = []
   let tmdbNetworksDetailed: { name: string; logoPath: string | null }[] = []
   let productionCompaniesDetailed: { name: string; logoPath: string | null }[] = []
-  let imdbId: string | null = null
+  let imdbId: string | null = pathImdbId
   // Titolo nella lingua richiesta + "TMDB aveva un logo in quella lingua?".
   // Insieme decidono la riga di titolo sotto il logo (vedi titleUnderLogo).
   let resolvedTitle: string | null = null
@@ -410,13 +491,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     // Fix M1: anno della preview (WYSIWYG). Senza, il ramo query non impostava
     // releaseDate/firstAirDate e il badge genere della preview ometteva
     // "• 2024" presente invece sul poster finale.
-    const queryYear = req.nextUrl.searchParams.get("year")
-    if (queryYear && /^\d{4}$/.test(queryYear.slice(0, 4))) {
-      const y = queryYear.slice(0, 4)
-      if (mediaType === "tv") firstAirDate = `${y}-01-01`
-      else releaseDate = `${y}-01-01`
+    // Date complete (`rd`/`fad`) quando il client le conosce: l'anno da solo
+    // diventa `${y}-01-01` e cade fuori dalla finestra theatrical del
+    // rilevamento pre-digitale (desync preview/finale).
+    const queryRd = req.nextUrl.searchParams.get("rd")
+    const queryFad = req.nextUrl.searchParams.get("fad")
+    if (mediaType === "tv" && queryFad && /^\d{4}-\d{2}-\d{2}$/.test(queryFad)) {
+      firstAirDate = queryFad
+    } else if (mediaType !== "tv" && queryRd && /^\d{4}-\d{2}-\d{2}$/.test(queryRd)) {
+      releaseDate = queryRd
+    } else {
+      const queryYear = req.nextUrl.searchParams.get("year")
+      if (queryYear && /^\d{4}$/.test(queryYear.slice(0, 4))) {
+        const y = queryYear.slice(0, 4)
+        if (mediaType === "tv") firstAirDate = `${y}-01-01`
+        else releaseDate = `${y}-01-01`
+      }
     }
-    imdbId = req.nextUrl.searchParams.get("imdbId") || null
+    imdbId = req.nextUrl.searchParams.get("imdbId") || imdbId
     resolvedTitle = req.nextUrl.searchParams.get("title")
     // Il ramo preview non vede la lista loghi di TMDB, quindi non può dedurre
     // "manca il logo nella lingua": lo dichiara il client con `tul=1`
@@ -448,8 +540,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     hasLangLogo = true
     showBadges = mapping.showBadges ?? true
     rankingBadges = mapping.rankingBadges ?? true
+    // IMDb ID salvato al save (il path `tt...` vince se presente): evita il
+    // fallback getExternalIds che richiede una chiave TMDB assente in Stremio.
+    imdbId = imdbId ?? mapping.imdbId ?? null
     etag = `"m${etagBase}:${mapping.updatedAt}"`
-    if (req.headers.get("If-None-Match") === etag) {
+    if (!customRatingConfig.enabled && req.headers.get("If-None-Match") === etag) {
       clearTimeout(renderDeadline)
       completePosterRender(null)
       return new Response(null, { status: 304, headers: posterNotModifiedHeaders(etag, immutablePoster, dynamicPoster) })
@@ -478,9 +573,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       } else {
         const baseLangs = `${preferredLanguage},en,null`
         const [det, ext, imgs] = await Promise.all([
-          getDetails(mediaType, tmdbId, preferredLanguage, apiKey, renderAbort.signal),
-          getExternalIds(mediaType, tmdbId, apiKey, renderAbort.signal).catch(() => ({ imdb_id: null, tvdb_id: null })),
-          getImages(mediaType, tmdbId, baseLangs, apiKey, renderAbort.signal),
+          getDetails(mediaType, tmdbId, preferredLanguage, apiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS),
+          getExternalIds(mediaType, tmdbId, apiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => ({ imdb_id: null, tvdb_id: null })),
+          getImages(mediaType, tmdbId, baseLangs, apiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS),
         ])
         details = det
         extIds = ext
@@ -488,7 +583,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         const needsOrigLang = origLang && origLang !== preferredLanguage && origLang !== "en"
           && (imgs.posters.length === 0 || imgs.logos.length === 0)
         images = needsOrigLang
-          ? await getImages(mediaType, tmdbId, `${baseLangs},${origLang}`, apiKey, renderAbort.signal).catch(() => imgs)
+          ? await getImages(mediaType, tmdbId, `${baseLangs},${origLang}`, apiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => imgs)
           : imgs
         setTMDBSessionCache(mediaType, tmdbId, { details: det, images, externalIds: ext })
       }
@@ -614,7 +709,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
             const bestFit = await selectBestLogoFitPosterPath({
               posters: images.posters, logoPath,
               fetchImage: async (path: string) => {
-                const res = await fetch(imgSrc(path), { signal: AbortSignal.timeout(5000) })
+                // B5: combina col watchdog — prima AbortSignal.timeout(5000)
+                // ignorava renderAbort: dopo la deadline i fetch continuavano
+                // come zombie (slot già liberato, lavoro buttato).
+                const res = await fetch(imgSrc(path), { signal: combineAbortSignals(renderAbort.signal, 5000) })
                 if (!res.ok) throw new Error(`HTTP ${res.status}`)
                 return Buffer.from(await res.arrayBuffer())
               },
@@ -623,7 +721,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
                   throw new Error("Blocked external URL in fetchCandidateImage")
                 }
                 const url = path.startsWith("http") ? path : `https://image.tmdb.org/t/p/w342${path}`
-                const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
+                const res = await fetch(url, { signal: combineAbortSignals(renderAbort.signal, 5000) })
                 if (!res.ok) throw new Error(`HTTP ${res.status}`)
                 return Buffer.from(await res.arrayBuffer())
               },
@@ -701,6 +799,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           const origPoster = details.original_language ? images.posters.find((p: TMDBImage) => p.iso_639_1 === details.original_language) : undefined
           const chosen = langPoster || origPoster || images.posters[0]
           if (chosen) posterPath = chosen.file_path
+          // Poster con il titolo già stampato: mai il logo sopra
+          // (stesso invariante del client).
+          logoPath = null
+          logoPathBuffer = null
         }
       }
     } catch (e) {
@@ -745,7 +847,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       }
     }
 
-    const qBadgesEarly = req.nextUrl.searchParams.get("badges")
     const qRankingEarly = req.nextUrl.searchParams.get("ranking")
     const qBqEarly = req.nextUrl.searchParams.get("bq")
     const qQualityParam = req.nextUrl.searchParams.get("quality")
@@ -756,9 +857,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     // trend. Con un config token la personalizzazione è esplicita → i flag off
     // devono valere.
     const hasQueryEarly = !!queryPoster || !!mapping || !!configToken
-    const badgesEnabledEarly = hasQueryEarly ? (qBadgesEarly !== null ? qBadgesEarly !== "0" : showBadges) : true
     const rankingEnabledEarly = hasQueryEarly ? (qRankingEarly !== null ? qRankingEarly !== "0" : rankingBadges) : true
     const badgeQualityEarly = qBqEarly !== null ? qBqEarly !== "0" : (mapping?.badgeQuality ?? configOverride?.badgeQuality ?? sd.badgeQuality ?? true)
+    // Flag pre-digitale per il fetch condizionato: query `pre` > config token
+    // > server defaults > false (stessa catena di poster-config, senza mapping).
+    const qPreEarly = req.nextUrl.searchParams.get("pre")
+    const preReleaseEnabledEarly = qPreEarly !== null ? qPreEarly !== "0" : (configOverride?.preRelease ?? sd.preRelease ?? false)
+    // Segnali grezzi del rilevamento pre-digitale (solo debug=1).
+    let preJw: boolean | null = null
+    let preDigital: string | null = null
     // Rank anime inviato dal client nella preview WYSIWYG (override del fetch).
     const qAnimeRankParam = req.nextUrl.searchParams.get("animerank")
     const qAnimeRank = qAnimeRankParam ? Number(qAnimeRankParam) : NaN
@@ -768,7 +875,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     const emptyWikidata = { awards: [], nominations: [], studios: [], director: null, directorHe: null }
     const WIKIDATA_TIMEOUT = Number(process.env.WIKIDATA_TIMEOUT) || 2500
     const [
-      [originalBuf, logoFetch, backdropFetch, rankingResult, animeRankResult, liveQualityResult],
+      [originalBuf, logoFetch, backdropFetch, rankingResult, animeRankResult, liveQualityResult, preReleaseDetected],
       [wikidataResult, tmdbKeywords, imdbTop250, tmdbTrending],
     ] = await Promise.all([
       // Block A: images + ranking data + quality
@@ -781,7 +888,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           : logoPath ? fetchImg(imgSrc(logoPath), renderAbort.signal).catch(() => null) : Promise.resolve(null),
         backdropPath ? fetchImg(imgSrc(backdropPath), renderAbort.signal).catch(() => null) : Promise.resolve(null),
         rankingEnabledEarly
-          ? getJWRankings(mediaType === "movie" ? "MOVIE" : "SHOW", "IT", undefined, undefined, undefined, renderAbort.signal)
+          // R3: signal del watchdog — allo scatto della deadline il fetch
+          // abortisce invece di proseguire come zombie in background.
+          ? getJWRankings(mediaType === "movie" ? "MOVIE" : "SHOW", posterRegion.code, 20, undefined, posterRegion.lang, renderAbort.signal)
             .then((r) => r.find((x) => x.tmdbId === tmdbId)?.rank ?? null)
             // Solo il FETCH FALLITO (rete/outage) ripiega sul rank salvato nel
             // mapping (degraded esplicito). La miss genuina (fetch riuscito, il
@@ -805,7 +914,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
               : fetchMDBList(
                   mediaType === "movie" ? "mdblistAnimeMovie" : "mdblistAnime",
                   req.nextUrl.searchParams.get("mdblist_key") || envWithFallback("MDBLIST_KEY") || process.env.MDBLIST_KEY || process.env.MDBLIST_API_KEY || undefined,
-                  renderAbort.signal,
+                  renderAbort.signal
                 )
                   .then((entries) => {
                     // Shape inattesa → come failure: fallback al salvato.
@@ -819,7 +928,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
                   })
                   .catch(() => mapping?.animeRank ?? null))
           : Promise.resolve(null),
-        (badgesEnabledEarly && badgeQualityEarly)
+        (badgeQualityEarly)
           ? (qQualityParam
               ? Promise.resolve(qQualityParam)
               : (() => {
@@ -836,6 +945,51 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
                   ).catch(() => null)
                 })())
           : Promise.resolve(null),
+        // Rilevamento pre-digitale (solo film, solo se flag `pre` ON):
+        // JustWatch ha la precedenza, TMDB release_dates (type 4) come
+        // fallback. Tetto 2500ms con fail-open: a dati ignoti il poster
+        // resta normale invece di attendere gli upstream.
+        (preReleaseEnabledEarly && mediaType === "movie"
+          ? (async (): Promise<boolean> => {
+              let preTimer: ReturnType<typeof setTimeout> | undefined
+              const preTimeout = new Promise<false>((r) => {
+                preTimer = setTimeout(() => r(false), 2500)
+              })
+              const detect = (async (): Promise<boolean> => {
+                try {
+                  const apiKey = resolveRequestApiKey(req)
+                  // Titolo per la ricerca JW (stesso fallback del blocco
+                  // qualità): senza searchQuery la query chiede 5 titoli
+                  // popolari generici e il match per tmdbId fallisce quasi
+                  // sempre → disponibilità ignota → poster normale.
+                  const sessionDetails = getTMDBSessionCache(mediaType, tmdbId)?.details
+                  const preTitle = mapping?.title
+                    || req.nextUrl.searchParams.get("title")
+                    || sessionDetails?.title
+                    || sessionDetails?.name
+                    || genreName
+                    || null
+                  const [relDates, jw] = await Promise.all([
+                    getReleaseDates(mediaType, tmdbId, apiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => null),
+                    hasJWOffers(tmdbId, "MOVIE", preTitle, posterRegion.code, renderAbort.signal).catch(() => null),
+                  ])
+                  preDigital = relDates ? extractDigitalReleaseDate(relDates, posterRegion.code) : null
+                  preJw = jw
+                  return isDigitalPreRelease({
+                    mediaType,
+                    theatricalDate: releaseDate ?? mapping?.releaseDate ?? null,
+                    digitalDate: preDigital,
+                    jwAvailable: jw,
+                  })
+                } catch {
+                  return false
+                }
+              })()
+              const detected = await Promise.race([detect, preTimeout])
+              if (preTimer) clearTimeout(preTimer)
+              return detected
+            })()
+          : Promise.resolve(false)),
       ]),
       // Block B: badge data (independent of Block A — runs concurrently)
       Promise.all([
@@ -843,8 +997,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         // il fetch (prima restava attivo fino alla scadenza del timeout).
         (async () => {
           let wikidataTimer: ReturnType<typeof setTimeout> | undefined
+          let wikidataTimedOut = false
+          const wdStart = Date.now()
           const wikidataTimeout = new Promise<typeof emptyWikidata>((r) => {
-            wikidataTimer = setTimeout(() => r(emptyWikidata), WIKIDATA_TIMEOUT)
+            wikidataTimer = setTimeout(() => { wikidataTimedOut = true; r(emptyWikidata) }, WIKIDATA_TIMEOUT)
           })
           const result = await Promise.race([
             rankingEnabledEarly
@@ -853,21 +1009,39 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
             wikidataTimeout,
           ])
           if (wikidataTimer) clearTimeout(wikidataTimer)
+          // a. Osservabilità lotteria badge: esito + tempo + contenuto. Un
+          // timeout qui = poster senza premi (per le serie, senza rete: nessun
+          // badge) congelato in cache per ore — dal log si distingue subito un
+          // miss genuino (fetch veloce, zero premi) da una gara persa.
+          log.debug("Wikidata race outcome", {
+            mediaType, tmdbId, ms: Date.now() - wdStart, timedOut: wikidataTimedOut,
+            awards: result.awards?.length ?? 0, nominations: result.nominations?.length ?? 0,
+          })
           return result
         })(),
         rankingEnabledEarly
-          ? getKeywords(mediaType, tmdbId, resolveRequestApiKey(req), renderAbort.signal).catch(() => [])
+          ? getKeywords(mediaType, tmdbId, resolveRequestApiKey(req), renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => [])
           : Promise.resolve([]),
         (async () => {
-          if (!rankingEnabledEarly) return false
+          if (!rankingEnabledEarly && !customRatingConfig.enabled) return false
           if (!imdbId) {
             // F6: externalIds già in session cache (ramo non-mappato) → niente rete.
             const extIds = getTMDBSessionCache(mediaType, tmdbId)?.externalIds
-              ?? (await getExternalIds(mediaType, tmdbId, resolveRequestApiKey(req), renderAbort.signal).catch(() => null))
+              ?? (await getExternalIds(mediaType, tmdbId, resolveRequestApiKey(req), renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => null))
             if (extIds?.imdb_id) imdbId = extIds.imdb_id
           }
           if (!imdbId) return false
-          return isImdbTop250(imdbId, renderAbort.signal)
+          if (customRatingConfig.enabled && !aggregatedRating) {
+            // Saved/query posters need source data only; keep their legacy vote intact.
+            multiRatingOnly = true
+            ratingAbort = new AbortController()
+            aggregatedRating = fetchAggregatedRating(
+              imdbId,
+              req.nextUrl.searchParams.get("mdblist_key") || envWithFallback("MDBLIST_KEY") || undefined,
+              combineAbortSignals(AbortSignal.any([renderAbort.signal, ratingAbort.signal]), RATING_WAIT_MS),
+            ).catch(() => null)
+          }
+          return rankingEnabledEarly ? isImdbTop250(imdbId, renderAbort.signal) : false
         })(),
         // Classifica settimanale TMDB. Cachata a monte (lista per media type,
         // non per titolo), quindi una griglia catalogo paga una fetch sola.
@@ -890,8 +1064,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       })
       const aggregated = await Promise.race([aggregatedRating, ratingTimeout])
       if (ratingTimer) clearTimeout(ratingTimer)
-      const avgVote = calculateAverageRating(aggregated, reqRatingSources)
-      if (typeof avgVote === "number" && avgVote > 0) voteAverage = avgVote
+      const imdbRating = aggregated?.sources.imdb
+      if (customRatingConfig.enabled && typeof imdbRating === "number" && Number.isFinite(imdbRating) && imdbRating > 0 && imdbRating <= 10) {
+        ratings.push({ id: "imdb", name: "IMDb", value: imdbRating, format: "decimal" })
+      }
+      if (!multiRatingOnly) {
+        const avgVote = calculateAverageRating(aggregated, reqRatingSources)
+        if (typeof avgVote === "number" && avgVote > 0) voteAverage = avgVote
+      }
       ratingAbort?.abort()
     }
 
@@ -930,7 +1110,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     if (mapping?.firstAirDate) firstAirDate = mapping.firstAirDate
 
     // Luminance + optional TV details fetch (parallel, independent)
-    const [topLum] = await Promise.all([
+    const [customRatings, topLum] = await Promise.all([
+      customRatingConfig.enabled ? fetchCustomRatings(imdbId, customRatingConfig, renderAbort.signal) : Promise.resolve([]),
       (async (): Promise<number | null> => {
         if (qTopLight === "1" || qTopLight === "0" || qTopLight === "true" || qTopLight === "false") return null
         return await topLuminance(posterBuf)
@@ -940,8 +1121,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
             const apiKey = resolveRequestApiKey(req)
             const preferredLang = req.nextUrl.searchParams.get("lang") || mapping?.language || "it"
             // F6: anche il refetch dei dettagli TV riusa la session cache.
+            // Un singolo retry sul fallimento transitorio (cold-start
+            // upstream): senza dettagli saltano studio/network badge e il
+            // render resta cachato così per tutto il TTL.
             const details = getTMDBSessionCache(mediaType, tmdbId)?.details
-              ?? (await getDetails(mediaType, tmdbId, preferredLang, apiKey, renderAbort.signal).catch(() => null))
+              ?? (await getDetails(mediaType, tmdbId, preferredLang, apiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => null))
+              ?? (await getDetails(mediaType, tmdbId, preferredLang, apiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => null))
             if (!details) return
             if (!releaseDate) releaseDate = details.release_date || null
             if (!firstAirDate) firstAirDate = details.first_air_date || null
@@ -990,10 +1175,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       badgesEnabled, rankingEnabled,
       badgeGenre, badgeYear, badgeRating, badgeQuality,
       logoScale, logoOffsetX, logoOffsetY,
-      queryExtra, qNetLogo, networkLogo, accentDominant, ribbonSide,
-      badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset,
-      textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
+      topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale,
+      genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY,
+      queryExtra, qNetLogo, networkLogo, ribbonSide, preRelease, accentDominant,
+      badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity,
+      textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
     } = renderConfig
+
+    // Il rilevamento (`preReleaseDetected`) cambia nel tempo: non entra nella
+    // cache key (verrebbe letta prima del fetch), il ritorno al poster normale
+    // avviene alla scadenza del TTL (6h non-mappati, 24h mappati).
+    const applyPreRelease = preRelease && preReleaseDetected
 
     const finalQuality = qQualityParam || liveQualityResult || null
 
@@ -1042,6 +1234,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           tmdbId,
           mediaType,
           locale,
+          region: posterRegion.code,
           imdbId,
           imdbTop250: !!imdbTop250,
           renderVersion: RENDER_VERSION,
@@ -1054,6 +1247,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         genre: { name: genreName, year: releaseDate?.slice(0, 4) },
         vote: { average: voteAverage },
         quality: finalQuality,
+        preRelease: { enabled: preRelease, detected: preReleaseDetected, applied: applyPreRelease, jwAvailable: preJw, digitalDate: preDigital, theatricalDate: releaseDate ?? mapping?.releaseDate ?? null },
         rankings: {
           justwatch: rankingResult,
           anime: animeRankResult,
@@ -1105,6 +1299,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           offsetY: logoOffsetY,
           networkLogo,
         },
+        topBadge: {
+          scale: topBadgeScale,
+          offsetX: topBadgeOffsetX,
+          offsetY: topBadgeOffsetY,
+        },
+        genreBadge: {
+          scale: genreBadgeScale,
+        },
       })
     }
 
@@ -1132,6 +1334,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
 
     // 10. Generate poster buffer
     const genInput: GenerationInput = {
+      // Custom values override internal sources with the same ID, preserving order.
+      ratings: customRatingConfig.enabled ? [...new Map([...ratings, ...customRatings].map(item => [item.id, item])).values()] : undefined,
       posterBuf, logoFetch, backdropFetch,
       backdropScale, backdropOffsetX, backdropOffsetY,
       blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness,
@@ -1142,6 +1346,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       logoScale, logoOffsetX, logoOffsetY,
       title: resolvedTitle,
       titleUnderLogo: showTitleUnderLogo,
+      topBadgeScale, topBadgeOffsetX, topBadgeOffsetY,
+      genreBadgeScale, qualityBadgeScale, networkLogoScale,
+      genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY,
+      networkLogoOffsetX, networkLogoOffsetY,
       mediaType: mediaType as "movie" | "tv",
       finalRank, animeRankResult, rankingResult,
       mapping, tmdbNetworks, productionCompanies, tmdbStudios,
@@ -1154,29 +1362,39 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
       wikidataResult, tmdbKeywords, locale, t,
       qLabel, queryExtra, qNetLogo, networkLogo, sd,
-      accentOverride, imdbTop250,
+      accentOverride, imdbTop250, preRelease: applyPreRelease,
       posterSrc: posterPath,
       logoSrc: logoPath,
       backdropSrc: backdropPath,
-      format: outputFormat,
+      // C3: render sempre canonico jpeg (tranne ?fmt=avif legacy esplicito).
+      format: legacyAvif ? outputFormat : "jpeg",
     }
     if (renderAbort.signal.aborted) {
       throw new Error("Render deadline exceeded before poster compositing")
     }
     const composited = await generatePosterBuffer(genInput)
+    if (customRatingConfig.enabled) {
+      etag = `${etag.slice(0, -1)}:cr${hashKey(JSON.stringify(genInput.ratings))}"`
+    }
 
     // 10. Fix stale auto ETag: include dynamic data (rank, rating) so when it re-renders, the ETag changes
     if (!mapping && !isPreview) {
-      etag = `${etag.slice(0, -1)}:${finalRank ?? "X"}:${imdbTop250}:${voteAverage ?? "0"}"`
+      etag = `${etag.slice(0, -1)}:${finalRank ?? "X"}:${imdbTop250}:${voteAverage ?? "0"}:${applyPreRelease ? "P" : "x"}"`
     }
 
     // 11. Cache + response
     const payload = { buffer: composited, etag }
-    const mappingTag = mapping ? `poster:${mediaType}:${tmdbId}` : undefined
     writeCachedPoster(cacheKey, payload, mappingTag)
     completePosterRender(payload)
     recordPosterRequest(false, outputFormat)
+    // Enabled enrichment must revalidate against the final state, including [].
+    const responseEtag = outputFormat === "webp" ? variantEtagFor(etag) : etag
+    if (customRatingConfig.enabled && !isPreview && req.headers.get("If-None-Match") === responseEtag) {
+      return new Response(null, { status: 304, headers: posterNotModifiedHeaders(responseEtag, immutablePoster, dynamicPoster) })
+    }
     log.info("Poster rendered", { mediaType, tmdbId, ms: Date.now() - startTime, bytes: composited.byteLength, cached: !!mappingTag, format: outputFormat })
+    // C3: il webp è variante di risposta (convertita + cachata), non un render.
+    if (outputFormat === "webp") return serveWebpVariant(payload)
     return new Response(new Uint8Array(composited), { headers: posterHeaders(etag, immutablePoster, isPreview, dynamicPoster, outputFormat) })
   } catch (e) {
     completePosterRender(null)

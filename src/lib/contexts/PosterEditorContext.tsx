@@ -28,6 +28,9 @@ export interface PosterEditorCtx {
   setBadgeRating: (v: boolean | ((prev: boolean) => boolean)) => void
   badgeQuality: boolean
   setBadgeQuality: (v: boolean | ((prev: boolean) => boolean)) => void
+  /** Riga rating custom provider (default ON quando il provider è configurato). */
+  customRatings: boolean
+  setCustomRatings: (v: boolean | ((prev: boolean) => boolean)) => void
   ratingSources: string[]
   setRatingSources: (v: string[] | ((prev: string[]) => string[])) => void
   badgeStyle: BadgeStyle
@@ -60,6 +63,8 @@ export interface PosterEditorCtx {
   setBadgeBottomOffset: (v: number | ((prev: number) => number)) => void
   logoBottomOffset: number
   setLogoBottomOffset: (v: number | ((prev: number) => number)) => void
+  preRelease: boolean
+  setPreRelease: (v: boolean | ((prev: boolean) => boolean)) => void
   ribbonSide: "left" | "right"
   setRibbonSide: (v: "left" | "right" | ((prev: "left" | "right") => "left" | "right")) => void
   episodeMetadataSource: "tmdb" | "tvdb"
@@ -84,6 +89,30 @@ export interface PosterEditorCtx {
   setDefaultBlurDarkness: (v: number | ((prev: number) => number)) => void
   defaultGradientHeight: number
   setDefaultGradientHeight: (v: number | ((prev: number) => number)) => void
+  defaultTopBadgeScale: number
+  setDefaultTopBadgeScale: (v: number | ((prev: number) => number)) => void
+  defaultTopBadgeOffsetX: number
+  setDefaultTopBadgeOffsetX: (v: number | ((prev: number) => number)) => void
+  defaultTopBadgeOffsetY: number
+  setDefaultTopBadgeOffsetY: (v: number | ((prev: number) => number)) => void
+  defaultGenreBadgeScale: number
+  setDefaultGenreBadgeScale: (v: number | ((prev: number) => number)) => void
+  defaultQualityBadgeScale: number
+  setDefaultQualityBadgeScale: (v: number | ((prev: number) => number)) => void
+  defaultNetworkLogoScale: number
+  setDefaultNetworkLogoScale: (v: number | ((prev: number) => number)) => void
+  defaultNetworkLogoOffsetX: number
+  setDefaultNetworkLogoOffsetX: (v: number | ((prev: number) => number)) => void
+  defaultNetworkLogoOffsetY: number
+  setDefaultNetworkLogoOffsetY: (v: number | ((prev: number) => number)) => void
+  defaultGenreBadgeOffsetX: number
+  setDefaultGenreBadgeOffsetX: (v: number | ((prev: number) => number)) => void
+  defaultGenreBadgeOffsetY: number
+  setDefaultGenreBadgeOffsetY: (v: number | ((prev: number) => number)) => void
+  defaultQualityBadgeOffsetX: number
+  setDefaultQualityBadgeOffsetX: (v: number | ((prev: number) => number)) => void
+  defaultQualityBadgeOffsetY: number
+  setDefaultQualityBadgeOffsetY: (v: number | ((prev: number) => number)) => void
   defaultGlobalBadges: boolean
   setDefaultGlobalBadges: (v: boolean | ((prev: boolean) => boolean)) => void
   defaultRankingBadges: boolean
@@ -96,6 +125,13 @@ export interface PosterEditorCtx {
   setDefaultBadgeRating: (v: boolean | ((prev: boolean) => boolean)) => void
   defaultBadgeQuality: boolean
   setDefaultBadgeQuality: (v: boolean | ((prev: boolean) => boolean)) => void
+  defaultCustomRatings: boolean
+  setDefaultCustomRatings: (v: boolean | ((prev: boolean) => boolean)) => void
+  /** Endpoint provider custom rating (non-segreto; chiave solo env). */
+  defaultCustomRatingEndpoint?: string
+  setDefaultCustomRatingEndpoint: (v: string | undefined | ((prev: string | undefined) => string | undefined)) => void
+  defaultCustomRatingApiKeyHeader?: string
+  setDefaultCustomRatingApiKeyHeader: (v: string | undefined | ((prev: string | undefined) => string | undefined)) => void
   defaultRatingSources: string[]
   setDefaultRatingSources: (v: string[] | ((prev: string[]) => string[])) => void
   defaultAutoRotateClean: boolean
@@ -126,6 +162,8 @@ export interface PosterEditorCtx {
   defaultLogoBottomOffset: number
   setDefaultLogoBottomOffset: (v: number | ((prev: number) => number)) => void
   setDefaultNetworkLogo: (v: boolean | ((prev: boolean) => boolean)) => void
+  defaultPreRelease: boolean
+  setDefaultPreRelease: (v: boolean | ((prev: boolean) => boolean)) => void
   defaultRibbonSide: "left" | "right"
   setDefaultRibbonSide: (v: "left" | "right" | ((prev: "left" | "right") => "left" | "right")) => void
   defaultRegion: string
@@ -145,6 +183,38 @@ export interface PosterEditorCtx {
   // ---- Gradient ----
   gradientHeight: number
   setGradientHeight: (v: number | ((prev: number) => number)) => void
+
+  // ---- Badge superiore (rank/extra in alto) ----
+  topBadgeScale: number
+  setTopBadgeScale: (v: number | ((prev: number) => number)) => void
+  topBadgeOffsetX: number
+  setTopBadgeOffsetX: (v: number | ((prev: number) => number)) => void
+  topBadgeOffsetY: number
+  setTopBadgeOffsetY: (v: number | ((prev: number) => number)) => void
+
+  // ---- Badge genere/rating in basso ----
+  genreBadgeScale: number
+  setGenreBadgeScale: (v: number | ((prev: number) => number)) => void
+  genreBadgeOffsetX: number
+  setGenreBadgeOffsetX: (v: number | ((prev: number) => number)) => void
+  genreBadgeOffsetY: number
+  setGenreBadgeOffsetY: (v: number | ((prev: number) => number)) => void
+
+  // ---- Badge qualità streaming ----
+  qualityBadgeScale: number
+  setQualityBadgeScale: (v: number | ((prev: number) => number)) => void
+  qualityBadgeOffsetX: number
+  setQualityBadgeOffsetX: (v: number | ((prev: number) => number)) => void
+  qualityBadgeOffsetY: number
+  setQualityBadgeOffsetY: (v: number | ((prev: number) => number)) => void
+
+  // ---- Logo network ----
+  networkLogoScale: number
+  setNetworkLogoScale: (v: number | ((prev: number) => number)) => void
+  networkLogoOffsetX: number
+  setNetworkLogoOffsetX: (v: number | ((prev: number) => number)) => void
+  networkLogoOffsetY: number
+  setNetworkLogoOffsetY: (v: number | ((prev: number) => number)) => void
 
   // ---- Logo ----
   logoScale: number
@@ -226,19 +296,23 @@ export function PosterEditorProvider({
   const [customBadge, setCustomBadge] = useState<string | null>(null)
 
   const {
-    globalBadges, rankingBadges, networkLogo, accentDominant, ribbonSide,
-    badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset,
-    textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
-    badgeGenre, badgeYear, badgeRating, badgeQuality, ratingSources,
+    globalBadges, rankingBadges, networkLogo, preRelease, ribbonSide, badgeGenre, badgeYear, badgeRating,
+    badgeQuality, customRatings, ratingSources, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset,
+    logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
     gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled,
+    topBadgeScale, topBadgeOffsetX, topBadgeOffsetY,
+    genreBadgeScale, qualityBadgeScale, networkLogoScale,
+    genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY,
+    networkLogoOffsetX, networkLogoOffsetY,
     badgeStyle, rankingBadgeStyle,
     defaultBadgeStyle, defaultRankingBadgeStyle,
     defaultBlurEnabled, defaultBlurIntensity, defaultBlurFade, defaultBlurDarkness,
     defaultGradientHeight, defaultGlobalBadges, defaultRankingBadges,
-    defaultBadgeGenre, defaultBadgeYear, defaultBadgeRating, defaultBadgeQuality, defaultRatingSources,
-    defaultAutoRotateClean, defaultLogoFitEnabled, defaultNetworkLogo, defaultAccentDominant, defaultRibbonSide,
-    defaultBadgeTopScale, defaultBadgeBottomScale, defaultBadgeTopOffset, defaultBadgeBottomOffset, defaultLogoBottomOffset,
-    defaultTextOpacity, defaultTextShadowOpacity, defaultTextShadowBlur, defaultTextShadowOffset, defaultRatingStar,
+    defaultTopBadgeScale, defaultTopBadgeOffsetX, defaultTopBadgeOffsetY, defaultGenreBadgeScale, defaultQualityBadgeScale, defaultNetworkLogoScale, defaultGenreBadgeOffsetX, defaultGenreBadgeOffsetY,
+    defaultQualityBadgeOffsetX, defaultQualityBadgeOffsetY, defaultNetworkLogoOffsetX, defaultNetworkLogoOffsetY, defaultBadgeGenre, defaultBadgeYear, defaultBadgeRating, defaultBadgeQuality,
+    defaultCustomRatings, defaultCustomRatingEndpoint, defaultCustomRatingApiKeyHeader, defaultRatingSources, defaultAutoRotateClean, defaultLogoFitEnabled, defaultNetworkLogo, defaultPreRelease,
+    defaultRibbonSide, defaultAccentDominant, defaultBadgeTopScale, defaultBadgeBottomScale, defaultBadgeTopOffset, defaultBadgeBottomOffset, defaultLogoBottomOffset, defaultTextOpacity,
+    defaultTextShadowOpacity, defaultTextShadowBlur, defaultTextShadowOffset, defaultRatingStar,
     episodeMetadataSource, defaultEpisodeMetadataSource,
     region, defaultRegion,
     loadDefaultsToState, update,
@@ -247,42 +321,47 @@ export function PosterEditorProvider({
   const setGlobalBadges = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(globalBadges) : v
-      update({ globalBadges: next, defaultGlobalBadges: next })
+      update({ globalBadges: next })
     }, [globalBadges, update])
   const setRankingBadges = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(rankingBadges) : v
-      update({ rankingBadges: next, defaultRankingBadges: next })
+      update({ rankingBadges: next })
     }, [rankingBadges, update])
   const setBadgeGenre = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(badgeGenre) : v
-      update({ badgeGenre: next, defaultBadgeGenre: next })
+      update({ badgeGenre: next })
     }, [badgeGenre, update])
   const setBadgeYear = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(badgeYear) : v
-      update({ badgeYear: next, defaultBadgeYear: next })
+      update({ badgeYear: next })
     }, [badgeYear, update])
   const setBadgeRating = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(badgeRating) : v
-      update({ badgeRating: next, defaultBadgeRating: next })
+      update({ badgeRating: next })
     }, [badgeRating, update])
   const setBadgeQuality = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(badgeQuality) : v
-      update({ badgeQuality: next, defaultBadgeQuality: next })
+      update({ badgeQuality: next })
     }, [badgeQuality, update])
+  const setCustomRatings = useCallback(
+    (v: boolean | ((prev: boolean) => boolean)) => {
+      const next = typeof v === "function" ? v(customRatings) : v
+      update({ customRatings: next })
+    }, [customRatings, update])
   const setRatingSources = useCallback(
     (v: string[] | ((prev: string[]) => string[])) => {
       const next = typeof v === "function" ? v(ratingSources) : v
-      update({ ratingSources: next, defaultRatingSources: next })
+      update({ ratingSources: next })
     }, [ratingSources, update])
   const setNetworkLogo = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(networkLogo) : v
-      update({ networkLogo: next, defaultNetworkLogo: next })
+      update({ networkLogo: next })
     }, [networkLogo, update])
   const setAccentDominant = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
@@ -339,125 +418,267 @@ export function PosterEditorProvider({
       const next = typeof v === "function" ? v(logoBottomOffset) : v
       update({ logoBottomOffset: next, defaultLogoBottomOffset: next })
     }, [logoBottomOffset, update])
+  const setPreRelease = useCallback(
+    (v: boolean | ((prev: boolean) => boolean)) => {
+      const next = typeof v === "function" ? v(preRelease) : v
+      update({ preRelease: next })
+    }, [preRelease, update])
   const setRibbonSide = useCallback(
     (v: "left" | "right" | ((prev: "left" | "right") => "left" | "right")) => {
       const next = typeof v === "function" ? v(ribbonSide) : v
-      update({ ribbonSide: next, defaultRibbonSide: next })
+      update({ ribbonSide: next })
     }, [ribbonSide, update])
-  // Solo il valore corrente: il default cambia SOLO via setDefaultGradientHeight
-  // (Impostazioni). I flussi automatici (apertura/selezione poster, slider del
-  // poster corrente) non devono riscrivere il default salvato, altrimenti al
-  // rientro il default risulta "cambiato da solo".
+  // Regola di split corrente/default (vale per TUTTI i setter di questo file):
+  // i setter dell'editor (setX) scrivono solo il valore corrente del poster
+  // aperto, i setter delle Impostazioni (setDefaultX) solo il default globale.
+  // I flussi automatici (apertura/selezione poster, slider del poster corrente)
+  // non devono riscrivere il default salvato, altrimenti al rientro il default
+  // risulta "cambiato da solo"; e cambiare un default non deve riscrivere il
+  // poster aperto, altrimenti il salvataggio per-titolo non congela nulla.
   const setGradientHeight = useCallback(
     (v: number | ((prev: number) => number)) => {
       const next = typeof v === "function" ? v(gradientHeight) : v
       update({ gradientHeight: next })
     }, [gradientHeight, update])
+  const setTopBadgeScale = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(topBadgeScale) : v
+      update({ topBadgeScale: next })
+    }, [topBadgeScale, update])
+  const setTopBadgeOffsetX = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(topBadgeOffsetX) : v
+      update({ topBadgeOffsetX: next })
+    }, [topBadgeOffsetX, update])
+  const setTopBadgeOffsetY = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(topBadgeOffsetY) : v
+      update({ topBadgeOffsetY: next })
+    }, [topBadgeOffsetY, update])
+  const setGenreBadgeScale = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(genreBadgeScale) : v
+      update({ genreBadgeScale: next })
+    }, [genreBadgeScale, update])
+  const setGenreBadgeOffsetX = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(genreBadgeOffsetX) : v
+      update({ genreBadgeOffsetX: next })
+    }, [genreBadgeOffsetX, update])
+  const setGenreBadgeOffsetY = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(genreBadgeOffsetY) : v
+      update({ genreBadgeOffsetY: next })
+    }, [genreBadgeOffsetY, update])
+  const setQualityBadgeScale = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(qualityBadgeScale) : v
+      update({ qualityBadgeScale: next })
+    }, [qualityBadgeScale, update])
+  const setQualityBadgeOffsetX = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(qualityBadgeOffsetX) : v
+      update({ qualityBadgeOffsetX: next })
+    }, [qualityBadgeOffsetX, update])
+  const setQualityBadgeOffsetY = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(qualityBadgeOffsetY) : v
+      update({ qualityBadgeOffsetY: next })
+    }, [qualityBadgeOffsetY, update])
+  const setNetworkLogoScale = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(networkLogoScale) : v
+      update({ networkLogoScale: next })
+    }, [networkLogoScale, update])
+  const setNetworkLogoOffsetX = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(networkLogoOffsetX) : v
+      update({ networkLogoOffsetX: next })
+    }, [networkLogoOffsetX, update])
+  const setNetworkLogoOffsetY = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(networkLogoOffsetY) : v
+      update({ networkLogoOffsetY: next })
+    }, [networkLogoOffsetY, update])
   const setBlurIntensity = useCallback(
     (v: number | ((prev: number) => number)) => {
       const next = typeof v === "function" ? v(blurIntensity) : v
-      update({ blurIntensity: next, defaultBlurIntensity: next })
+      update({ blurIntensity: next })
     }, [blurIntensity, update])
   const setBlurFade = useCallback(
     (v: number | ((prev: number) => number)) => {
       const next = typeof v === "function" ? v(blurFade) : v
-      update({ blurFade: next, defaultBlurFade: next })
+      update({ blurFade: next })
     }, [blurFade, update])
   const setBlurDarkness = useCallback(
     (v: number | ((prev: number) => number)) => {
       const next = typeof v === "function" ? v(blurDarkness) : v
-      update({ blurDarkness: next, defaultBlurDarkness: next })
+      update({ blurDarkness: next })
     }, [blurDarkness, update])
   const setBlurEnabled = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(blurEnabled) : v
-      update({ blurEnabled: next, defaultBlurEnabled: next })
+      update({ blurEnabled: next })
     }, [blurEnabled, update])
   const setBadgeStyle = useCallback(
     (v: BadgeStyle | ((prev: BadgeStyle) => BadgeStyle)) => {
       const next = typeof v === "function" ? v(badgeStyle) : v
-      update({ badgeStyle: next, defaultBadgeStyle: next })
+      update({ badgeStyle: next })
     }, [badgeStyle, update])
   const setRankingBadgeStyle = useCallback(
     (v: RankingBadgeStyle | ((prev: RankingBadgeStyle) => RankingBadgeStyle)) => {
       const next = typeof v === "function" ? v(rankingBadgeStyle) : v
-      update({ rankingBadgeStyle: next, defaultRankingBadgeStyle: next })
+      update({ rankingBadgeStyle: next })
     }, [rankingBadgeStyle, update])
   const setDefaultBadgeStyle = useCallback(
     (v: BadgeStyle | ((prev: BadgeStyle) => BadgeStyle)) => {
       const next = typeof v === "function" ? v(defaultBadgeStyle) : v
-      update({ defaultBadgeStyle: next, badgeStyle: next })
+      update({ defaultBadgeStyle: next })
     }, [defaultBadgeStyle, update])
   const setDefaultRankingBadgeStyle = useCallback(
     (v: RankingBadgeStyle | ((prev: RankingBadgeStyle) => RankingBadgeStyle)) => {
       const next = typeof v === "function" ? v(defaultRankingBadgeStyle) : v
-      update({ defaultRankingBadgeStyle: next, rankingBadgeStyle: next })
+      update({ defaultRankingBadgeStyle: next })
     }, [defaultRankingBadgeStyle, update])
   const setDefaultBlurEnabled = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(defaultBlurEnabled) : v
-      update({ defaultBlurEnabled: next, blurEnabled: next })
+      update({ defaultBlurEnabled: next })
     }, [defaultBlurEnabled, update])
   const setDefaultBlurIntensity = useCallback(
     (v: number | ((prev: number) => number)) => {
       const next = typeof v === "function" ? v(defaultBlurIntensity) : v
-      update({ defaultBlurIntensity: next, blurIntensity: next })
+      update({ defaultBlurIntensity: next })
     }, [defaultBlurIntensity, update])
   const setDefaultBlurFade = useCallback(
     (v: number | ((prev: number) => number)) => {
       const next = typeof v === "function" ? v(defaultBlurFade) : v
-      update({ defaultBlurFade: next, blurFade: next })
+      update({ defaultBlurFade: next })
     }, [defaultBlurFade, update])
   const setDefaultBlurDarkness = useCallback(
     (v: number | ((prev: number) => number)) => {
       const next = typeof v === "function" ? v(defaultBlurDarkness) : v
-      update({ defaultBlurDarkness: next, blurDarkness: next })
+      update({ defaultBlurDarkness: next })
     }, [defaultBlurDarkness, update])
   const setDefaultGradientHeight = useCallback(
     (v: number | ((prev: number) => number)) => {
       const next = typeof v === "function" ? v(defaultGradientHeight) : v
-      update({ defaultGradientHeight: next, gradientHeight: next })
+      update({ defaultGradientHeight: next })
     }, [defaultGradientHeight, update])
+  const setDefaultTopBadgeScale = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultTopBadgeScale) : v
+      update({ defaultTopBadgeScale: next })
+    }, [defaultTopBadgeScale, update])
+  const setDefaultTopBadgeOffsetX = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultTopBadgeOffsetX) : v
+      update({ defaultTopBadgeOffsetX: next })
+    }, [defaultTopBadgeOffsetX, update])
+  const setDefaultTopBadgeOffsetY = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultTopBadgeOffsetY) : v
+      update({ defaultTopBadgeOffsetY: next })
+    }, [defaultTopBadgeOffsetY, update])
+  const setDefaultGenreBadgeScale = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultGenreBadgeScale) : v
+      update({ defaultGenreBadgeScale: next })
+    }, [defaultGenreBadgeScale, update])
+  const setDefaultGenreBadgeOffsetX = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultGenreBadgeOffsetX) : v
+      update({ defaultGenreBadgeOffsetX: next })
+    }, [defaultGenreBadgeOffsetX, update])
+  const setDefaultGenreBadgeOffsetY = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultGenreBadgeOffsetY) : v
+      update({ defaultGenreBadgeOffsetY: next })
+    }, [defaultGenreBadgeOffsetY, update])
+  const setDefaultQualityBadgeScale = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultQualityBadgeScale) : v
+      update({ defaultQualityBadgeScale: next })
+    }, [defaultQualityBadgeScale, update])
+  const setDefaultQualityBadgeOffsetX = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultQualityBadgeOffsetX) : v
+      update({ defaultQualityBadgeOffsetX: next })
+    }, [defaultQualityBadgeOffsetX, update])
+  const setDefaultQualityBadgeOffsetY = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultQualityBadgeOffsetY) : v
+      update({ defaultQualityBadgeOffsetY: next })
+    }, [defaultQualityBadgeOffsetY, update])
+  const setDefaultNetworkLogoScale = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultNetworkLogoScale) : v
+      update({ defaultNetworkLogoScale: next })
+    }, [defaultNetworkLogoScale, update])
+  const setDefaultNetworkLogoOffsetX = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultNetworkLogoOffsetX) : v
+      update({ defaultNetworkLogoOffsetX: next })
+    }, [defaultNetworkLogoOffsetX, update])
+  const setDefaultNetworkLogoOffsetY = useCallback(
+    (v: number | ((prev: number) => number)) => {
+      const next = typeof v === "function" ? v(defaultNetworkLogoOffsetY) : v
+      update({ defaultNetworkLogoOffsetY: next })
+    }, [defaultNetworkLogoOffsetY, update])
   const setDefaultGlobalBadges = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(defaultGlobalBadges) : v
-      update({ defaultGlobalBadges: next, globalBadges: next })
+      update({ defaultGlobalBadges: next })
     }, [defaultGlobalBadges, update])
   const setDefaultRankingBadges = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(defaultRankingBadges) : v
-      update({ defaultRankingBadges: next, rankingBadges: next })
+      update({ defaultRankingBadges: next })
     }, [defaultRankingBadges, update])
   const setDefaultBadgeGenre = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(defaultBadgeGenre) : v
-      update({ defaultBadgeGenre: next, badgeGenre: next })
+      update({ defaultBadgeGenre: next })
     }, [defaultBadgeGenre, update])
   const setDefaultBadgeYear = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(defaultBadgeYear) : v
-      update({ defaultBadgeYear: next, badgeYear: next })
+      update({ defaultBadgeYear: next })
     }, [defaultBadgeYear, update])
   const setDefaultBadgeRating = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(defaultBadgeRating) : v
-      update({ defaultBadgeRating: next, badgeRating: next })
+      update({ defaultBadgeRating: next })
     }, [defaultBadgeRating, update])
   const setDefaultBadgeQuality = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(defaultBadgeQuality) : v
-      update({ defaultBadgeQuality: next, badgeQuality: next })
+      update({ defaultBadgeQuality: next })
     }, [defaultBadgeQuality, update])
+  const setDefaultCustomRatings = useCallback(
+    (v: boolean | ((prev: boolean) => boolean)) => {
+      const next = typeof v === "function" ? v(defaultCustomRatings) : v
+      update({ defaultCustomRatings: next })
+    }, [defaultCustomRatings, update])
+  const setDefaultCustomRatingEndpoint = useCallback(
+    (v: string | undefined | ((prev: string | undefined) => string | undefined)) => {
+      const next = typeof v === "function" ? v(defaultCustomRatingEndpoint) : v
+      update({ defaultCustomRatingEndpoint: next })
+    }, [defaultCustomRatingEndpoint, update])
+  const setDefaultCustomRatingApiKeyHeader = useCallback(
+    (v: string | undefined | ((prev: string | undefined) => string | undefined)) => {
+      const next = typeof v === "function" ? v(defaultCustomRatingApiKeyHeader) : v
+      update({ defaultCustomRatingApiKeyHeader: next })
+    }, [defaultCustomRatingApiKeyHeader, update])
   const setDefaultRatingSources = useCallback(
     (v: string[] | ((prev: string[]) => string[])) => {
       const next = typeof v === "function" ? v(defaultRatingSources) : v
-      update({ defaultRatingSources: next, ratingSources: next })
+      update({ defaultRatingSources: next })
     }, [defaultRatingSources, update])
   const setDefaultAutoRotateClean = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(defaultAutoRotateClean) : v
       update({ defaultAutoRotateClean: next })
-      setAutoRotateClean(next)
     }, [defaultAutoRotateClean, update])
   const setDefaultLogoFitEnabled = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
@@ -467,7 +688,7 @@ export function PosterEditorProvider({
   const setDefaultNetworkLogo = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(defaultNetworkLogo) : v
-      update({ defaultNetworkLogo: next, networkLogo: next })
+      update({ defaultNetworkLogo: next })
     }, [defaultNetworkLogo, update])
   const setDefaultAccentDominant = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
@@ -524,30 +745,35 @@ export function PosterEditorProvider({
       const next = typeof v === "function" ? v(defaultLogoBottomOffset) : v
       update({ defaultLogoBottomOffset: next, logoBottomOffset: next })
     }, [defaultLogoBottomOffset, update])
+  const setDefaultPreRelease = useCallback(
+    (v: boolean | ((prev: boolean) => boolean)) => {
+      const next = typeof v === "function" ? v(defaultPreRelease) : v
+      update({ defaultPreRelease: next })
+    }, [defaultPreRelease, update])
   const setDefaultRibbonSide = useCallback(
     (v: "left" | "right" | ((prev: "left" | "right") => "left" | "right")) => {
       const next = typeof v === "function" ? v(defaultRibbonSide) : v
-      update({ defaultRibbonSide: next, ribbonSide: next })
+      update({ defaultRibbonSide: next })
     }, [defaultRibbonSide, update])
   const setEpisodeMetadataSource = useCallback(
     (v: "tmdb" | "tvdb" | ((prev: "tmdb" | "tvdb") => "tmdb" | "tvdb")) => {
       const next = typeof v === "function" ? v(episodeMetadataSource) : v
-      update({ episodeMetadataSource: next, defaultEpisodeMetadataSource: next })
+      update({ episodeMetadataSource: next })
     }, [episodeMetadataSource, update])
   const setDefaultEpisodeMetadataSource = useCallback(
     (v: "tmdb" | "tvdb" | ((prev: "tmdb" | "tvdb") => "tmdb" | "tvdb")) => {
       const next = typeof v === "function" ? v(defaultEpisodeMetadataSource) : v
-      update({ defaultEpisodeMetadataSource: next, episodeMetadataSource: next })
+      update({ defaultEpisodeMetadataSource: next })
     }, [defaultEpisodeMetadataSource, update])
   const setRegion = useCallback(
     (v: string | ((prev: string) => string)) => {
       const next = typeof v === "function" ? v(region) : v
-      update({ region: next, defaultRegion: next })
+      update({ region: next })
     }, [region, update])
   const setDefaultRegion = useCallback(
     (v: string | ((prev: string) => string)) => {
       const next = typeof v === "function" ? v(defaultRegion) : v
-      update({ defaultRegion: next, region: next })
+      update({ defaultRegion: next })
     }, [defaultRegion, update])
 
   const editorCtx = useMemo<PosterEditorCtx>(
@@ -565,6 +791,8 @@ export function PosterEditorProvider({
       setBadgeRating,
       badgeQuality,
       setBadgeQuality,
+      customRatings,
+      setCustomRatings,
       ratingSources,
       setRatingSources,
       badgeStyle,
@@ -575,28 +803,9 @@ export function PosterEditorProvider({
       setCustomBadge,
       networkLogo,
       setNetworkLogo,
-      accentDominant,
-      setAccentDominant,
-      textOpacity,
-      setTextOpacity,
-      textShadowOpacity,
-      setTextShadowOpacity,
-      textShadowBlur,
-      setTextShadowBlur,
-      textShadowOffset,
-      setTextShadowOffset,
-      ratingStar,
-      setRatingStar,
-      badgeTopScale,
-      setBadgeTopScale,
-      badgeBottomScale,
-      setBadgeBottomScale,
-      badgeTopOffset,
-      setBadgeTopOffset,
-      badgeBottomOffset,
-      setBadgeBottomOffset,
-      logoBottomOffset,
-      setLogoBottomOffset,
+      preRelease, setPreRelease, accentDominant, setAccentDominant, textOpacity, setTextOpacity, textShadowOpacity, setTextShadowOpacity,
+      textShadowBlur, setTextShadowBlur, textShadowOffset, setTextShadowOffset, ratingStar, setRatingStar, badgeTopScale, setBadgeTopScale,
+      badgeBottomScale, setBadgeBottomScale, badgeTopOffset, setBadgeTopOffset, badgeBottomOffset, setBadgeBottomOffset, logoBottomOffset, setLogoBottomOffset,
       ribbonSide,
       setRibbonSide,
       episodeMetadataSource,
@@ -621,6 +830,30 @@ export function PosterEditorProvider({
       setDefaultBlurDarkness,
       defaultGradientHeight,
       setDefaultGradientHeight,
+      defaultTopBadgeScale,
+      setDefaultTopBadgeScale,
+      defaultTopBadgeOffsetX,
+      setDefaultTopBadgeOffsetX,
+      defaultTopBadgeOffsetY,
+      setDefaultTopBadgeOffsetY,
+      defaultGenreBadgeScale,
+      setDefaultGenreBadgeScale,
+      defaultGenreBadgeOffsetX,
+      setDefaultGenreBadgeOffsetX,
+      defaultGenreBadgeOffsetY,
+      setDefaultGenreBadgeOffsetY,
+      defaultQualityBadgeScale,
+      setDefaultQualityBadgeScale,
+      defaultQualityBadgeOffsetX,
+      setDefaultQualityBadgeOffsetX,
+      defaultQualityBadgeOffsetY,
+      setDefaultQualityBadgeOffsetY,
+      defaultNetworkLogoScale,
+      setDefaultNetworkLogoScale,
+      defaultNetworkLogoOffsetX,
+      setDefaultNetworkLogoOffsetX,
+      defaultNetworkLogoOffsetY,
+      setDefaultNetworkLogoOffsetY,
       defaultGlobalBadges,
       setDefaultGlobalBadges,
       defaultRankingBadges,
@@ -633,6 +866,12 @@ export function PosterEditorProvider({
       setDefaultBadgeRating,
       defaultBadgeQuality,
       setDefaultBadgeQuality,
+      defaultCustomRatings,
+      setDefaultCustomRatings,
+      defaultCustomRatingEndpoint,
+      setDefaultCustomRatingEndpoint,
+      defaultCustomRatingApiKeyHeader,
+      setDefaultCustomRatingApiKeyHeader,
       defaultRatingSources,
       setDefaultRatingSources,
       defaultAutoRotateClean,
@@ -663,6 +902,8 @@ export function PosterEditorProvider({
       defaultLogoBottomOffset,
       setDefaultLogoBottomOffset,
       setDefaultNetworkLogo,
+      defaultPreRelease,
+      setDefaultPreRelease,
       defaultRibbonSide,
       setDefaultRibbonSide,
       defaultRegion,
@@ -682,6 +923,38 @@ export function PosterEditorProvider({
       // Gradient
       gradientHeight,
       setGradientHeight,
+
+      // Badge superiore
+      topBadgeScale,
+      setTopBadgeScale,
+      topBadgeOffsetX,
+      setTopBadgeOffsetX,
+      topBadgeOffsetY,
+      setTopBadgeOffsetY,
+
+      // Badge genere
+      genreBadgeScale,
+      setGenreBadgeScale,
+      genreBadgeOffsetX,
+      setGenreBadgeOffsetX,
+      genreBadgeOffsetY,
+      setGenreBadgeOffsetY,
+
+      // Badge qualità
+      qualityBadgeScale,
+      setQualityBadgeScale,
+      qualityBadgeOffsetX,
+      setQualityBadgeOffsetX,
+      qualityBadgeOffsetY,
+      setQualityBadgeOffsetY,
+
+      // Logo network
+      networkLogoScale,
+      setNetworkLogoScale,
+      networkLogoOffsetX,
+      setNetworkLogoOffsetX,
+      networkLogoOffsetY,
+      setNetworkLogoOffsetY,
 
       // Logo
       logoScale,
@@ -725,17 +998,17 @@ export function PosterEditorProvider({
       badgeYear, setBadgeYear,
       badgeRating, setBadgeRating,
       badgeQuality, setBadgeQuality,
+      customRatings, setCustomRatings,
       ratingSources, setRatingSources,
       badgeStyle, setBadgeStyle,
       rankingBadgeStyle, setRankingBadgeStyle,
       customBadge, setCustomBadge,
       networkLogo, setNetworkLogo,
-      accentDominant, setAccentDominant,
-      badgeTopScale, setBadgeTopScale,
-      badgeBottomScale, setBadgeBottomScale,
-      badgeTopOffset, setBadgeTopOffset,
-      badgeBottomOffset, setBadgeBottomOffset,
-      logoBottomOffset, setLogoBottomOffset,
+      preRelease, setPreRelease, accentDominant, setAccentDominant, badgeTopScale, setBadgeTopScale, badgeBottomScale, setBadgeBottomScale,
+      badgeTopOffset, setBadgeTopOffset, badgeBottomOffset, setBadgeBottomOffset, logoBottomOffset, setLogoBottomOffset,
+      textOpacity, setTextOpacity, textShadowOpacity, setTextShadowOpacity,
+      textShadowBlur, setTextShadowBlur, textShadowOffset, setTextShadowOffset,
+      ratingStar, setRatingStar,
       ribbonSide, setRibbonSide,
       episodeMetadataSource, setEpisodeMetadataSource,
       region, setRegion,
@@ -750,27 +1023,43 @@ export function PosterEditorProvider({
       defaultBlurFade, setDefaultBlurFade,
       defaultBlurDarkness, setDefaultBlurDarkness,
       defaultGradientHeight, setDefaultGradientHeight,
+      defaultTopBadgeScale, setDefaultTopBadgeScale,
+      defaultTopBadgeOffsetX, setDefaultTopBadgeOffsetX,
+      defaultTopBadgeOffsetY, setDefaultTopBadgeOffsetY,
+      defaultGenreBadgeScale,
+      setDefaultGenreBadgeScale,
+      defaultGenreBadgeOffsetX,
+      setDefaultGenreBadgeOffsetX,
+      defaultGenreBadgeOffsetY,
+      setDefaultGenreBadgeOffsetY,
+      defaultQualityBadgeScale,
+      setDefaultQualityBadgeScale,
+      defaultQualityBadgeOffsetX,
+      setDefaultQualityBadgeOffsetX,
+      defaultQualityBadgeOffsetY,
+      setDefaultQualityBadgeOffsetY,
+      defaultNetworkLogoScale,
+      setDefaultNetworkLogoScale,
+      defaultNetworkLogoOffsetX,
+      setDefaultNetworkLogoOffsetX,
+      defaultNetworkLogoOffsetY,
+      setDefaultNetworkLogoOffsetY,
       defaultGlobalBadges, setDefaultGlobalBadges,
       defaultRankingBadges, setDefaultRankingBadges,
       defaultBadgeGenre, setDefaultBadgeGenre,
       defaultBadgeYear, setDefaultBadgeYear,
       defaultBadgeRating, setDefaultBadgeRating,
       defaultBadgeQuality, setDefaultBadgeQuality,
+      defaultCustomRatings, setDefaultCustomRatings,
+      defaultCustomRatingEndpoint, setDefaultCustomRatingEndpoint,
+      defaultCustomRatingApiKeyHeader, setDefaultCustomRatingApiKeyHeader,
       defaultRatingSources, setDefaultRatingSources,
       defaultAutoRotateClean, setDefaultAutoRotateClean,
       defaultLogoFitEnabled, setDefaultLogoFitEnabled,
       defaultNetworkLogo, setDefaultNetworkLogo,
-      defaultAccentDominant, setDefaultAccentDominant,
-      defaultTextOpacity, setDefaultTextOpacity,
-      defaultTextShadowOpacity, setDefaultTextShadowOpacity,
-      defaultTextShadowBlur, setDefaultTextShadowBlur,
-      defaultTextShadowOffset, setDefaultTextShadowOffset,
-      defaultRatingStar, setDefaultRatingStar,
-      defaultBadgeTopScale, setDefaultBadgeTopScale,
-      defaultBadgeBottomScale, setDefaultBadgeBottomScale,
-      defaultBadgeTopOffset, setDefaultBadgeTopOffset,
-      defaultBadgeBottomOffset, setDefaultBadgeBottomOffset,
-      defaultLogoBottomOffset, setDefaultLogoBottomOffset,
+      defaultPreRelease, setDefaultPreRelease, defaultAccentDominant, setDefaultAccentDominant, defaultTextOpacity, setDefaultTextOpacity, defaultTextShadowOpacity, setDefaultTextShadowOpacity,
+      defaultTextShadowBlur, setDefaultTextShadowBlur, defaultTextShadowOffset, setDefaultTextShadowOffset, defaultRatingStar, setDefaultRatingStar, defaultBadgeTopScale, setDefaultBadgeTopScale,
+      defaultBadgeBottomScale, setDefaultBadgeBottomScale, defaultBadgeTopOffset, setDefaultBadgeTopOffset, defaultBadgeBottomOffset, setDefaultBadgeBottomOffset, defaultLogoBottomOffset, setDefaultLogoBottomOffset,
       defaultRibbonSide, setDefaultRibbonSide,
       loadDefaultsToState,
 
@@ -782,6 +1071,26 @@ export function PosterEditorProvider({
 
       // Gradient
       gradientHeight, setGradientHeight,
+
+      // Badge superiore
+      topBadgeScale, setTopBadgeScale,
+      topBadgeOffsetX, setTopBadgeOffsetX,
+      topBadgeOffsetY, setTopBadgeOffsetY,
+
+      // Badge genere
+      genreBadgeScale, setGenreBadgeScale,
+      genreBadgeOffsetX, setGenreBadgeOffsetX,
+      genreBadgeOffsetY, setGenreBadgeOffsetY,
+
+      // Badge qualità
+      qualityBadgeScale, setQualityBadgeScale,
+      qualityBadgeOffsetX, setQualityBadgeOffsetX,
+      qualityBadgeOffsetY, setQualityBadgeOffsetY,
+
+      // Logo network
+      networkLogoScale, setNetworkLogoScale,
+      networkLogoOffsetX, setNetworkLogoOffsetX,
+      networkLogoOffsetY, setNetworkLogoOffsetY,
 
       // Logo
       logoScale, setLogoScale,

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react"
+import { useState, useRef, useEffect, useCallback, useMemo, type TouchEvent } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { usePSelector } from "@/lib/context"
 import { useT } from "@/lib/contexts/TranslationContext"
@@ -72,7 +72,6 @@ function SecureCarouselImg({ url, alt, className }: { url: string; alt: string; 
 
 export function PosterCarousel() {
   const navigateToPoster = usePSelector((v) => v.navigateToPoster)
-  const tmdbKey = usePSelector((v) => v.tmdbKey)
   const trending = usePSelector((v) => v.trending)
   const { t } = useT()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -98,10 +97,13 @@ export function PosterCarousel() {
   const trackRef = useRef<HTMLDivElement>(null)
   const rafRef = useRef<number>(0)
   const posRef = useRef(0)
+  // Riavvio del marquee dopo lo scroll manuale (le frecce fermano il loop):
+  // l'effect assegna start/stop correnti, scrollTo li usa a inizio/fine.
+  const startRef = useRef<() => void>(() => {})
+  const stopRef = useRef<() => void>(() => {})
   const [isHovering, setIsHovering] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const hoveringRef = useRef(false)
-  const tickRef = useRef<() => void>(() => {})
   const [showLeft, setShowLeft] = useState(false)
   const [showRight, setShowRight] = useState(true)
 
@@ -121,7 +123,7 @@ export function PosterCarousel() {
   }, [])
 
   const applyTransform = useCallback((x: number) => {
-    if (trackRef.current) trackRef.current.style.transform = `translateX(${x}px)`
+    if (trackRef.current) trackRef.current.style.transform = `translate3d(${x}px, 0, 0)`
   }, [])
 
   useEffect(() => {
@@ -129,11 +131,19 @@ export function PosterCarousel() {
   }, [isHovering])
 
   useEffect(() => {
-    let frameCount = 0
-    // jsdom (vitest) non implementa matchMedia: assenza => animazione attiva.
     const reduced = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    if (reduced) {
+      startRef.current = () => {}
+      stopRef.current = () => {}
+      return
+    }
+
+    let frameCount = 0
+    let isVisible = true
+    let isRunning = false
+
     const tick = () => {
-      if (!hoveringRef.current && !reduced) {
+      if (!hoveringRef.current && isVisible) {
         posRef.current += SCROLL_SPEED
         if (posRef.current >= totalW) {
           posRef.current = 0
@@ -147,12 +157,82 @@ export function PosterCarousel() {
           setShowRight(true)
         }
       }
+
+      if (!hoveringRef.current && isVisible) {
+        rafRef.current = requestAnimationFrame(tick)
+      } else {
+        isRunning = false
+      }
+    }
+
+    const start = () => {
+      if (isRunning || hoveringRef.current || !isVisible) return
+      isRunning = true
       rafRef.current = requestAnimationFrame(tick)
     }
-    tickRef.current = tick
-    rafRef.current = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(rafRef.current)
-  }, [totalW, totalItems, step, applyTransform])
+
+    const stop = () => {
+      isRunning = false
+      cancelAnimationFrame(rafRef.current)
+    }
+
+    // Observer: se il carosello è fuori viewport, ferma completamente il loop
+    let observer: IntersectionObserver | null = null
+    if (typeof IntersectionObserver !== "undefined" && containerRef.current) {
+      observer = new IntersectionObserver(([entry]) => {
+        isVisible = entry.isIntersecting
+        if (isVisible) {
+          start()
+        } else {
+          stop()
+        }
+      }, { threshold: 0.05 })
+      observer.observe(containerRef.current)
+    } else {
+      start()
+    }
+
+    if (!isHovering) {
+      start()
+    } else {
+      stop()
+    }
+
+    // Espone start/stop correnti per scrollTo (stop a inizio frecce,
+    // restart a fine animazione).
+    startRef.current = start
+    stopRef.current = stop
+
+    return () => {
+      stop()
+      observer?.disconnect()
+    }
+  }, [totalW, totalItems, step, isHovering, applyTransform])
+
+  // Touch: pausa il loop al tocco, drag manuale a dito, resume al rilascio.
+  // touch-pan-y sul container lascia lo scroll verticale nativo alla pagina.
+  const touchStartX = useRef<number | null>(null)
+  const onTouchStart = (e: TouchEvent) => {
+    touchStartX.current = e.touches[0]?.clientX ?? null
+    stopRef.current()
+  }
+  const onTouchMove = (e: TouchEvent) => {
+    if (touchStartX.current === null) return
+    const x = e.touches[0]?.clientX
+    if (x === undefined) return
+    const dx = x - touchStartX.current
+    touchStartX.current = x
+    posRef.current = Math.max(0, Math.min(totalW, posRef.current - dx))
+    applyTransform(-posRef.current)
+  }
+  const onTouchEnd = () => {
+    touchStartX.current = null
+    const idx = Math.floor(posRef.current / step) % Math.max(totalItems, 1)
+    setActiveIndex(idx)
+    setShowLeft(posRef.current > 0)
+    setShowRight(true)
+    startRef.current()
+  }
 
   const scrollTo = useCallback((dir: number) => {
     const target = Math.max(0, Math.min(totalW, posRef.current + dir * step))
@@ -167,10 +247,12 @@ export function PosterCarousel() {
       if (t < 1) {
         rafRef.current = requestAnimationFrame(animate)
       } else {
-        rafRef.current = requestAnimationFrame(tickRef.current)
+        // Fine scroll manuale: riavvia il marquee (start rispetta
+        // hover/visibilità/reduced-motion: no-op se non deve girare).
+        startRef.current()
       }
     }
-    cancelAnimationFrame(rafRef.current)
+    stopRef.current()
     rafRef.current = requestAnimationFrame(animate)
   }, [totalW, step, applyTransform])
 
@@ -212,16 +294,22 @@ export function PosterCarousel() {
           </button>
         )}
 
-        <div ref={containerRef} className="carousel-track overflow-hidden px-2 sm:px-4">
+        <div
+          ref={containerRef}
+          className="carousel-track overflow-hidden px-2 sm:px-4 touch-pan-y"
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          onTouchCancel={onTouchEnd}
+        >
           <div
             ref={trackRef}
             className="flex gap-2.5 sm:gap-4 will-change-transform"
           >
             {[...items, ...items].map((ex, i) => {
-              // La chiave personale va in query: senza, i titoli non mappati
-              // fallirebbero l'auto-fetch TMDB (solo chiavi personali, niente
-              // chiave d'istanza). ex.params inizia con "?".
-              const posterUrl = `/api/poster/${ex.type}/${ex.id}${ex.params}${tmdbKey ? `&api_key=${encodeURIComponent(tmdbKey)}` : ""}`
+              // URL pulita: la chiave viaggia solo via header x-api-key
+              // (SecureCarouselImg) — il server la legge lì per primo.
+              const posterUrl = `/api/poster/${ex.type}/${ex.id}${ex.params}`
               return (
                 <div
                   key={i}

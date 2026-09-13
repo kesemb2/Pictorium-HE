@@ -93,14 +93,37 @@ export function resolveImageFormat(acceptHeader?: string | null, queryFmt?: stri
   if (queryFmt) {
     const q = queryFmt.toLowerCase()
     if (q === "webp") return "webp"
+    // C3: ?fmt=avif esplicito resta onorato (render dedicato legacy); via
+    // Accept l'avif mappa a webp (tutti i client avif accettano anche webp,
+    // l'encode avif costa 3-5× e triplicherebbe render+cache).
     if (q === "avif") return "avif"
     if (q === "jpeg" || q === "jpg") return "jpeg"
   }
   if (!acceptHeader) return "jpeg"
   const accept = acceptHeader.toLowerCase()
-  if (accept.includes("image/avif")) return "avif"
   if (accept.includes("image/webp")) return "webp"
   return "jpeg"
+}
+
+// C3: conversione jpeg canonico → webp on-the-fly. Stesse opzioni
+// dell'encode webp diretto in poster-service (q80, effort 2): byte non
+// identici al render diretto (doppia compressione), ma stessa qualità
+// percepita — il webp esiste solo come variante di risposta, mai come chiave
+// di render. ~20-50ms contro ~2-8s di re-render completo.
+export async function convertPosterFormat(jpeg: Buffer): Promise<Buffer> {
+  const sharp = (await import("sharp")).default
+  return sharp(jpeg).webp({ quality: 80, effort: 2 }).toBuffer()
+}
+
+/** ETag deterministico della variante webp derivato da quello canonico. */
+export function variantEtagFor(canonicalEtag: string): string {
+  let h = 0x811c9dc5
+  const s = `${canonicalEtag}:webp`
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return `"${(h >>> 0).toString(16).padStart(8, "0")}"`
 }
 
 const CORS_HEADERS = {
@@ -220,10 +243,12 @@ export function getPendingPoster(cacheKey: string): Promise<PosterCachePayload |
   return inflight.get(cacheKey) ?? null
 }
 
-export function beginPosterRender(cacheKey: string): (payload: PosterCachePayload | null) => void {
-  // Race guard: non sovrascrivere un render già in corso. Chi arriva dopo
-  // con la stessa cache key ha già atteso getPendingPoster(); se la promise
-  // esiste ancora qui, il complete no-op evita di toccare la map dell'altro.
+export function beginPosterRender(
+  cacheKey: string,
+): (payload: PosterCachePayload | null, keepEntry?: boolean) => void {
+  // Race guard: non sovrascrivere un render già in corso. (Il tratto
+  // getPendingPoster→begin nella route non ha await in mezzo, quindi in Node
+  // è atomico: questa guardia è difensiva, non il meccanismo primario.)
   if (inflight.has(cacheKey)) return () => {}
 
   let resolveRender: (payload: PosterCachePayload | null) => void = () => {}
@@ -236,10 +261,17 @@ export function beginPosterRender(cacheKey: string): (payload: PosterCachePayloa
   }, INFLIGHT_TIMEOUT_MS)
   if (typeof timer.unref === "function") timer.unref()
   inflight.set(cacheKey, promise)
-  return (payload) => {
-    clearTimeout(timer)
+  return (payload, keepEntry = false) => {
+    // R4: al watchdog (keepEntry=true) i waiter vengono risolti con null MA
+    // l'entry resta prenotata allo zombie finché finisce (o fino al timeout
+    // 60s sopra). Prima l'entry veniva cancellata subito: ogni richiesta
+    // successiva con la stessa key non trovava inflight e duplicava l'intero
+    // render proprio con upstream lento — moltiplicatore di carico invece di
+    // coalescing. I nuovi arrivati si attaccano alla promise già risolta con
+    // null → 503 immediato, zero lavoro duplicato.
+    if (!keepEntry) clearTimeout(timer)
     resolveRender(payload)
-    if (inflight.get(cacheKey) === promise) inflight.delete(cacheKey)
+    if (!keepEntry && inflight.get(cacheKey) === promise) inflight.delete(cacheKey)
   }
 }
 
@@ -325,6 +357,23 @@ const RENDER_QUEUE_LIMIT = (() => {
 let activeRenders = 0
 let zombieRenders = 0
 const renderWaiters: Array<() => void> = []
+// Quante volte uno zombie ha superato la grazia ed è stato sganciato dal
+// budget slot (metrica cumulativa, esposta in getPosterStats).
+let zombieGraceExpired = 0
+
+// Tetto di grazia per i render abbandonati dal watchdog (R5): oltre questo
+// tempo lo zombie smette di occupare budget slot. Senza, N zombie = N slot
+// bruciati con active=0 → 503 a catena anche a pipeline scarica (deadlock
+// morbido sotto upstream lento). Lo zombie continua comunque in background
+// fino al settle (la sua cleanup è guarded) — si libera solo il conteggio,
+// con un warn per distinguere "zombie veloci" (post-R3: abort immediato dei
+// fetch) da quelli patologici (sharp appeso).
+const ZOMBIE_GRACE_MS = (() => {
+  const raw = envWithFallback("ZOMBIE_GRACE_MS")
+  const n = raw ? parseInt(raw, 10) : 10000
+  return Number.isFinite(n) && n >= 1000 && n <= 120000 ? n : 10000
+})()
+const pendingGraceTimers = new Set<ReturnType<typeof setTimeout>>()
 
 function pumpWaiters(): void {
   while (renderWaiters.length > 0 && activeRenders + zombieRenders < MAX_CONCURRENT_RENDERS) {
@@ -341,9 +390,28 @@ function releaseRenderSlot(): void {
 /** Notifica al limiter che un render è stato abbandonato dalla deadline ma continua in background */
 export function recordZombieRenderStart(): () => void {
   zombieRenders++
-  return () => {
+  let settled = false
+  const settle = (): void => {
+    if (settled) return
+    settled = true
     zombieRenders = Math.max(0, zombieRenders - 1)
     pumpWaiters()
+  }
+  const grace = setTimeout(() => {
+    pendingGraceTimers.delete(grace)
+    if (settled) return
+    settled = true
+    zombieRenders = Math.max(0, zombieRenders - 1)
+    zombieGraceExpired++
+    log.warn("Zombie render grace expired — slot force-released", { zombies: zombieRenders })
+    pumpWaiters()
+  }, ZOMBIE_GRACE_MS)
+  if (typeof grace.unref === "function") grace.unref()
+  pendingGraceTimers.add(grace)
+  return () => {
+    pendingGraceTimers.delete(grace)
+    clearTimeout(grace)
+    settle()
   }
 }
 
@@ -381,6 +449,8 @@ export function __resetPosterRenderLimiter(): void {
   activeRenders = 0
   zombieRenders = 0
   renderWaiters.length = 0
+  for (const t of pendingGraceTimers) clearTimeout(t)
+  pendingGraceTimers.clear()
 }
 
 // ---------------------------------------------------------------------------
@@ -439,6 +509,8 @@ export function getPosterStats() {
     hitRateNum: hitRate,
     formats: { ...posterMetrics.formats },
     activeRenders,
+    zombieRenders,
+    zombieGraceExpired,
     queuedRenders: renderWaiters.length,
     maxConcurrent: MAX_CONCURRENT_RENDERS,
   }

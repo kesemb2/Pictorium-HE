@@ -1,7 +1,7 @@
 import crypto from "node:crypto"
 import { NextRequest } from "next/server"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
-import { cacheGet, cacheSet } from "@/lib/cache"
+import { cacheGetShared, cacheSet } from "@/lib/cache"
 import { getServerDefaults } from "@/lib/server-defaults"
 import { POSTER_URL_VERSION } from "@/lib/render-version"
 import { getById } from "@/lib/store"
@@ -21,12 +21,13 @@ import {
   tmdbFindByTvdb,
 } from "@/lib/tmdb"
 import { resolveImdbId } from "@/lib/imdb-cache"
+import { getCatalogEpoch } from "@/lib/catalog-epoch"
 import { resolveCatalogRegion } from "@/lib/catalog-handler"
 import { buildStremioPosterUrl } from "@/lib/stremio-poster-url"
 import { getOriginFromRequest } from "@/lib/poster-public-url"
 import { enrichVideosWithTvdb } from "@/lib/tvdb"
 import { buildVideosFromAnizip, buildVideosFromGroups, buildVideosFromTvdb, concurrentMap } from "@/lib/episode-ordering"
-import { groupDetailsEpisodeCount, resolveDefaultEpisodeGroupId } from "@/lib/episode-group-default"
+import { groupDetailsEpisodeCount, groupDetailsRegularEpisodeCount, resolveDefaultEpisodeGroupId } from "@/lib/episode-group-default"
 import { createLogger } from "@/lib/logger"
 
 const log = createLogger("meta")
@@ -90,18 +91,26 @@ function hashFragment(value: string): string {
   return crypto.createHash("sha1").update(value).digest("hex").slice(0, 8)
 }
 
-function normalizeMediaType(type: string): "movie" | "series" {
+const KNOWN_META_TYPES = new Set([
+  "movie", "series", "tv", "show", "tvshow", "anime.movie", "anime.series", "anime",
+])
+
+// C4: come nei cataloghi — tipo ignoto → null (400) invece di servire
+// silenziosamente dati series.
+function normalizeMediaType(type: string): "movie" | "series" | null {
   const t = type.toLowerCase()
+  if (!KNOWN_META_TYPES.has(t)) return null
   return (t === "movie" || t === "anime.movie") ? "movie" : "series"
 }
 
+// Come in catalog-handler.ts: la chiave MDBList resta server-side, mai nel
+// poster URL servito a Stremio (M2).
 async function pictoriumPosterUrl(
   req: NextRequest,
   type: "movie" | "series",
   id: number,
   configParam?: string | null,
   userParam?: string | null,
-  mdblistKeyParam?: string | null,
   posterLang = "it",
 ): Promise<string> {
   const serverDefaults = getServerDefaults()
@@ -141,6 +150,12 @@ export async function pictoriumMeta(
   if (cleanId.length > 80) return metaResponse({ meta: null })
 
   const stType = normalizeMediaType(mediaType)
+  if (!stType) {
+    return new Response("Invalid type", {
+      status: 400,
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+    })
+  }
   const tmdbMediaType = stType === "movie" ? "movie" : "tv"
   const mdblistKeyParam = req.nextUrl.searchParams.get("mdblist_key") || undefined
   const tvdbKeyParam = req.nextUrl.searchParams.get("tvdb_key") || undefined
@@ -166,21 +181,34 @@ export async function pictoriumMeta(
   let tmdbId: number | null = null
   let imdbId: string | null = null
 
-  if (cleanId.startsWith("tt")) {
-    imdbId = cleanId
-    tmdbId = await tmdbFindByImdb(cleanId, tmdbMediaType, apiKey)
-  } else if (cleanId.startsWith("tmdb:")) {
-    const parsed = parseInt(cleanId.slice(5), 10)
-    if (!Number.isNaN(parsed) && parsed > 0) tmdbId = parsed
-  } else if (cleanId.startsWith("tvdb:")) {
-    const tvdbRaw = cleanId.slice(5)
-    tmdbId = await tmdbFindByTvdb(tvdbRaw, tmdbMediaType, apiKey)
-  } else if (cleanId.startsWith("tvdbc:")) {
-    const tvdbRaw = cleanId.slice(6)
-    tmdbId = await tmdbFindByTvdb(tvdbRaw, tmdbMediaType, apiKey)
-  } else if (/^\d+$/.test(cleanId)) {
-    const parsed = parseInt(cleanId, 10)
-    if (!Number.isNaN(parsed) && parsed > 0) tmdbId = parsed
+  // Fall-open come i cataloghi (metas:[]): senza chiave o con upstream in
+  // errore la risoluzione esterna lancia — prima il throw usciva dal try e
+  // diventava 500, ora degrada a meta:null (mai cacheato: il return è prima
+  // della cache key).
+  try {
+    if (cleanId.startsWith("tt")) {
+      imdbId = cleanId
+      tmdbId = await tmdbFindByImdb(cleanId, tmdbMediaType, apiKey)
+    } else if (cleanId.startsWith("tmdb:")) {
+      const parsed = parseInt(cleanId.slice(5), 10)
+      if (!Number.isNaN(parsed) && parsed > 0) tmdbId = parsed
+    } else if (cleanId.startsWith("tvdb:")) {
+      const tvdbRaw = cleanId.slice(5)
+      tmdbId = await tmdbFindByTvdb(tvdbRaw, tmdbMediaType, apiKey)
+    } else if (cleanId.startsWith("tvdbc:")) {
+      const tvdbRaw = cleanId.slice(6)
+      tmdbId = await tmdbFindByTvdb(tvdbRaw, tmdbMediaType, apiKey)
+    } else if (/^\d+$/.test(cleanId)) {
+      const parsed = parseInt(cleanId, 10)
+      if (!Number.isNaN(parsed) && parsed > 0) tmdbId = parsed
+    }
+  } catch (error) {
+    // debug, non warn: le installazioni senza chiave colpiscono questo ramo
+    // a ogni richiesta, un warn per-hit sarebbe log-spam.
+    log.debug("Meta ID resolution failed", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    tmdbId = null
   }
 
   if (!tmdbId) {
@@ -201,8 +229,15 @@ export async function pictoriumMeta(
   // eo2 = versione ordinamento episodi: il default automatico "Parts" (v2)
   // cambia i videos a parità di mapping — senza frammento, un meta cachato
   // con le stagioni standard resterebbe servito fino a 12h dopo il deploy.
-  const cacheKey = `stremio:meta:${stType}:${cleanId}:pv${POSTER_URL_VERSION}${userParam ? `:u${hashFragment(userParam)}` : ""}:ak${apiKey ? hashFragment(apiKey) : "none"}${configParam ? `:cfg${hashFragment(configParam)}` : ""}${mdblistKey ? `:mk${hashFragment(mdblistKey)}` : ""}${tvdbApiKey ? `:tk${hashFragment(tvdbApiKey)}` : ""}:es${episodeMetadataSource}:eg${hashFragment(egKey)}:r${region.code}${stType === "series" ? ":eo2" : ""}`
-  const cached = cacheGet<{ meta: StremioMetaDetail }>(cacheKey)
+  // Epoch globale + hash server defaults (come nei cataloghi): senza, un
+  // cambio default (badge/blur/regione) via PUT restava invisibile nei meta
+  // (poster URL stantio) fino a 12h, anche cross-instance dove
+  // cacheInvalidate("stremio") non arriva.
+  const epoch = await getCatalogEpoch()
+  const sdHash = hashFragment(JSON.stringify(getServerDefaults()))
+  const freshness = `:e${epoch}:sd${sdHash}`
+  const cacheKey = `stremio:meta:${stType}:${cleanId}:pv${POSTER_URL_VERSION}${userParam ? `:u${hashFragment(userParam)}` : ""}:ak${apiKey ? hashFragment(apiKey) : "none"}${configParam ? `:cfg${hashFragment(configParam)}` : ""}${mdblistKey ? `:mk${hashFragment(mdblistKey)}` : ""}${tvdbApiKey ? `:tk${hashFragment(tvdbApiKey)}` : ""}:es${episodeMetadataSource}:eg${hashFragment(egKey)}:r${region.code}${stType === "series" ? ":eo2" : ""}${freshness}`
+  const cached = await cacheGetShared<{ meta: StremioMetaDetail }>(cacheKey, ["stremio", "meta"])
   if (cached) return metaResponse(cached)
 
   try {
@@ -219,7 +254,7 @@ export async function pictoriumMeta(
     }
 
     const primaryId = imdbId || `tmdb:${tmdbId}`
-    const poster = await pictoriumPosterUrl(req, stType, tmdbId, configParam, userParam, mdblistKeyParam, posterLang)
+    const poster = await pictoriumPosterUrl(req, stType, tmdbId, configParam, userParam, posterLang)
     const background = details.backdrop_path ? posterUrlOriginal(details.backdrop_path) : undefined
 
     // Risoluzione Logo
@@ -314,7 +349,12 @@ export async function pictoriumMeta(
             if (autoId) {
               const autoDetails = await getTVEpisodeGroup(autoId, tmdbLang, apiKey).catch(() => null)
               const count = groupDetailsEpisodeCount(autoDetails)
-              const countMatches = count === standardEpisodeCount || (totalEpisodeCountWithSpecials > standardEpisodeCount && count === totalEpisodeCountWithSpecials)
+              const regularCount = groupDetailsRegularEpisodeCount(autoDetails)
+              const countMatches =
+                count === standardEpisodeCount ||
+                regularCount === standardEpisodeCount ||
+                (totalEpisodeCountWithSpecials > standardEpisodeCount &&
+                  (count === totalEpisodeCountWithSpecials || Math.abs(count - totalEpisodeCountWithSpecials) <= 15))
               if (
                 autoDetails?.groups &&
                 autoDetails.groups.length > 0 &&

@@ -5,16 +5,6 @@ import { buildTitleTextSvg, textShadowBox, type TextStyle, estimateTextWidth, fo
 import type { GenreParts } from "./badge-svg-shared"
 import type { BadgeStyle, RankingBadgeStyle, ExtraBadgeStyle } from "./badge-styles"
 
-/**
- * Moltiplicatore dei corpi badge. 100 = taglia di default; il clamp evita che
- * un valore fuori scala (config token vecchio, query manomessa) produca un
- * badge grande quanto il poster o invisibile.
- */
-export function badgeScaleFactor(scale: number | null | undefined): number {
-  if (!Number.isFinite(scale as number)) return 1
-  return Math.min(Math.max(scale as number, 50), 200) / 100
-}
-
 
 let _regular: Buffer | null = null
 let _bold: Buffer | null = null
@@ -79,7 +69,7 @@ function fontStyle(): string {
   return _cachedStyle
 }
 
-function wrapSvg(svg: string): string {
+export function wrapSvg(svg: string): string {
   if (svg.includes("</defs>")) {
     return svg.replace("</defs>", `${fontStyle()}</defs>`)
   }
@@ -125,12 +115,20 @@ export async function buildExtraBadgeSVG(
   topLight?: boolean,
   badgeStyle?: ExtraBadgeStyle,
   accentColor?: string,
+  /** Scala % applicata al font solo per lo stile barra (gli altri scalano via bitmap nel service). */
   scale = 100,
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
   const s = badgeStyle || "default"
-  const maxBadgeW = pw - 20
-  // Più piccola
-  let finalFs = 19 * pw / 380 * badgeScaleFactor(scale)
+  // Cap estetico per gli stili compatti: oltre il 65% di pw il testo si
+  // rimpicciolisce (le label corte restano invariate). La barra resta
+  // full-width: lì vale solo il bound hard anti-overflow (pw - 20).
+  const maxBadgeW = s === "bar" ? pw - 20 : Math.round(pw * 0.65)
+  // Extra al 90% del badge ranking: a pari fs (es. "Candidato Golden Globe")
+  // il testo risultava troppo grande rispetto ai rank.
+  let finalFs = 23 * 0.9 * pw / 380
+  // Barra full-width: la scala assottiglia nativamente (font+padding),
+  // senza staccare la barra dal bordo come farebbe il resize bitmap.
+  if (s === "bar") finalFs = (finalFs * scale) / 100
   const projectedW = estimateTextWidth(label, finalFs) + Math.round(finalFs * 2) + Math.round(finalFs * 0.6) * 2
   if (projectedW > maxBadgeW) {
     finalFs = Math.max(maxBadgeW / projectedW * finalFs, 10)
@@ -165,14 +163,20 @@ export async function buildExtraBadgeSVG(
 
 export async function buildGenreBadgeSVG(
   genreName: string, voteAverage: number, pw: number,
-  year?: string, style?: BadgeStyle, accentColor?: string, topLight?: boolean, parts?: GenreParts, scale = 100,
+  year?: string, style?: BadgeStyle, accentColor?: string, topLight?: boolean, parts?: GenreParts,
+  /** Scala % applicata al font solo per lo stile barra (gli altri scalano via bitmap nel service). */
+  scale = 100,
   textStyle?: TextStyle,
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
   const s = style || "shadow"
   const voteStr = voteAverage ? voteAverage.toFixed(1) : ""
   const yearStr = year || ""
 
-  let finalFs = 28 * pw / 380 * badgeScaleFactor(scale)
+  // Base al 120%: il badge genere/rating di default rende come l'ex-120%
+  // ma nativo (niente upscale bitmap) — lo slider `gscale` parte da 100.
+  let finalFs = 24 * 1.2 * pw / 380
+  // Barra full-width: vedi nota in buildExtraBadgeSVG.
+  if (s === "bar") finalFs = (finalFs * scale) / 100
   const aestheticMaxW = Math.round(pw * 0.86) // 86% per margine estetico
   let dims = genreBadgeSvgDims(finalFs, genreName, voteStr, yearStr, parts)
   let safePad = genreBadgeSafePad(finalFs)
@@ -233,7 +237,8 @@ export async function buildGenreBadgeSVG(
 
 export async function renderGenreBadge(
   genreName: string, voteAverage: number, pw: number,
-  year?: string, style?: BadgeStyle, accentColor?: string, topLight?: boolean, parts?: GenreParts, scale = 100,
+  year?: string, style?: BadgeStyle, accentColor?: string, topLight?: boolean, parts?: GenreParts,
+  scale = 100,
   textStyle?: TextStyle,
 ): Promise<{ png: Buffer; w: number; h: number }> {
   const r = await buildGenreBadgeSVG(genreName, voteAverage, pw, year, style, accentColor, topLight, parts, scale, textStyle)
@@ -260,15 +265,16 @@ export function netflixRibbonFontSize(pw: number): number {
 }
 
 export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boolean, side: "left" | "right" = "left", isAnime?: boolean, label?: string) {
-  const fs = netflixRibbonFontSize(pw)
-  const w = Math.round(fs * 2.6)
+  // Leggermente ridotto (-11%): fs base 24, w proporzionale 2.65
+  const fs = Math.round(Math.max(24 * pw / 380, 16))
+  const w = Math.round(fs * 2.65)
   // Sottotitolo presente (anime o film/serie con etichetta): nastro allungato
-  // verso il basso (h × 1.55) per dare spazio alla scritta sotto il numero.
+  // verso il basso (h × 1.65) per dare pieno respiro alla scritta sopra la V.
   const subLabel = netflixSubLabel(isAnime, label)
   const hasSub = subLabel.length > 0
-  const h = Math.round(w * (hasSub ? 1.55 : 1.35))
+  const h = Math.round(w * (hasSub ? 1.65 : 1.35))
   const slant = Math.round(w * 0.12)
-  const topFs = Math.round(w * 0.26)
+  const topFs = Math.round(w * 0.25)
   const isDoubleDigit = rank >= 10
   const rankFs = Math.round(w * (isDoubleDigit ? 0.48 : 0.54))
   const rankLetterSpacing = isDoubleDigit ? "-1" : "0"
@@ -277,34 +283,34 @@ export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boo
   const totalW = w + padRight
   const totalH = h + padBottom
 
-  // Sottotitolo sotto il numero: font proporzionale al nastro, auto-fit se
-  // l'etichetta è più larga del nastro (es. traduzioni lunghe).
-  let subFs = Math.round(w * 0.20)
-  if (hasSub) {
-    const maxSubW = Math.round(w * 0.90)
-    const subW = estimateTextWidth(subLabel, subFs)
-    if (subW > maxSubW) subFs = Math.max(Math.round(subFs * maxSubW / subW), 8)
-  }
-  const subPadBottom = hasSub ? Math.round(subFs * 0.6) : 0
-  const totalHSub = totalH + subPadBottom
+  const ribbonMidX = w / 2
+  const ribbonVNotchY = Math.round(h * 0.90)
 
-  // TOP, numero e sottotitolo impilati con la stessa distanza visiva.
-  const topY = hasSub ? Math.round(h * 0.22) : Math.round(h * 0.26)
-  const textGap = hasSub ? Math.round(Math.min(topFs, subFs) * 0.2) : 0
+  // Sottotitolo sotto il numero: calcolato sulla larghezza reale del trapezio alla base
+  // (w - slant) con margine di sicurezza interno (0.82) per evitare qualsiasi sbordatura.
+  let subFs = Math.round(w * 0.19)
+  if (hasSub) {
+    const maxSubW = Math.round((w - slant) * 0.82)
+    const subW = estimateTextWidth(subLabel, subFs)
+    if (subW > maxSubW) {
+      subFs = Math.max(Math.round(subFs * maxSubW / subW), 8)
+    }
+  }
+
+  // TOP, numero e sottotitolo impilati
+  const topY = hasSub ? Math.round(h * 0.20) : Math.round(h * 0.26)
+  const textGap = hasSub ? Math.round(Math.min(topFs, subFs) * 0.25) : 0
   const rankY = hasSub
     ? topY + Math.round(topFs / 2) + textGap + Math.round(rankFs / 2)
     : Math.round(h * 0.60)
   const subY = hasSub
-    ? rankY + Math.round(rankFs / 2) + textGap + Math.round(subFs / 2)
+    ? Math.round((rankY + Math.round(rankFs / 2) + ribbonVNotchY) / 2)
     : 0
 
   // Stessa logica adattiva degli altri badge ranking (tlBg/tlFg):
   // top chiaro → nastro scuro con testo chiaro; top scuro → nastro chiaro con testo nero.
   const fill = topLight ? "rgba(0,0,0,0.80)" : "rgba(255,255,255,0.80)"
   const textColor = topLight ? "rgba(255,255,255,0.80)" : "rgba(0,0,0,0.80)"
-
-  const ribbonMidX = w / 2
-  const ribbonVNotchY = Math.round(h * 0.88)
 
   // Nastro top-left (side="left", default): ancorato al bordo sinistro del poster,
   // lato sinistro dritto e destro inclinato. Modalità Stremio (side="right"): nastro
@@ -323,7 +329,7 @@ export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boo
     ? `<text x="${textX}" y="${subY}" fill="${textColor}" font-family="${fontFamilyFor(subLabel)}" font-weight="700" font-size="${subFs}" text-anchor="middle" dominant-baseline="central" letter-spacing="0.6" filter="url(#textShadow)">${escSvg(subLabel)}</text>`
     : ""
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${totalHSub}" viewBox="0 0 ${totalW} ${totalHSub}">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${totalH}" viewBox="0 0 ${totalW} ${totalH}">
     <defs>
       <filter id="shadow3D" x="-20%" y="-20%" width="180%" height="180%">
         <feDropShadow dx="${shadowDx}" dy="3" stdDeviation="3.5" flood-color="#000000" flood-opacity="0.65"/>
@@ -338,7 +344,7 @@ export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boo
     <text x="${textX}" y="${rankY}" fill="${textColor}" font-family="Inter" font-weight="900" font-size="${rankFs}" text-anchor="middle" dominant-baseline="central" letter-spacing="${rankLetterSpacing}" filter="url(#textShadow)">${rank}</text>
     ${subEl}
   </svg>`
-  return { svg, w: totalW, h: totalHSub }
+  return { svg, w: totalW, h: totalH }
 }
 
 export async function buildRankingBadgeSVG(
@@ -350,13 +356,16 @@ export async function buildRankingBadgeSVG(
   accentColor?: string,
   side?: "left" | "right",
   isAnime?: boolean,
+  /** Scala % applicata al font solo per lo stile barra (gli altri scalano via bitmap nel service). */
   scale = 100,
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
   const s = badgeStyle || "default"
   const periodText = label || "Oggi"
   const fullText = `#${rank} ${periodText}`
   const maxBadgeW = pw - 20
-  let finalFs = 24 * pw / 380 * badgeScaleFactor(scale)
+  let finalFs = 23 * pw / 380
+  // Barra full-width: vedi nota in buildExtraBadgeSVG.
+  if (s === "bar") finalFs = (finalFs * scale) / 100
   const projectedW = estimateTextWidth(fullText, finalFs) + Math.round(finalFs * 2) + Math.round(finalFs * 0.6) * 2
   if (projectedW > maxBadgeW) {
     finalFs = Math.max(maxBadgeW / projectedW * finalFs, 10)
@@ -389,7 +398,8 @@ export async function buildRankingBadgeSVG(
 
 export async function renderRankingBadge(
   rank: number, pw: number, label?: string,
-  topLight?: boolean, badgeStyle?: RankingBadgeStyle, accentColor?: string, side?: "left" | "right", isAnime?: boolean, scale = 100,
+  topLight?: boolean, badgeStyle?: RankingBadgeStyle, accentColor?: string, side?: "left" | "right", isAnime?: boolean,
+  scale = 100,
 ): Promise<{ png: Buffer; w: number; h: number }> {
   const r = await buildRankingBadgeSVG(rank, pw, label, topLight, badgeStyle, accentColor, side, isAnime, scale)
   if (r) return r
@@ -398,7 +408,8 @@ export async function renderRankingBadge(
 
 export async function renderExtraBadge(
   label: string, pw: number, topLight?: boolean,
-  badgeStyle?: ExtraBadgeStyle, accentColor?: string, scale = 100,
+  badgeStyle?: ExtraBadgeStyle, accentColor?: string,
+  scale = 100,
 ): Promise<{ png: Buffer; w: number; h: number }> {
   const r = await buildExtraBadgeSVG(label, pw, topLight, badgeStyle, accentColor, scale)
   if (r) return r
@@ -419,13 +430,83 @@ export async function renderTitleText(
   return { png, w: built.w, h: built.h }
 }
 
+// --- Coming Soon corner ribbon (pre-digitale) ---
+//
+// Sticker angolare rosso in alto (a sinistra; speculare a destra con side="right"), la banda sborda
+// dai bordi poster (il layer va composto con offset negativo pari a
+// `comingSoonRibbonLayout(pw).offset`), così resta visibile solo il
+// triangolo d'angolo. Il logo network va impilato sotto `extent` (solo lato sinistro).
+
+export interface ComingSoonRibbonLayout {
+  /** Lato del canvas quadrato (px). */
+  size: number
+  /** Quanto il layer va spostato in negativo su top/left per far sbordare la banda. */
+  offset: number
+  /** Estensione visibile del nastro dall'angolo (per impilare il logo network sotto). */
+  extent: number
+}
+
+export function comingSoonRibbonLayout(pw: number): ComingSoonRibbonLayout {
+  const s = pw / 380
+  return {
+    size: Math.round(200 * s),
+    offset: Math.round(20 * s),
+    extent: Math.round(155 * s),
+  }
+}
+
+export async function renderComingSoonRibbon(
+  label: string,
+  pw: number,
+  side: "left" | "right" = "left",
+): Promise<{ png: Buffer; w: number; h: number }> {
+  const s = pw / 380
+  const layout = comingSoonRibbonLayout(pw)
+  const CS = layout.size
+  const c = CS - layout.offset - Math.round(100 * s)
+  const cx = side === "right" ? CS - c : c
+  const rot = side === "right" ? 45 : -45
+  const half = Math.round(140 * s)
+  const bandH = Math.round(44 * s)
+  const text = label.toUpperCase()
+  let fs = Math.round(21 * s)
+  // Il testo deve stare nel segmento visibile (tra i due bordi poster):
+  // oltre sborda a metà lettera e sembra rotto, non "nastro da angolo".
+  // Tetto stretto (120, non tutta la banda): le parole lunghe
+  // ("Prossimamente", "Prochainement"...) respirano invece di toccare i bordi.
+  const maxTextW = Math.round(120 * s)
+  const textW = estimateTextWidth(text, fs)
+  if (textW > maxTextW) {
+    fs = Math.max(12, Math.floor((fs * maxTextW) / textW))
+  }
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${CS}" height="${CS}" viewBox="0 0 ${CS} ${CS}">` +
+    `<defs>` +
+    `<filter id="csShadow" x="-40%" y="-40%" width="180%" height="180%">` +
+    `<feDropShadow dx="0" dy="${Math.round(3 * s)}" stdDeviation="${Math.round(4 * s)}" flood-color="#000000" flood-opacity="0.80"/>` +
+    `</filter>` +
+    `<linearGradient id="csGrad" x1="0" y1="0" x2="0" y2="1">` +
+    `<stop offset="0%" stop-color="#e50914"/>` +
+    `<stop offset="100%" stop-color="#a30810"/>` +
+    `</linearGradient>` +
+    `</defs>` +
+    `<g transform="translate(${cx},${c}) rotate(${rot})" filter="url(#csShadow)">` +
+    `<rect x="${-half}" y="${Math.round(-bandH / 2)}" width="${half * 2}" height="${bandH}" fill="url(#csGrad)"/>` +
+    `<text x="0" y="${Math.round(1 * s)}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(text)}" font-weight="800" font-size="${fs}" fill="#ffffff" letter-spacing="0.05em">${escSvg(text)}</text>` +
+    `</g></svg>`
+  const png = await renderSVG(wrapSvg(svg), CS)
+  return { png, w: CS, h: CS }
+}
+
 export async function renderQualityBadge(
   quality: string,
   pw: number,
   topLight?: boolean,
-  scale = 100,
+  /** Applicata a valle come resize bitmap in poster-service, non qui. */
+  _scale = 100,
 ): Promise<{ png: Buffer; w: number; h: number }> {
-  const fs = Math.round(Math.max(19 * pw / 380 * badgeScaleFactor(scale), 13))
+  // Base al 120% nativa (come il badge genere): lo slider `qscale` parte da 100.
+  const fs = Math.round(Math.max(14 * 1.2 * pw / 380, 10))
   const bg = topLight ? "rgba(0,0,0,0.80)" : "rgba(255,255,255,0.80)"
   const fg = topLight ? "rgba(255,255,255,0.80)" : "rgba(0,0,0,0.80)"
   const result = buildQualityBadgeSvg(quality, fs, fg, bg, !!topLight)

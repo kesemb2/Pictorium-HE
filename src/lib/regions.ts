@@ -18,7 +18,7 @@ export interface RegionDef {
   readonly lang: string
   /**
    * Lingua UI a 2 lettere (stato `lang` dell'app, `preferred_lang`).
-   * Solo it/en/fr/de/es hanno un dizionario UI completo — ja/ko/pt/he
+   * Solo it/en/fr/de/es hanno un dizionario UI completo — ja/ko/pt/he/cs
    * ripiegano sull'inglese in `i18n.lookup` per le stringhe `ui.*` (he ha
    * badge/award tradotti), mentre i contenuti TMDB seguono `lang`.
    */
@@ -45,6 +45,7 @@ export const REGIONS: readonly RegionDef[] = [
   { code: "IN", flixSlug: "india", lang: "en-IN", lang2: "en", languageName: "English", label: "India", flag: "🇮🇳" },
   { code: "CA", flixSlug: "canada", lang: "en-CA", lang2: "en", languageName: "English", label: "Canada", flag: "🇨🇦" },
   { code: "AU", flixSlug: "australia", lang: "en-AU", lang2: "en", languageName: "English", label: "Australia", flag: "🇦🇺" },
+  { code: "CZ", flixSlug: "czech-republic", lang: "cs-CZ", lang2: "cs", languageName: "Čeština", label: "Cechia", flag: "🇨🇿" },
 ] as const
 
 const BY_CODE = new Map(REGIONS.map((r) => [r.code, r]))
@@ -103,4 +104,19 @@ export function isSupportedUiLang(code: string | null | undefined): boolean {
 export function regionLangOption(regionCode: string): { key: string; lang: string; flag: string; name: string; sub: string } {
   const r = getRegionDef(regionCode)
   return { key: r.code, lang: r.lang2, flag: r.flag, name: `${r.label} · ${r.languageName}`, sub: r.lang2.toUpperCase() }
+}
+
+/**
+ * Restituisce la regione predefinita per una lingua UI (es. "fr" -> "FR", "it" -> "IT", "de" -> "DE").
+ * Se `currentRegion` appartiene già alla stessa famiglia linguistica (es. "GB" con lingua "en"), la mantiene.
+ */
+export function defaultRegionForLang(lang: string | null | undefined, currentRegion?: string | null): string | null {
+  if (!lang) return null
+  const l = lang.toLowerCase().trim()
+  if (currentRegion) {
+    const cur = getRegionDef(currentRegion)
+    if (cur && cur.lang2 === l) return cur.code
+  }
+  const found = REGIONS.find((r) => r.lang2 === l)
+  return found?.code ?? null
 }

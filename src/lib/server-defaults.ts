@@ -24,6 +24,12 @@ export interface ServerDefaults {
   badgeYear?: boolean
   badgeRating?: boolean
   badgeQuality?: boolean
+  /** Riga rating custom provider (display). Default ON quando il provider è configurato. */
+  customRatings?: boolean
+  /** Endpoint provider custom rating (UI). Non-segreto; la chiave resta solo env. */
+  customRatingEndpoint?: string
+  /** Header della chiave provider (UI). Default "X-API-Key". */
+  customRatingApiKeyHeader?: string
   ratingSources?: string[]
   autoRotateClean?: boolean
   defaultLogoFitEnabled?: boolean
@@ -39,6 +45,28 @@ export interface ServerDefaults {
   badgeTopOffset?: number
   badgeBottomOffset?: number
   logoBottomOffset?: number
+  /** Scala % del badge superiore (rank/extra). Default 100. */
+  topBadgeScale?: number
+  /** Offset px del badge superiore (solo stili centrati). Default 0. */
+  topBadgeOffsetX?: number
+  topBadgeOffsetY?: number
+  /** Scala % del badge genere/rating in basso. Default 100. */
+  genreBadgeScale?: number
+  /** Offset px del badge genere/rating (solo stili non-bar). Default 0. */
+  genreBadgeOffsetX?: number
+  genreBadgeOffsetY?: number
+  /** Scala % del badge qualità (streaming). Default 100. */
+  qualityBadgeScale?: number
+  /** Offset px del badge qualità. Default 0. */
+  qualityBadgeOffsetX?: number
+  qualityBadgeOffsetY?: number
+  /** Scala % del logo network. Default 100. */
+  networkLogoScale?: number
+  /** Offset px del logo network. Default 0. */
+  networkLogoOffsetX?: number
+  networkLogoOffsetY?: number
+  /** Effetto pre-digitale (darken + badge Coming Soon, solo film). Default OFF. */
+  preRelease?: boolean
   ribbonSide?: "left" | "right"
   episodeMetadataSource?: "tmdb" | "tvdb"
   /** Regione classifiche JustWatch/FlixPatrol + lingua titoli (codice JW, es. "IT"). */
@@ -85,6 +113,7 @@ function defaultsFromEnv(): ServerDefaults {
   const by = envBool("BADGE_YEAR")
   const br = envBool("BADGE_RATING")
   const bq = envBool("BADGE_QUALITY")
+  const cr = envBool("CUSTOM_RATINGS")
   const blurEn = envBool("BLUR_ENABLED")
   const netLogo = envBool("NETWORK_LOGO")
   const accentDom = envBool("ACCENT_DOMINANT")
@@ -100,6 +129,7 @@ function defaultsFromEnv(): ServerDefaults {
     ["badgeBottomOffset", envNum("BADGE_BOTTOM_OFFSET")],
     ["logoBottomOffset", envNum("LOGO_BOTTOM_OFFSET")],
   ]
+  const preRel = envBool("PRE_RELEASE")
   const autoRotate = envBool("AUTO_ROTATE_CLEAN")
   const logoFit = envBool("LOGO_FIT_ENABLED")
   if (bG !== undefined) d.globalBadges = bG
@@ -108,6 +138,7 @@ function defaultsFromEnv(): ServerDefaults {
   if (by !== undefined) d.badgeYear = by
   if (br !== undefined) d.badgeRating = br
   if (bq !== undefined) d.badgeQuality = bq
+  if (cr !== undefined) d.customRatings = cr
   const rsrcEnv = getEnv("RATING_SOURCES")?.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
   if (rsrcEnv && rsrcEnv.length > 0) d.ratingSources = rsrcEnv
   if (blurEn !== undefined) d.blurEnabled = blurEn
@@ -117,6 +148,7 @@ function defaultsFromEnv(): ServerDefaults {
   for (const [key, val] of geomEnv) {
     if (val !== undefined) (d as Record<string, unknown>)[key] = val
   }
+  if (preRel !== undefined) d.preRelease = preRel
   if (autoRotate !== undefined) d.autoRotateClean = autoRotate
   if (logoFit !== undefined) d.defaultLogoFitEnabled = logoFit
   const bs = getEnv("BADGE_STYLE")?.trim()
@@ -126,8 +158,26 @@ function defaultsFromEnv(): ServerDefaults {
   const blurF = envNum("BLUR_FADE")
   const blurD = envNum("BLUR_DARKNESS")
   const gradH = envNum("GRADIENT_HEIGHT")
+  const topBadgeScale = envNum("TOP_BADGE_SCALE")
+  const topBadgeOX = envNum("TOP_BADGE_OFFSET_X")
+  const topBadgeOY = envNum("TOP_BADGE_OFFSET_Y")
+  const genreBadgeScale = envNum("GENRE_BADGE_SCALE")
+  const genreBadgeOX = envNum("GENRE_BADGE_OFFSET_X")
+  const genreBadgeOY = envNum("GENRE_BADGE_OFFSET_Y")
+  const qualityBadgeScale = envNum("QUALITY_BADGE_SCALE")
+  const qualityBadgeOX = envNum("QUALITY_BADGE_OFFSET_X")
+  const qualityBadgeOY = envNum("QUALITY_BADGE_OFFSET_Y")
+  const networkLogoScale = envNum("NETWORK_LOGO_SCALE")
+  const networkLogoOX = envNum("NETWORK_LOGO_OFFSET_X")
+  const networkLogoOY = envNum("NETWORK_LOGO_OFFSET_Y")
   const epSrc = getEnv("EPISODE_METADATA_SOURCE")?.trim().toLowerCase()
   if (epSrc === "tmdb" || epSrc === "tvdb") d.episodeMetadataSource = epSrc
+  // Endpoint provider custom rating (non-segreto; chiave solo env). Il valore
+  // salvato via UI vince su questo in getServerDefaults (merge sotto).
+  const ratingEndpoint = getEnv("CUSTOM_RATING_ENDPOINT")?.trim()
+  if (ratingEndpoint) d.customRatingEndpoint = ratingEndpoint
+  const ratingKeyHeader = getEnv("CUSTOM_RATING_API_KEY_HEADER")?.trim()
+  if (ratingKeyHeader) d.customRatingApiKeyHeader = ratingKeyHeader
   // Regione classifiche: codice canonico, fail-closed su IT se non riconosciuta.
   const regionRaw = getEnv("REGION")?.trim()
   if (regionRaw) d.region = normalizeRegion(regionRaw)
@@ -138,6 +188,18 @@ function defaultsFromEnv(): ServerDefaults {
   if (blurF !== undefined) d.blurFade = blurF
   if (blurD !== undefined) d.blurDarkness = blurD
   if (gradH !== undefined) d.gradientHeight = gradH
+  if (topBadgeScale !== undefined) d.topBadgeScale = topBadgeScale
+  if (topBadgeOX !== undefined) d.topBadgeOffsetX = topBadgeOX
+  if (topBadgeOY !== undefined) d.topBadgeOffsetY = topBadgeOY
+  if (genreBadgeScale !== undefined) d.genreBadgeScale = genreBadgeScale
+  if (genreBadgeOX !== undefined) d.genreBadgeOffsetX = genreBadgeOX
+  if (genreBadgeOY !== undefined) d.genreBadgeOffsetY = genreBadgeOY
+  if (qualityBadgeScale !== undefined) d.qualityBadgeScale = qualityBadgeScale
+  if (qualityBadgeOX !== undefined) d.qualityBadgeOffsetX = qualityBadgeOX
+  if (qualityBadgeOY !== undefined) d.qualityBadgeOffsetY = qualityBadgeOY
+  if (networkLogoScale !== undefined) d.networkLogoScale = networkLogoScale
+  if (networkLogoOX !== undefined) d.networkLogoOffsetX = networkLogoOX
+  if (networkLogoOY !== undefined) d.networkLogoOffsetY = networkLogoOY
   return d
 }
 const ENV_DEFAULTS: ServerDefaults = defaultsFromEnv()

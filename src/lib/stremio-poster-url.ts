@@ -32,12 +32,13 @@ export interface BuildStremioPosterUrlInput {
   readonly id: number
   readonly defaults: ServerDefaults
   readonly mapping?: Mapping | null
-  // Niente chiavi (vedi stremio-poster-params.ts): questo URL viene servito a
-  // Stremio e persistito nel suo database — mai segreti dentro.
+  // Niente chiavi (vedi stremio-poster-params.ts): questo URL viene servito
+  // a Stremio e persistito nel suo DB — mai segreti dentro.
   readonly animerank?: number
   readonly lang?: string | null
   readonly config?: string | null
   readonly user?: string | null
+  readonly region?: string | null
 }
 
 export function mappingVersionParam(mapping: Mapping | null | undefined): string | null {
@@ -67,6 +68,7 @@ export function buildStremioPosterUrl(input: BuildStremioPosterUrlInput): URL {
     config: input.config,
     animerank: input.animerank,
     user: input.user,
+    region: input.region ?? input.defaults.region,
     lang: input.lang || "it",
     // Per-titolo vince sui default globali, con emissione ESPLICITA in query:
     // il fallback server (mapping quando il parametro manca) è fragile —
@@ -80,15 +82,29 @@ export function buildStremioPosterUrl(input: BuildStremioPosterUrlInput): URL {
     badgeYear: input.mapping?.badgeYear ?? input.defaults.badgeYear,
     badgeRating: input.mapping?.badgeRating ?? input.defaults.badgeRating,
     badgeQuality: input.mapping?.badgeQuality ?? input.defaults.badgeQuality,
+    customRatings: mapping?.customRatings ?? input.defaults.customRatings,
     ratingSources: input.defaults.ratingSources,
     badgeStyle: mapping?.badgeStyle ?? input.defaults.badgeStyle,
     rankingBadgeStyle: mapping?.rankingBadgeStyle ?? input.defaults.rankingBadgeStyle,
+    topBadgeScale: mapping?.topBadgeScale ?? input.defaults.topBadgeScale,
+    topBadgeOffsetX: mapping?.topBadgeOffsetX ?? input.defaults.topBadgeOffsetX,
+    topBadgeOffsetY: mapping?.topBadgeOffsetY ?? input.defaults.topBadgeOffsetY,
+    genreBadgeScale: mapping?.genreBadgeScale ?? input.defaults.genreBadgeScale,
+    qualityBadgeScale: mapping?.qualityBadgeScale ?? input.defaults.qualityBadgeScale,
+    genreBadgeOffsetX: mapping?.genreBadgeOffsetX ?? input.defaults.genreBadgeOffsetX,
+    genreBadgeOffsetY: mapping?.genreBadgeOffsetY ?? input.defaults.genreBadgeOffsetY,
+    qualityBadgeOffsetX: mapping?.qualityBadgeOffsetX ?? input.defaults.qualityBadgeOffsetX,
+    qualityBadgeOffsetY: mapping?.qualityBadgeOffsetY ?? input.defaults.qualityBadgeOffsetY,
+    networkLogoScale: mapping?.networkLogoScale ?? input.defaults.networkLogoScale,
+    networkLogoOffsetX: mapping?.networkLogoOffsetX ?? input.defaults.networkLogoOffsetX,
+    networkLogoOffsetY: mapping?.networkLogoOffsetY ?? input.defaults.networkLogoOffsetY,
     gradientHeight: mapping?.gradientHeight ?? input.defaults.gradientHeight,
     blurIntensity: mapping?.blurIntensity ?? input.defaults.blurIntensity,
     blurFade: mapping?.blurFade ?? input.defaults.blurFade,
     blurDarkness: mapping?.blurDarkness ?? input.defaults.blurDarkness,
     blurEnabled: mapping?.blurEnabled ?? input.defaults.blurEnabled,
     customBadge,
+    title: mapping?.title ?? undefined,
     networkLogo: (input.defaults.networkLogo !== false) && (mapping?.networkLogo !== false),
     accentDominant: (input.defaults.accentDominant !== false) && (mapping?.accentDominant !== false),
     badgeTopScale: mapping?.badgeTopScale ?? input.defaults.badgeTopScale,
@@ -96,7 +112,9 @@ export function buildStremioPosterUrl(input: BuildStremioPosterUrlInput): URL {
     badgeTopOffset: mapping?.badgeTopOffset ?? input.defaults.badgeTopOffset,
     badgeBottomOffset: mapping?.badgeBottomOffset ?? input.defaults.badgeBottomOffset,
     logoBottomOffset: input.defaults.logoBottomOffset,
-    ribbonSide: mapping?.ribbonSide ?? input.defaults.ribbonSide,
+    preRelease: input.defaults.preRelease,
+    // ribbonSide solo globale: i mapping storici con valore salvato lo ignorano.
+    ribbonSide: input.defaults.ribbonSide,
   })
 
   params.forEach((value, key) => url.searchParams.set(key, value))

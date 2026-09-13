@@ -31,7 +31,33 @@ describe("buildStremioPosterUrl", () => {
     expect(url.searchParams.get("rv")).toBe(String(POSTER_URL_VERSION))
     expect(url.searchParams.get("mv")).toBe(String(Date.parse(updatedAt)))
     expect(url.searchParams.get("bs")).toBe("bar")
-    expect(url.searchParams.get("api_key")).toBeNull()
+    // Mai segreti nei poster serviti (M2): niente api_key/mdblist_key.
+    expect(url.searchParams.has("api_key")).toBe(false)
+    expect(url.searchParams.has("mdblist_key")).toBe(false)
+  })
+
+  it("emits the mapping title for JustWatch matching", () => {
+    const url = buildStremioPosterUrl({
+      origin: "http://localhost:3000",
+      type: "movie",
+      id: 42,
+      defaults: {},
+      mapping: mapping("2026-07-16T10:15:30.000Z"),
+    })
+
+    expect(url.searchParams.get("title")).toBe("Test")
+  })
+
+  it("omits title without a saved mapping", () => {
+    const url = buildStremioPosterUrl({
+      origin: "http://localhost:3000",
+      type: "series",
+      id: 94997,
+      defaults: {},
+      mapping: null,
+    })
+
+    expect(url.searchParams.has("title")).toBe(false)
   })
 
   it("omits mapping version for unsaved titles", () => {
@@ -73,7 +99,7 @@ describe("buildStremioPosterUrl", () => {
     expect(url.searchParams.has("br")).toBe(false) // badgeRating is true
     expect(url.searchParams.get("bq")).toBe("0") // defaults
     expect(url.searchParams.get("rsrc")).toBe("tmdb,imdb")
-    expect(url.searchParams.get("side")).toBe("left") // mapping wins
+    expect(url.searchParams.get("side")).toBe("right") // solo globale: mapping ignorato
   })
 
   it("ignores invalid mapping timestamps", () => {

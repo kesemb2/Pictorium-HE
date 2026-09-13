@@ -3,20 +3,10 @@ import { buildStremioPosterSearchParams } from "@/lib/stremio-poster-params"
 import { POSTER_URL_VERSION, RENDER_VERSION } from "@/lib/render-version"
 
 describe("buildStremioPosterSearchParams", () => {
-  // Questi URL finiscono nel database di Stremio, nei log di CDN e proxy e nei
-  // link condivisi: nessuna chiave deve poterci entrare, nemmeno passandola.
-  it("has no way to put a key in a served poster URL", () => {
-    const params = buildStremioPosterSearchParams(
-      { lang: "it", apiKey: "tmdb-key", mdblistKey: "mdb-key" } as Parameters<typeof buildStremioPosterSearchParams>[0],
-    )
-    const qs = params.toString()
-    expect(qs).not.toContain("api_key")
-    expect(qs).not.toContain("mdblist_key")
-    expect(qs).not.toContain("tmdb-key")
-    expect(qs).not.toContain("mdb-key")
-  })
-
-  it("builds the exact visual params used by Stremio poster URLs", () => {
+  it("never embeds API keys in served poster URLs (M2)", () => {
+    // Chiavi passate per errore vengono ignorate: i poster URL finiscono nel
+    // DB Stremio/log/proxy — mai segreti dentro. Le chiavi del template che
+    // l'utente copia (buildUrlPattern) sono accodate a parte, lì sono volute.
     const params = buildStremioPosterSearchParams({
       lang: "it",
       globalBadges: false,
@@ -30,7 +20,8 @@ describe("buildStremioPosterSearchParams", () => {
       blurEnabled: false,
     })
 
-    expect(params.get("api_key")).toBeNull()
+    expect(params.has("api_key")).toBe(false)
+    expect(params.has("mdblist_key")).toBe(false)
     expect(params.get("lang")).toBe("it")
     expect(params.get("badges")).toBe("0")
     expect(params.get("ranking")).toBe("0")
@@ -59,12 +50,26 @@ describe("buildStremioPosterSearchParams", () => {
     expect(params.get("rs")).toBe("default")
   })
 
+  it("emits cr=0 only when custom ratings display is off", () => {
+    expect(buildStremioPosterSearchParams({}).has("cr")).toBe(false)
+    expect(buildStremioPosterSearchParams({ customRatings: true }).has("cr")).toBe(false)
+    expect(buildStremioPosterSearchParams({ customRatings: false }).get("cr")).toBe("0")
+  })
+
   it("serializes ribbonSide left and right explicitly", () => {
     const leftParams = buildStremioPosterSearchParams({ ribbonSide: "left" })
     expect(leftParams.get("side")).toBe("left")
 
     const rightParams = buildStremioPosterSearchParams({ ribbonSide: "right" })
     expect(rightParams.get("side")).toBe("right")
+  })
+
+  it("serializes region when configured and omits it when missing", () => {
+    const paramsWithRegion = buildStremioPosterSearchParams({ region: "FR" })
+    expect(paramsWithRegion.get("region")).toBe("FR")
+
+    const paramsWithoutRegion = buildStremioPosterSearchParams({})
+    expect(paramsWithoutRegion.has("region")).toBe(false)
   })
 
   it("serializes badge subcomponents and rating sources when configured", () => {

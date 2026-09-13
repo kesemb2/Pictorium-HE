@@ -5,9 +5,10 @@ import type { SearchResult, TMDBImage, Mapping, CustomCatalogConfig } from "./ty
 import { posterUrl, titleOf, yearOf, STREAMING_PLATFORMS } from "./utils"
 import { matchTMDBStudios } from "./awards"
 import { setLang as setI18nLang, createT } from "./i18n"
-import { isSupportedUiLang, getRegionDef } from "./regions"
+import { isSupportedUiLang, getRegionDef, defaultRegionForLang } from "./regions"
 import type { EnrichedAnimeItem } from "./validation"
 import { http } from "./http"
+import { copyText } from "./clipboard"
 import { useRootColors } from "./useRootColors"
 import { buildUrlPattern, buildPreviewUrl } from "./poster-url"
 import { selectBestLogo, autoLogoSelection, logoDefaultScale } from "./logo-selection"
@@ -101,8 +102,9 @@ export interface PictoriumCtx {
   refreshLists: () => Promise<void>
   tmdbKey: string
   setQuery: React.Dispatch<React.SetStateAction<string>>
-  doSearch: (q?: string, page?: number) => Promise<void>
+  doSearch: (q?: string, page?: number) => Promise<SearchResult[]>
   loadMore: () => Promise<void>
+  loadMoreFiltered: (mediaType: "movie" | "tv", targetNew?: number, maxPages?: number) => Promise<number>
   titleOf: (r: SearchResult) => string
   yearOf: (r: SearchResult) => string
   posterUrl: (path: string, size?: string) => string
@@ -315,18 +317,20 @@ export function usePictorium(): PictoriumCtx {
     badgeYear, setBadgeYear,
     badgeRating, setBadgeRating,
     badgeQuality, setBadgeQuality,
+    customRatings, setCustomRatings,
     ratingSources,
     badgeStyle, setBadgeStyle,
     rankingBadgeStyle, setRankingBadgeStyle,
     customBadge, setCustomBadge,
     networkLogo, setNetworkLogo,
+    preRelease,
     accentDominant, setAccentDominant,
     badgeTopScale, setBadgeTopScale,
     badgeBottomScale, setBadgeBottomScale,
     badgeTopOffset, setBadgeTopOffset,
     badgeBottomOffset, setBadgeBottomOffset,
-    textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
     logoBottomOffset,
+    textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
     ribbonSide,
     // Defaults
     defaultBadgeStyle,
@@ -337,6 +341,7 @@ export function usePictorium(): PictoriumCtx {
     defaultBadgeYear,
     defaultBadgeRating,
     defaultBadgeQuality,
+    defaultCustomRatings,
     defaultRibbonSide,
     setRibbonSide,
     defaultBlurEnabled,
@@ -344,6 +349,12 @@ export function usePictorium(): PictoriumCtx {
     defaultBlurFade,
     defaultBlurDarkness,
     defaultGradientHeight,
+    defaultTopBadgeScale,
+    defaultTopBadgeOffsetX,
+    defaultTopBadgeOffsetY,
+    defaultGenreBadgeScale, defaultQualityBadgeScale, defaultNetworkLogoScale,
+    defaultGenreBadgeOffsetX, defaultGenreBadgeOffsetY, defaultQualityBadgeOffsetX, defaultQualityBadgeOffsetY,
+    defaultNetworkLogoOffsetX, defaultNetworkLogoOffsetY,
     defaultAutoRotateClean,
     defaultNetworkLogo,
     defaultAccentDominant,
@@ -359,6 +370,23 @@ export function usePictorium(): PictoriumCtx {
     blurDarkness, setBlurDarkness,
     // Gradient
     gradientHeight, setGradientHeight,
+    // Badge superiore
+    topBadgeScale, setTopBadgeScale,
+    topBadgeOffsetX, setTopBadgeOffsetX,
+    topBadgeOffsetY, setTopBadgeOffsetY,
+    // Badge genere
+    genreBadgeScale, setGenreBadgeScale,
+    // Badge qualità
+    qualityBadgeScale, setQualityBadgeScale,
+    // Logo network
+    networkLogoScale, setNetworkLogoScale,
+    // Offset badge genere/qualità/network
+    genreBadgeOffsetX, setGenreBadgeOffsetX,
+    genreBadgeOffsetY, setGenreBadgeOffsetY,
+    qualityBadgeOffsetX, setQualityBadgeOffsetX,
+    qualityBadgeOffsetY, setQualityBadgeOffsetY,
+    networkLogoOffsetX, setNetworkLogoOffsetX,
+    networkLogoOffsetY, setNetworkLogoOffsetY,
     // Logo
     logoScale, setLogoScale,
     logoOffsetX, setLogoOffsetX,
@@ -544,7 +572,6 @@ export function usePictorium(): PictoriumCtx {
   }, [safeGetItem, safeSetItem])
 
   useEffect(() => {
-    document.documentElement.classList.toggle("light-mode", theme === "light")
     safeSetItem("pictorium_theme", theme)
   }, [theme, safeSetItem])
 
@@ -568,6 +595,11 @@ export function usePictorium(): PictoriumCtx {
     setLang(code)
     setI18nLang(code)
     safeSetItem("preferred_lang", code)
+    const matchingRegion = defaultRegionForLang(code, editorCtx.defaultRegion)
+    if (matchingRegion) {
+      editorCtx.setDefaultRegion(matchingRegion)
+      editorCtx.setRegion(matchingRegion)
+    }
   }
 
   // --- Settings panels ---
@@ -593,11 +625,14 @@ export function usePictorium(): PictoriumCtx {
   useEffect(() => {
     setUrlPattern(buildUrlPattern({
       globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle,
-      badgeGenre, badgeYear, badgeRating, badgeQuality, ratingSources,
-      customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, networkLogo, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, ribbonSide,
+      badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources,
+      customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, networkLogo, preRelease, ribbonSide,
+      topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale,
+      genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY,
+      networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
       tmdbKey, lang, mdblistApiKey,
     }))
-  }, [globalBadges, rankingBadges, badgeGenre, badgeYear, badgeRating, badgeQuality, ratingSources, networkLogo, ribbonSide, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, badgeStyle, rankingBadgeStyle, tmdbKey, lang, mdblistApiKey]) // eslint-disable-line react-hooks/exhaustive-deps -- customBadge intentionally excluded to avoid loop
+  }, [globalBadges, rankingBadges, badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources, networkLogo, preRelease, ribbonSide, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, badgeStyle, rankingBadgeStyle, topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale, genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, tmdbKey, lang, mdblistApiKey]) // eslint-disable-line react-hooks/exhaustive-deps -- customBadge intentionally excluded to avoid loop
 
   // --- Preview URL ---
   const buildPreviewUrlCb = useCallback(() => {
@@ -611,18 +646,33 @@ export function usePictorium(): PictoriumCtx {
         backdropScale, backdropOffsetX, backdropOffsetY,
         metaInfo, trendRank, mdblistAnimeList: trending.mdblistAnimeList,
         topEdgeColor, accentColor, autoAccentColor, lang, tmdbKey,
+        region: editorCtx.defaultRegion,
       },
-      { globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality, ratingSources, customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, networkLogo, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, ribbonSide }
+      { globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources, customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, networkLogo, preRelease, ribbonSide, topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale, genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar }
     )
     setPreviewUrl(url)
   }, [navigation.selected, navigation.previewPoster, navigation.selectedLogo, selectedBackdrop,
     logoScale, logoOffsetX, logoOffsetY, backdropScale, backdropOffsetX, backdropOffsetY,
     metaInfo, trendRank, trending.mdblistAnimeList, topEdgeColor, accentColor, autoAccentColor, lang, tmdbKey,
-    globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality, ratingSources, customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, networkLogo, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, ribbonSide])
+    editorCtx.defaultRegion,
+    globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources, customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, networkLogo, preRelease, ribbonSide, topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale, genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar])
 
+  // A1: trailing debounce della preview URL (200ms). Ogni tick di slider
+  // cambia l'identità di buildPreviewUrlCb → senza debounce ogni pixel di
+  // drag genera una URL e un render server (storm). Il timer si resetta a
+  // ogni tick: solo l'ultimo stato dopo la pausa fa partire XHR + sharp.
+  // Cambio di titolo selezionato = fire immediato (niente attesa).
+  const lastPreviewSelectedId = useRef<number | null>(null)
   useEffect(() => {
-    if (!navigation.selected) { setPreviewUrl(""); return }
-    buildPreviewUrlCb()
+    if (!navigation.selected) { lastPreviewSelectedId.current = null; setPreviewUrl(""); return }
+    const selectedId = navigation.selected.id
+    if (lastPreviewSelectedId.current !== selectedId) {
+      lastPreviewSelectedId.current = selectedId
+      buildPreviewUrlCb()
+      return
+    }
+    const timer = setTimeout(buildPreviewUrlCb, 200)
+    return () => clearTimeout(timer)
   }, [navigation.selected, buildPreviewUrlCb])
 
   // --- Color detection ---
@@ -642,7 +692,7 @@ export function usePictorium(): PictoriumCtx {
     const detailsUrl = `/api/tmdb/${itemId}/details?type=${itemType}&language=${regionLang}&api_key=${tmdbKey}${mdblistParam}${rsrcParam}`
     const [details, rankData, awardData] = await Promise.all([
       http<{ genres: { id: number; name: string }[]; voteAverage: number; voteCount: number; status: string | null; type: string | null; release_date: string | null; first_air_date: string | null; last_air_date: string | null; next_episode_to_air: { air_date: string; episode_number: number; season_number: number } | null; number_of_seasons: number | null; number_of_episodes: number | null; title: string | null; name: string | null; imdb_id: string | null; networks: { name: string; logo_path: string | null; origin_country: string }[]; production_companies: { name: string; logo_path: string | null; origin_country: string }[]; original_language: string; aggregatedRatings?: AggregatedRatings | null }>(detailsUrl, { timeout: 30000 }).catch((e) => { console.error("[pictorium] Details fetch failed:", e); setServiceErrors((prev) => ({ ...prev, tmdb: true })); return { genres: [] as { id: number; name: string }[], voteAverage: 0, voteCount: 0, status: null, type: null, release_date: null, first_air_date: null, last_air_date: null, next_episode_to_air: null, number_of_seasons: null, number_of_episodes: null, title: null, name: null, imdb_id: null, networks: [] as { name: string; logo_path: string | null; origin_country: string }[], production_companies: [] as { name: string; logo_path: string | null; origin_country: string }[], original_language: "en", aggregatedRatings: null } }),
-      http<{ rank: number | null }>(`/api/trending/rank?type=${itemType}&id=${itemId}&api_key=${encodeURIComponent(tmdbKey)}`, { timeout: 15000 }).catch(() => ({ rank: null })),
+      http<{ rank: number | null }>(`/api/trending/rank?type=${itemType}&id=${itemId}&api_key=${encodeURIComponent(tmdbKey)}&region=${encodeURIComponent(editorCtx.defaultRegion)}&lang=${encodeURIComponent(regionLang)}`, { timeout: 15000 }).catch(() => ({ rank: null })),
       http<{ awards: string[]; nominations: string[]; studios: string[]; director: string | null; keywords: string[] }>(`/api/awards/${itemType}/${itemId}?api_key=${encodeURIComponent(tmdbKey)}`, { timeout: 15000 }).catch(() => ({ awards: [] as string[], nominations: [] as string[], studios: [] as string[], director: null, keywords: [] as string[] })),
     ])
     const origLang = details.original_language
@@ -749,8 +799,8 @@ export function usePictorium(): PictoriumCtx {
         }
       }
     }).catch((e) => { console.error("[pictorium] Poster image refresh failed:", e) })
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only on lang change; others set inside
-  }, [lang])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only on lang / defaultRegion change; others set inside
+  }, [lang, editorCtx.defaultRegion])
 
   const openPosterBrowser = async (item: SearchResult) => {
     const itemId = item.id
@@ -781,14 +831,29 @@ export function usePictorium(): PictoriumCtx {
       setBadgeYear(existing.badgeYear ?? defaultBadgeYear)
       setBadgeRating(existing.badgeRating ?? defaultBadgeRating)
       setBadgeQuality(existing.badgeQuality ?? defaultBadgeQuality)
+      setCustomRatings(existing.customRatings ?? defaultCustomRatings)
       setNetworkLogo(existing.networkLogo ?? defaultNetworkLogo)
       setAccentDominant(existing.accentDominant ?? defaultAccentDominant)
       setBadgeTopScale(existing.badgeTopScale ?? defaultBadgeTopScale)
       setBadgeBottomScale(existing.badgeBottomScale ?? defaultBadgeBottomScale)
       setBadgeTopOffset(existing.badgeTopOffset ?? defaultBadgeTopOffset)
       setBadgeBottomOffset(existing.badgeBottomOffset ?? defaultBadgeBottomOffset)
-      setRibbonSide(existing.ribbonSide ?? defaultRibbonSide)
+      // ribbonSide solo globale: i mapping storici con valore salvato lo ignorano,
+      // così la preview resta sincrona con Stremio (side dal default d'istanza).
+      setRibbonSide(defaultRibbonSide)
       setGradientHeight(existing.gradientHeight ?? defaultGradientHeight)
+      setTopBadgeScale(existing.topBadgeScale ?? defaultTopBadgeScale)
+      setTopBadgeOffsetX(existing.topBadgeOffsetX ?? defaultTopBadgeOffsetX)
+      setTopBadgeOffsetY(existing.topBadgeOffsetY ?? defaultTopBadgeOffsetY)
+      setGenreBadgeScale(existing.genreBadgeScale ?? defaultGenreBadgeScale)
+      setQualityBadgeScale(existing.qualityBadgeScale ?? defaultQualityBadgeScale)
+      setNetworkLogoScale(existing.networkLogoScale ?? defaultNetworkLogoScale)
+      setGenreBadgeOffsetX(existing.genreBadgeOffsetX ?? defaultGenreBadgeOffsetX)
+      setGenreBadgeOffsetY(existing.genreBadgeOffsetY ?? defaultGenreBadgeOffsetY)
+      setQualityBadgeOffsetX(existing.qualityBadgeOffsetX ?? defaultQualityBadgeOffsetX)
+      setQualityBadgeOffsetY(existing.qualityBadgeOffsetY ?? defaultQualityBadgeOffsetY)
+      setNetworkLogoOffsetX(existing.networkLogoOffsetX ?? defaultNetworkLogoOffsetX)
+      setNetworkLogoOffsetY(existing.networkLogoOffsetY ?? defaultNetworkLogoOffsetY)
       setBlurIntensity(existing.blurIntensity ?? defaultBlurIntensity)
       setBlurFade(existing.blurFade ?? defaultBlurFade)
       setBlurDarkness(existing.blurDarkness ?? defaultBlurDarkness)
@@ -812,6 +877,7 @@ export function usePictorium(): PictoriumCtx {
       setBadgeYear(defaultBadgeYear)
       setBadgeRating(defaultBadgeRating)
       setBadgeQuality(defaultBadgeQuality)
+      setCustomRatings(defaultCustomRatings)
       setGradientHeight(defaultGradientHeight)
       setBlurIntensity(defaultBlurIntensity)
       setBlurFade(defaultBlurFade)
@@ -911,7 +977,7 @@ export function usePictorium(): PictoriumCtx {
   openPosterBrowserRef.current = openPosterBrowser
 
   const copyUrl = async () => {
-    await navigator.clipboard.writeText(urlPattern)
+    if (!(await copyText(urlPattern))) return
     setCopied(true)
     if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
     copiedTimerRef.current = setTimeout(() => setCopied(false), 2000)
@@ -927,12 +993,16 @@ export function usePictorium(): PictoriumCtx {
     selectedBackdrop, setSelectedBackdrop: setSelectedBackdrop, backdropScale, backdropOffsetX, backdropOffsetY,
     setBackdropScale, setBackdropOffsetX, setBackdropOffsetY,
     globalBadges, rankingBadges, customBadge, badgeStyle, rankingBadgeStyle,
-    badgeGenre, badgeYear, badgeRating, badgeQuality,
+    badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings,
     defaultBadgeStyle, defaultRankingBadgeStyle, blurEnabled, blurIntensity, blurFade, blurDarkness, gradientHeight,
+    topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale,
+    genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY,
+    networkLogoOffsetX, networkLogoOffsetY,
+    accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset,
+    textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, ribbonSide,
     setGradientHeight,
     rotationPosters, autoRotateClean, defaultAutoRotateClean, excludedPosters, accentColor, autoAccentColor, logoDisabled, setLogoDisabled,
-    setLogoScale, setLogoOffsetX, setLogoOffsetY, networkLogo, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset,
-    textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, ribbonSide, lang, episodeGroupId,
+    setLogoScale, setLogoOffsetX, setLogoOffsetY, networkLogo, lang, episodeGroupId,
   })
 
   const saveConfig = useCallback(async () => {
@@ -971,7 +1041,7 @@ export function usePictorium(): PictoriumCtx {
     saveConfig, removeMapping, mappingsMap,
     goHome: navigation.goHome, sourceView: navigation.sourceView, navigateToPoster: (item: SearchResult, source?: string) => { navigation.navigateToPoster(item, source); openPosterBrowserRef.current(item) },
     refreshLists: trending.refreshLists,
-    tmdbKey, setQuery: search.setQuery, doSearch: search.doSearch, loadMore: search.loadMore,
+    tmdbKey, setQuery: search.setQuery, doSearch: search.doSearch, loadMore: search.loadMore, loadMoreFiltered: search.loadMoreFiltered,
     titleOf, yearOf, posterUrl,
     trending: trending.trending, trendingError: trending.trendingError, streamingCharts: trending.streamingCharts, mdblistAnimeList: trending.mdblistAnimeList,
     STREAMING_PLATFORMS, loadMappings,

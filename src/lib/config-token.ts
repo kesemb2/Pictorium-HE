@@ -32,6 +32,7 @@ export const configTokenSchema = z.object({
   badgeYear: z.boolean().optional(),
   badgeRating: z.boolean().optional(),
   badgeQuality: z.boolean().optional(),
+  customRatings: z.boolean().optional(),
   ratingSources: z.array(z.string().max(20)).optional(),
   badgeStyle: badgeStyleSchema,
   rankingBadgeStyle: rankingBadgeStyleSchema,
@@ -40,6 +41,20 @@ export const configTokenSchema = z.object({
   blurFade: z.number().finite(),
   blurDarkness: z.number().finite(),
   gradientHeight: z.number().finite(),
+  // Scala/offset del badge superiore: opzionali per back-compat (i token
+  // generati prima non devono fallire il safeParse — vedi logoFitEnabled).
+  topBadgeScale: z.number().finite().optional(),
+  topBadgeOffsetX: z.number().finite().optional(),
+  topBadgeOffsetY: z.number().finite().optional(),
+  genreBadgeScale: z.number().finite().optional(),
+  genreBadgeOffsetX: z.number().finite().optional(),
+  genreBadgeOffsetY: z.number().finite().optional(),
+  qualityBadgeScale: z.number().finite().optional(),
+  qualityBadgeOffsetX: z.number().finite().optional(),
+  qualityBadgeOffsetY: z.number().finite().optional(),
+  networkLogoScale: z.number().finite().optional(),
+  networkLogoOffsetX: z.number().finite().optional(),
+  networkLogoOffsetY: z.number().finite().optional(),
   networkLogo: z.boolean(),
   // Opzionale come ogni campo aggiunto dopo il rilascio: i token già emessi
   // non contengono la chiave e un campo obbligatorio li farebbe fallire tutti.
@@ -54,6 +69,7 @@ export const configTokenSchema = z.object({
   badgeTopOffset: z.number().finite().optional(),
   badgeBottomOffset: z.number().finite().optional(),
   logoBottomOffset: z.number().finite().optional(),
+  preRelease: z.boolean().optional(),
   autoRotateClean: z.boolean(),
   // Opzionale (finding 13): i token generati prima dell'aggiunta del campo
   // (best-fit) non devono fallire il safeParse — il render usa il default del
@@ -116,11 +132,10 @@ export function encodeConfig(config: PictoriumUserConfig): string {
 }
 
 /**
- * Tetto dimensionale del token: `Buffer.from` e `JSON.parse` su una stringa
- * arbitrariamente lunga (il path `/c/<config>/...`) sono lavoro di CPU e
- * memoria non limitato, e avviene PRIMA di qualunque validazione. 32KB stanno
- * due ordini di grandezza sopra un token legittimo, anche con decine di
- * cataloghi personalizzati.
+ * Tetto dimensionale del token (C5): Buffer.from + JSON.parse su stringhe
+ * arbitrariamente lunghe (path `/c/<config>/...`) sono lavoro CPU/memoria
+ * non boundato prima di qualsiasi validazione. 32KB è due ordini sopra i
+ * token legittimi (anche con decine di custom catalog) e allocazione banale.
  */
 export const MAX_CONFIG_TOKEN_LENGTH = 32768
 
@@ -131,6 +146,7 @@ export const MAX_CONFIG_TOKEN_LENGTH = 32768
  * Restituisce null in caso di token malformato o firma non valida (fail-safe).
  */
 export function decodeConfig(token: string): PictoriumUserConfig | null {
+  if (typeof token !== "string" || token.length > MAX_CONFIG_TOKEN_LENGTH) return null
   try {
     if (typeof token !== "string" || token.length > MAX_CONFIG_TOKEN_LENGTH) return null
     // Batch E (fail-closed): in produzione senza HMAC_SECRET rifiuta QUALSIASI
@@ -184,6 +200,18 @@ export function decodeConfig(token: string): PictoriumUserConfig | null {
       blurFade: clamp(Math.round(result.data.blurFade), 0, 100),
       blurDarkness: clamp(Math.round(result.data.blurDarkness), 0, 100),
       gradientHeight: clamp(Math.round(result.data.gradientHeight), 5, 100),
+      topBadgeScale: result.data.topBadgeScale !== undefined ? clamp(Math.round(result.data.topBadgeScale), 10, 200) : undefined,
+      topBadgeOffsetX: result.data.topBadgeOffsetX !== undefined ? clamp(Math.round(result.data.topBadgeOffsetX), -2000, 2000) : undefined,
+      topBadgeOffsetY: result.data.topBadgeOffsetY !== undefined ? clamp(Math.round(result.data.topBadgeOffsetY), -2000, 2000) : undefined,
+      genreBadgeScale: result.data.genreBadgeScale !== undefined ? clamp(Math.round(result.data.genreBadgeScale), 10, 200) : undefined,
+      genreBadgeOffsetX: result.data.genreBadgeOffsetX !== undefined ? clamp(Math.round(result.data.genreBadgeOffsetX), -2000, 2000) : undefined,
+      genreBadgeOffsetY: result.data.genreBadgeOffsetY !== undefined ? clamp(Math.round(result.data.genreBadgeOffsetY), -2000, 2000) : undefined,
+      qualityBadgeScale: result.data.qualityBadgeScale !== undefined ? clamp(Math.round(result.data.qualityBadgeScale), 10, 200) : undefined,
+      qualityBadgeOffsetX: result.data.qualityBadgeOffsetX !== undefined ? clamp(Math.round(result.data.qualityBadgeOffsetX), -2000, 2000) : undefined,
+      qualityBadgeOffsetY: result.data.qualityBadgeOffsetY !== undefined ? clamp(Math.round(result.data.qualityBadgeOffsetY), -2000, 2000) : undefined,
+      networkLogoScale: result.data.networkLogoScale !== undefined ? clamp(Math.round(result.data.networkLogoScale), 10, 200) : undefined,
+      networkLogoOffsetX: result.data.networkLogoOffsetX !== undefined ? clamp(Math.round(result.data.networkLogoOffsetX), -2000, 2000) : undefined,
+      networkLogoOffsetY: result.data.networkLogoOffsetY !== undefined ? clamp(Math.round(result.data.networkLogoOffsetY), -2000, 2000) : undefined,
     }
 
     return clamped

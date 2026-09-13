@@ -1,5 +1,5 @@
 import { combineAbortSignals } from "./abort-signal"
-import { cacheGet, cacheSet } from "./cache"
+import { cacheGetShared, cacheSet } from "./cache"
 import { createLogger } from "@/lib/logger"
 
 const log = createLogger("awards")
@@ -124,6 +124,8 @@ async function sparqlQuery(query: string, signal?: AbortSignal): Promise<Record<
   // Signal esterno già abortito: niente rete inutile.
   if (signal?.aborted) return null
   if (isBreakerOpen()) return null
+  // R3: signal esterno già abortito → niente rete inutile.
+  if (signal?.aborted) return null
 
   await acquire()
   try {
@@ -287,6 +289,34 @@ const DIRECTOR_HE: Record<string, string> = {
   "Sidney Lumet": "סידני לומט",
 }
 
+/** Estrae "Q123" da un URI entità Wikidata (o da un QID già nudo). */
+function qidFromEntityUri(value: string | null | undefined): string | null {
+  if (!value) return null
+  const m = value.match(/(Q\d+)\s*$/)
+  return m ? m[1] : null
+}
+
+/**
+ * Titolo del sitelink enwiki di un item (es. Q25191 → "Christopher Nolan").
+ * Fallback fail-open per item senza label: 1 chiamata API veloce con timeout
+ * breve, MAI join sitelink in SPARQL (rende la query 10x più lenta).
+ */
+async function enwikiTitle(qid: string, signal?: AbortSignal): Promise<string | null> {
+  try {
+    const url = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${encodeURIComponent(qid)}&props=sitelinks&sitefilter=enwiki&format=json`
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Pictorium/1.0" },
+      signal: combineAbortSignals(signal, 4000),
+    })
+    if (!res.ok) return null
+    const json = await res.json()
+    const title = json?.entities?.[qid]?.sitelinks?.enwiki?.title
+    return typeof title === "string" && title.length > 0 ? title : null
+  } catch {
+    return null
+  }
+}
+
 /**
  * Il nome CANONICO del regista riconosciuto (una voce di DIRECTORS), o null.
  * Non compone nessuna etichetta: quello è compito di `directorBadgeLabel`,
@@ -329,13 +359,15 @@ export async function fetchAllWikidata(
 ): Promise<WikidataResult> {
   const cacheKey = `wikidata:${mediaType}:${tmdbId}`
 
-  // Check shared cache first (typed, with TTL)
-  const cached = cacheGet<WikidataResult>(cacheKey)
+  // Check shared cache first (typed, with TTL). L1 + L2 KV cross-istanza:
+  // la prima istanza che riesce condivide con tutte (prima ogni istanza
+  // ritirava i dadi SPARQL per conto suo → lotteria badge multi-istanza).
+  const cached = await cacheGetShared<WikidataResult>(cacheKey, ["wikidata"])
   if (cached) return cached
 
   const tmdbProp = mediaType === "movie" ? "P4947" : "P4983"
   const networkQuery = mediaType === "tv" ? `OPTIONAL { ?item wdt:P449 ?network . ?network rdfs:label ?networkLabel . FILTER(LANG(?networkLabel) = "en") }` : ""
-  const query = `SELECT ?awardLabel ?nominationLabel ?networkLabel ?directorLabel ?directorLabelHe WHERE {
+  const query = `SELECT ?awardLabel ?nominationLabel ?networkLabel ?directorLabel ?directorLabelHe ?director WHERE {
     ?item wdt:${tmdbProp} "${tmdbId}" .
     OPTIONAL { ?item wdt:P166 ?award . ?award rdfs:label ?awardLabel . FILTER(LANG(?awardLabel) = "en") }
     OPTIONAL { ?item wdt:P1411 ?nomination . ?nomination rdfs:label ?nominationLabel . FILTER(LANG(?nominationLabel) = "en") }
@@ -363,6 +395,7 @@ export async function fetchAllWikidata(
     // appartiene per costruzione allo stesso regista.
     let director: string | null = null
     let directorHe: string | null = null
+    const directorQids = new Set<string>()
 
     for (const b of bindings) {
       if (b.awardLabel?.value) awardLabels.add(b.awardLabel.value)
@@ -374,6 +407,20 @@ export async function fetchAllWikidata(
           director = matched
           directorHe = b.directorLabelHe?.value || null
         }
+      }
+      const qid = qidFromEntityUri(b.director?.value)
+      if (qid) directorQids.add(qid)
+    }
+
+    // Item regista senza label (vandalismo o decadimento dei dati: Q25191 è
+    // rimasto senza label ma col sitelink "Christopher Nolan"). Una sola
+    // chiamata API veloce, mai un join sitelink in SPARQL — lì manderebbe in
+    // timeout l'intera query. Il nome canonico resta quello di matchDirectorName.
+    if (!director) {
+      const fallbackQid = [...directorQids][0]
+      if (fallbackQid) {
+        const wikiTitle = await enwikiTitle(fallbackQid, signal).catch(() => null)
+        if (wikiTitle) director = matchDirectorName(wikiTitle)
       }
     }
 
@@ -401,7 +448,7 @@ export async function fetchAwards(tmdbId: number, mediaType: "movie" | "tv"): Pr
 export function getAwardBadgeLabel(awards: string[], t?: (key: string, params?: Record<string, string | number>) => string): string | null {
   const priority = ["Oscar", "Cannes", "Venezia", "BAFTA", "Golden Globe", "Emmy", "David"]
   for (const a of priority) {
-    if (awards.includes(a)) return t ? t("badge.winner", { name: t(`award.${a.toLowerCase().replace(/ /g, "_")}`) }) : `Vincitore ${a}`
+    if (awards.includes(a)) return t ? t("badge.winner", { name: t(`award.${a.toLowerCase().replace(/ /g, "_")}`) }) : `${a}`
   }
   return null
 }

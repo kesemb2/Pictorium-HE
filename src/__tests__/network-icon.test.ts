@@ -32,6 +32,14 @@ describe("network-svgs", () => {
     expect(res!.networkKey).toBe("prime")
   })
 
+  it("matches Metro-Goldwyn-Mayer and classic MGM to mgm (not Prime Video)", () => {
+    expect(getNetworkSvgResult("Metro-Goldwyn-Mayer", 500)?.networkKey).toBe("mgm")
+    expect(getNetworkSvgResult("Metro-Goldwyn-Mayer (MGM)", 500)?.networkKey).toBe("mgm")
+    expect(getNetworkSvgResult("MGM", 500)?.networkKey).toBe("mgm")
+    expect(getNetworkSvgResult("Amazon MGM Studios", 500)?.networkKey).toBe("prime")
+    expect(getNetworkSvgResult("MGM+", 500)?.networkKey).toBe("mgm_plus")
+  })
+
   it("matches Apple TV+ and returns networkKey=apple", () => {
     const res = getNetworkSvgResult("Apple TV+", 500)
     expect(res).not.toBeNull()
@@ -222,22 +230,49 @@ describe("network-svgs", () => {
     expect(pngRes!.w).toBeGreaterThan(0)
     expect(pngRes!.h).toBeGreaterThan(0)
   })
-  it("matches the DC labels TMDB actually returns", () => {
-    for (const name of ["DC Studios", "DC Films", "DC Entertainment", "DC Comics", "DC Universe", "DC"]) {
-      expect(getNetworkSvgResult(name, 500)?.networkKey, name).toBe("dc")
-    }
+
+  it("matches and renders DC Studios", async () => {
+    expect(getNetworkSvgResult("DC Studios")?.networkKey).toBe("dc")
+    expect(getNetworkSvgResult("DC Films")?.networkKey).toBe("dc")
+    expect(getNetworkSvgResult("DC Entertainment")?.networkKey).toBe("dc")
+    expect(getNetworkSvgResult("DC Comics")?.networkKey).toBe("dc")
+    expect(getNetworkSvgResult("DC Universe")?.networkKey).toBe("dc")
+    expect(getNetworkSvgResult("DC")?.networkKey).toBe("dc")
+
+    // Word boundary: no false positives
+    expect(getNetworkSvgResult("Washington Documentary")).toBeNull()
+    expect(getNetworkSvgResult("Wildcat Productions")).toBeNull()
+    expect(getNetworkSvgResult("Hardcover Editions")).toBeNull()
+
+    const pngRes = await renderNetworkLogoBadge("DC Studios", 500)
+    expect(pngRes).not.toBeNull()
+    expect(pngRes!.networkKey).toBe("dc")
+    expect(pngRes!.png).toBeInstanceOf(Buffer)
+    expect(pngRes!.w).toBeGreaterThan(0)
+    expect(pngRes!.h).toBeGreaterThan(0)
+
+    // DC Studios maintains original colors (keepColor)
+    const light = await renderNetworkLogoBadge("DC Studios", 500, true)
+    const dark = await renderNetworkLogoBadge("DC Studios", 500, false)
+    expect(light!.png.equals(dark!.png)).toBe(true)
   })
 
-  // MGM used to resolve to the Prime Video logo, because the Amazon rule
-  // swallowed it. Now it has its own.
-  it("gives MGM its own logo instead of Prime's", () => {
-    expect(getNetworkSvgResult("Metro-Goldwyn-Mayer", 500)?.networkKey).toBe("mgm")
-    expect(getNetworkSvgResult("MGM", 500)?.networkKey).toBe("mgm")
-  })
+  it("matches and renders Metro-Goldwyn-Mayer (MGM)", async () => {
+    const res = getNetworkSvgResult("Metro-Goldwyn-Mayer", 500)
+    expect(res).not.toBeNull()
+    expect(res!.networkKey).toBe("mgm")
 
-  it("still matches Amazon and Prime Video to prime", () => {
-    expect(getNetworkSvgResult("Prime Video", 500)?.networkKey).toBe("prime")
-    expect(getNetworkSvgResult("Amazon Studios", 500)?.networkKey).toBe("prime")
-  })
+    const pngRes = await renderNetworkLogoBadge("Metro-Goldwyn-Mayer", 500)
+    expect(pngRes).not.toBeNull()
+    expect(pngRes!.networkKey).toBe("mgm")
+    expect(pngRes!.png).toBeInstanceOf(Buffer)
+    expect(pngRes!.w).toBeGreaterThan(0)
+    expect(pngRes!.h).toBeGreaterThan(0)
 
+    // MGM adapts across topLight (monochrome)
+    const light = await renderNetworkLogoBadge("Metro-Goldwyn-Mayer", 500, true)
+    const dark = await renderNetworkLogoBadge("Metro-Goldwyn-Mayer", 500, false)
+    expect(light!.png.equals(dark!.png)).toBe(false)
+  })
 })
+

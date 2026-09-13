@@ -62,6 +62,26 @@ export interface Mapping {
   logoScale?: number | null
   logoOffsetX?: number | null
   logoOffsetY?: number | null
+  /** Scala % del badge superiore (rank/extra). Default 100. */
+  topBadgeScale?: number | null
+  /** Offset px del badge superiore — applicati solo agli stili centrati. */
+  topBadgeOffsetX?: number | null
+  topBadgeOffsetY?: number | null
+  /** Scala % del badge genere/rating in basso. Default 100. */
+  genreBadgeScale?: number | null
+  /** Offset px del badge genere/rating — solo stili non-bar. */
+  genreBadgeOffsetX?: number | null
+  genreBadgeOffsetY?: number | null
+  /** Scala % del badge qualità (streaming). Default 100. */
+  qualityBadgeScale?: number | null
+  /** Offset px del badge qualità. */
+  qualityBadgeOffsetX?: number | null
+  qualityBadgeOffsetY?: number | null
+  /** Scala % del logo network. Default 100. */
+  networkLogoScale?: number | null
+  /** Offset px del logo network. */
+  networkLogoOffsetX?: number | null
+  networkLogoOffsetY?: number | null
   backdropPath?: string | null
   backdropScale?: number | null
   backdropOffsetX?: number | null
@@ -86,6 +106,10 @@ export interface Mapping {
   badgeYear?: boolean | null
   badgeRating?: boolean | null
   badgeQuality?: boolean | null
+  /** Riga rating custom provider (display). Default ON quando il provider è configurato. */
+  customRatings?: boolean | null
+  /** IMDb ID salvato al save: evita getExternalIds per i poster mappati. */
+  imdbId?: string | null
   badgeStyle?: BadgeStyle | null
   rankingBadgeStyle?: RankingBadgeStyle | null
   blurEnabled?: boolean | null

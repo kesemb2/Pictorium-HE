@@ -185,11 +185,12 @@ describe("resolvePosterRenderConfig", () => {
     expect(r2.qNetLogo).toBe("0")
   })
 
-  it("ribbonSide: query side=right or side=left wins, then mapping, then config token", () => {
+  it("ribbonSide: query side=right or side=left wins, then config token (no mapping: globale)", () => {
     expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ side: "right" }) })).ribbonSide).toBe("right")
     expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ side: "left" }), mapping: mapping({ ribbonSide: "right" }) })).ribbonSide).toBe("left")
     expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ side: "left" }), configOverride: config({ ribbonSide: "right" }) })).ribbonSide).toBe("left")
-    expect(resolvePosterRenderConfig(baseInput({ mapping: mapping({ ribbonSide: "right" }) })).ribbonSide).toBe("right")
+    // Il mapping storico viene ignorato: vince il default globale.
+    expect(resolvePosterRenderConfig(baseInput({ mapping: mapping({ ribbonSide: "right" }) })).ribbonSide).toBe("left")
     expect(resolvePosterRenderConfig(baseInput({ configOverride: config({ ribbonSide: "right" }) })).ribbonSide).toBe("right")
     expect(resolvePosterRenderConfig(baseInput()).ribbonSide).toBe("left")
   })
@@ -267,6 +268,235 @@ describe("resolvePosterRenderConfig", () => {
     expect(r2.logoOffsetY).toBe(2)
   })
 
+  it("logo scale/offsets are clamped (R1 anti-DoS)", () => {
+    // Scale assurda → clamp 10..200 (prima arrivava a sharp → OOM/500).
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ scale: "999999" }) })).logoScale).toBe(200)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ scale: "-50" }) })).logoScale).toBe(10)
+    // Non-numerico e 0 restano null come prima (nessun override).
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ scale: "abc" }) })).logoScale).toBeNull()
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ scale: "0" }) })).logoScale).toBeNull()
+    // Offset oltre ±2000px → clamp (comunque fuori canvas).
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ ox: "99999" }) })).logoOffsetX).toBe(2000)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ oy: "-99999" }) })).logoOffsetY).toBe(-2000)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ ox: "xyz" }) })).logoOffsetX).toBeNull()
+  })
+
+  it("top badge scale/offsets default to 100/0/0", () => {
+    const r = resolvePosterRenderConfig(baseInput())
+    expect(r.topBadgeScale).toBe(100)
+    expect(r.topBadgeOffsetX).toBe(0)
+    expect(r.topBadgeOffsetY).toBe(0)
+  })
+
+  it("top badge scale/offsets: query > mapping > config > server defaults", () => {
+    const r = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ tscale: "120", tox: "5", toy: "-3" }),
+      mapping: mapping({ topBadgeScale: 80, topBadgeOffsetX: 1, topBadgeOffsetY: 2 }),
+      configOverride: config({ topBadgeScale: 90, topBadgeOffsetX: 3, topBadgeOffsetY: 4 }),
+      sd: { topBadgeScale: 70, topBadgeOffsetX: 6, topBadgeOffsetY: 7 },
+    }))
+    expect(r.topBadgeScale).toBe(120)
+    expect(r.topBadgeOffsetX).toBe(5)
+    expect(r.topBadgeOffsetY).toBe(-3)
+    const rMapping = resolvePosterRenderConfig(baseInput({
+      mapping: mapping({ topBadgeScale: 80, topBadgeOffsetX: 1, topBadgeOffsetY: 2 }),
+      configOverride: config({ topBadgeScale: 90, topBadgeOffsetX: 3, topBadgeOffsetY: 4 }),
+      sd: { topBadgeScale: 70, topBadgeOffsetX: 6, topBadgeOffsetY: 7 },
+    }))
+    expect(rMapping.topBadgeScale).toBe(80)
+    expect(rMapping.topBadgeOffsetX).toBe(1)
+    expect(rMapping.topBadgeOffsetY).toBe(2)
+    const rConfig = resolvePosterRenderConfig(baseInput({
+      configOverride: config({ topBadgeScale: 90, topBadgeOffsetX: 3, topBadgeOffsetY: 4 }),
+      sd: { topBadgeScale: 70, topBadgeOffsetX: 6, topBadgeOffsetY: 7 },
+    }))
+    expect(rConfig.topBadgeScale).toBe(90)
+    expect(rConfig.topBadgeOffsetX).toBe(3)
+    expect(rConfig.topBadgeOffsetY).toBe(4)
+    const rSd = resolvePosterRenderConfig(baseInput({
+      sd: { topBadgeScale: 70, topBadgeOffsetX: 6, topBadgeOffsetY: 7 },
+    }))
+    expect(rSd.topBadgeScale).toBe(70)
+    expect(rSd.topBadgeOffsetX).toBe(6)
+    expect(rSd.topBadgeOffsetY).toBe(7)
+  })
+
+  it("top badge scale/offsets are clamped (R1 anti-DoS)", () => {
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ tscale: "999999" }) })).topBadgeScale).toBe(200)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ tscale: "-50" }) })).topBadgeScale).toBe(10)
+    // Non-numerico e 0 ricadono sul default 100 (non null: la scala ha sempre un valore).
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ tscale: "abc" }) })).topBadgeScale).toBe(100)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ tscale: "0" }) })).topBadgeScale).toBe(100)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ tox: "99999" }) })).topBadgeOffsetX).toBe(2000)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ toy: "-99999" }) })).topBadgeOffsetY).toBe(-2000)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ tox: "xyz" }) })).topBadgeOffsetX).toBe(0)
+  })
+
+  it("genre badge scale defaults to 100; query > mapping > config > server defaults", () => {
+    expect(resolvePosterRenderConfig(baseInput()).genreBadgeScale).toBe(100)
+    const r = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ gscale: "120" }),
+      mapping: mapping({ genreBadgeScale: 80 }),
+      configOverride: config({ genreBadgeScale: 90 }),
+      sd: { genreBadgeScale: 70 },
+    }))
+    expect(r.genreBadgeScale).toBe(120)
+    expect(resolvePosterRenderConfig(baseInput({
+      mapping: mapping({ genreBadgeScale: 80 }),
+      configOverride: config({ genreBadgeScale: 90 }),
+      sd: { genreBadgeScale: 70 },
+    })).genreBadgeScale).toBe(80)
+    expect(resolvePosterRenderConfig(baseInput({
+      configOverride: config({ genreBadgeScale: 90 }),
+      sd: { genreBadgeScale: 70 },
+    })).genreBadgeScale).toBe(90)
+    expect(resolvePosterRenderConfig(baseInput({
+      sd: { genreBadgeScale: 70 },
+    })).genreBadgeScale).toBe(70)
+  })
+
+  it("genre badge scale is clamped (R1 anti-DoS)", () => {
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ gscale: "999999" }) })).genreBadgeScale).toBe(200)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ gscale: "-50" }) })).genreBadgeScale).toBe(10)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ gscale: "abc" }) })).genreBadgeScale).toBe(100)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ gscale: "0" }) })).genreBadgeScale).toBe(100)
+  })
+
+  it("quality badge scale defaults to 100; query > mapping > config > server defaults", () => {
+    expect(resolvePosterRenderConfig(baseInput()).qualityBadgeScale).toBe(100)
+    const r = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ qscale: "120" }),
+      mapping: mapping({ qualityBadgeScale: 80 }),
+      configOverride: config({ qualityBadgeScale: 90 }),
+      sd: { qualityBadgeScale: 70 },
+    }))
+    expect(r.qualityBadgeScale).toBe(120)
+    expect(resolvePosterRenderConfig(baseInput({
+      mapping: mapping({ qualityBadgeScale: 80 }),
+      configOverride: config({ qualityBadgeScale: 90 }),
+      sd: { qualityBadgeScale: 70 },
+    })).qualityBadgeScale).toBe(80)
+    expect(resolvePosterRenderConfig(baseInput({
+      configOverride: config({ qualityBadgeScale: 90 }),
+      sd: { qualityBadgeScale: 70 },
+    })).qualityBadgeScale).toBe(90)
+    expect(resolvePosterRenderConfig(baseInput({
+      sd: { qualityBadgeScale: 70 },
+    })).qualityBadgeScale).toBe(70)
+  })
+
+  it("quality badge scale is clamped (R1 anti-DoS)", () => {
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ qscale: "999999" }) })).qualityBadgeScale).toBe(200)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ qscale: "-50" }) })).qualityBadgeScale).toBe(10)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ qscale: "abc" }) })).qualityBadgeScale).toBe(100)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ qscale: "0" }) })).qualityBadgeScale).toBe(100)
+  })
+
+  it("genre/quality offsets default to 0; query > mapping > config > defaults", () => {
+    const r = resolvePosterRenderConfig(baseInput())
+    expect(r.genreBadgeOffsetX).toBe(0)
+    expect(r.genreBadgeOffsetY).toBe(0)
+    expect(r.qualityBadgeOffsetX).toBe(0)
+    expect(r.qualityBadgeOffsetY).toBe(0)
+    const q = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ gox: "5", goy: "-3", qox: "7", qoy: "-9" }),
+      mapping: mapping({ genreBadgeOffsetX: 1, genreBadgeOffsetY: 2, qualityBadgeOffsetX: 3, qualityBadgeOffsetY: 4 }),
+      configOverride: config({ genreBadgeOffsetX: 10, genreBadgeOffsetY: 11, qualityBadgeOffsetX: 12, qualityBadgeOffsetY: 13 }),
+      sd: { genreBadgeOffsetX: 20, genreBadgeOffsetY: 21, qualityBadgeOffsetX: 22, qualityBadgeOffsetY: 23 },
+    }))
+    expect(q.genreBadgeOffsetX).toBe(5)
+    expect(q.genreBadgeOffsetY).toBe(-3)
+    expect(q.qualityBadgeOffsetX).toBe(7)
+    expect(q.qualityBadgeOffsetY).toBe(-9)
+    const m = resolvePosterRenderConfig(baseInput({
+      mapping: mapping({ genreBadgeOffsetX: 1, genreBadgeOffsetY: 2, qualityBadgeOffsetX: 3, qualityBadgeOffsetY: 4 }),
+      configOverride: config({ genreBadgeOffsetX: 10, genreBadgeOffsetY: 11, qualityBadgeOffsetX: 12, qualityBadgeOffsetY: 13 }),
+      sd: { genreBadgeOffsetX: 20, genreBadgeOffsetY: 21, qualityBadgeOffsetX: 22, qualityBadgeOffsetY: 23 },
+    }))
+    expect(m.genreBadgeOffsetX).toBe(1)
+    expect(m.genreBadgeOffsetY).toBe(2)
+    expect(m.qualityBadgeOffsetX).toBe(3)
+    expect(m.qualityBadgeOffsetY).toBe(4)
+    // Zero esplicito in query vince (non cade sul mapping)
+    const z = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ gox: "0", qoy: "0" }),
+      mapping: mapping({ genreBadgeOffsetX: 1, qualityBadgeOffsetY: 4 }),
+    }))
+    expect(z.genreBadgeOffsetX).toBe(0)
+    expect(z.qualityBadgeOffsetY).toBe(0)
+  })
+
+  it("genre/quality offsets are clamped to ±2000px", () => {
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ gox: "99999" }) })).genreBadgeOffsetX).toBe(2000)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ goy: "-99999" }) })).genreBadgeOffsetY).toBe(-2000)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ qox: "99999" }) })).qualityBadgeOffsetX).toBe(2000)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ qoy: "-99999" }) })).qualityBadgeOffsetY).toBe(-2000)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ gox: "xyz" }) })).genreBadgeOffsetX).toBe(0)
+  })
+
+  it("network logo offsets default to 0; query > mapping > config > defaults", () => {
+    const r = resolvePosterRenderConfig(baseInput())
+    expect(r.networkLogoOffsetX).toBe(0)
+    expect(r.networkLogoOffsetY).toBe(0)
+    const q = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ nox: "5", noy: "-3" }),
+      mapping: mapping({ networkLogoOffsetX: 1, networkLogoOffsetY: 2 }),
+      configOverride: config({ networkLogoOffsetX: 10, networkLogoOffsetY: 11 }),
+      sd: { networkLogoOffsetX: 20, networkLogoOffsetY: 21 },
+    }))
+    expect(q.networkLogoOffsetX).toBe(5)
+    expect(q.networkLogoOffsetY).toBe(-3)
+    const m = resolvePosterRenderConfig(baseInput({
+      mapping: mapping({ networkLogoOffsetX: 1, networkLogoOffsetY: 2 }),
+      configOverride: config({ networkLogoOffsetX: 10, networkLogoOffsetY: 11 }),
+      sd: { networkLogoOffsetX: 20, networkLogoOffsetY: 21 },
+    }))
+    expect(m.networkLogoOffsetX).toBe(1)
+    expect(m.networkLogoOffsetY).toBe(2)
+    // Zero esplicito in query vince (non cade sul mapping)
+    const z = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ nox: "0" }),
+      mapping: mapping({ networkLogoOffsetX: 1 }),
+    }))
+    expect(z.networkLogoOffsetX).toBe(0)
+  })
+
+  it("network logo offsets are clamped to ±2000px", () => {
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ nox: "99999" }) })).networkLogoOffsetX).toBe(2000)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ noy: "-99999" }) })).networkLogoOffsetY).toBe(-2000)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ nox: "xyz" }) })).networkLogoOffsetX).toBe(0)
+  })
+
+  it("network logo scale defaults to 100; query > mapping > config > server defaults", () => {
+    expect(resolvePosterRenderConfig(baseInput()).networkLogoScale).toBe(100)
+    const r = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ netscale: "120" }),
+      mapping: mapping({ networkLogoScale: 80 }),
+      configOverride: config({ networkLogoScale: 90 }),
+      sd: { networkLogoScale: 70 },
+    }))
+    expect(r.networkLogoScale).toBe(120)
+    expect(resolvePosterRenderConfig(baseInput({
+      mapping: mapping({ networkLogoScale: 80 }),
+      configOverride: config({ networkLogoScale: 90 }),
+      sd: { networkLogoScale: 70 },
+    })).networkLogoScale).toBe(80)
+    expect(resolvePosterRenderConfig(baseInput({
+      configOverride: config({ networkLogoScale: 90 }),
+      sd: { networkLogoScale: 70 },
+    })).networkLogoScale).toBe(90)
+    expect(resolvePosterRenderConfig(baseInput({
+      sd: { networkLogoScale: 70 },
+    })).networkLogoScale).toBe(70)
+  })
+
+  it("network logo scale is clamped (R1 anti-DoS)", () => {
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ netscale: "999999" }) })).networkLogoScale).toBe(200)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ netscale: "-50" }) })).networkLogoScale).toBe(10)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ netscale: "abc" }) })).networkLogoScale).toBe(100)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ netscale: "0" }) })).networkLogoScale).toBe(100)
+  })
+
   it("badgeGenre/badgeYear/badgeRating default to true", () => {
     const r = resolvePosterRenderConfig(baseInput())
     expect(r.badgeGenre).toBe(true)
@@ -305,6 +535,59 @@ describe("resolvePosterRenderConfig", () => {
     expect(r.badgeQuality).toBe(false)
     expect(r.badgeGenre).toBe(true)
     expect(r.badgeRating).toBe(true)
+  })
+
+  it("preRelease defaults to false; query/config/sd chain wins in order", () => {
+    expect(resolvePosterRenderConfig(baseInput()).preRelease).toBe(false)
+
+    const rQuery = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ pre: "1" }),
+    }))
+    expect(rQuery.preRelease).toBe(true)
+
+    const rQueryOff = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ pre: "0" }),
+      configOverride: config({ preRelease: true }),
+      sd: { preRelease: true },
+    }))
+    expect(rQueryOff.preRelease).toBe(false)
+
+    const rConfig = resolvePosterRenderConfig(baseInput({
+      configOverride: config({ preRelease: true }),
+      sd: { preRelease: false },
+    }))
+    expect(rConfig.preRelease).toBe(true)
+
+    const rSd = resolvePosterRenderConfig(baseInput({ sd: { preRelease: true } }))
+    expect(rSd.preRelease).toBe(true)
+  })
+
+  it("customRatings defaults to true; query/mapping/config/sd chain wins in order", () => {
+    expect(resolvePosterRenderConfig(baseInput()).customRatings).toBe(true)
+
+    const rQuery = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ cr: "0" }),
+      mapping: mapping({ customRatings: true }),
+      configOverride: config({ customRatings: true }),
+      sd: { customRatings: true },
+    }))
+    expect(rQuery.customRatings).toBe(false)
+
+    const rMapping = resolvePosterRenderConfig(baseInput({
+      mapping: mapping({ customRatings: false }),
+      configOverride: config({ customRatings: true }),
+      sd: { customRatings: true },
+    }))
+    expect(rMapping.customRatings).toBe(false)
+
+    const rConfig = resolvePosterRenderConfig(baseInput({
+      configOverride: config({ customRatings: false }),
+      sd: { customRatings: true },
+    }))
+    expect(rConfig.customRatings).toBe(false)
+
+    const rSd = resolvePosterRenderConfig(baseInput({ sd: { customRatings: false } }))
+    expect(rSd.customRatings).toBe(false)
   })
 
   it("ratingSources default is ['imdb', 'tmdb'] and query rsrc overrides it", () => {

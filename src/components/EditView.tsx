@@ -5,10 +5,12 @@ import { createPortal } from "react-dom"
 import { usePSelector } from "@/lib/context"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { usePosterEditor } from "@/lib/contexts/PosterEditorContext"
+import type { TMDBImage } from "@/lib/types"
 import { PosterOptions } from "@/components/PosterOptions"
 import { LogoOptions } from "@/components/LogoOptions"
 import { EditorPanel } from "@/components/EditorPanel"
 import { buildPreviewUrl } from "@/lib/poster-url"
+import { copyText } from "@/lib/clipboard"
 import { SearchBar } from "@/components/SearchBar"
 import { PosterCarousel } from "@/components/PosterCarousel"
 import { ScrollReveal } from "@/components/ScrollReveal"
@@ -82,6 +84,16 @@ export default function EditView() {
   const handleSave = useCallback(async () => {
     await saveConfig()
   }, [saveConfig])
+
+  // Mobile: dopo il tap su un poster salta ad "Anteprima" (nella tab Poster
+  // non si vedrebbe alcun feedback). Solo sotto lg, dove lo switcher esiste;
+  // su desktop resti dove sei per confrontare varianti.
+  const handleSelectPoster = useCallback((img: TMDBImage) => {
+    void selectPoster(img)
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023.5px)").matches) {
+      setMobileSection("preview")
+    }
+  }, [selectPoster])
 
   const searchBar = (
     <div className={selected ? "w-full max-w-lg relative z-[100] isolate" : "max-w-lg mx-auto relative z-[100] isolate mb-8"}>
@@ -175,9 +187,11 @@ export default function EditView() {
   const rightTabs = useMemo(() => [
     { key: "logo", label: t("ui.logoSection") },
     { key: "badge", label: t("ui.badgeSection") },
-    ...(selectedLogo ? [{ key: "transform", label: t("ui.transform") }] : []),
+    // Sempre visibile: ospita anche badge superiore e sfocatura, che valgono
+    // pure senza logo film (la sezione logo resta condizionata dentro).
+    { key: "transform", label: t("ui.transform") },
     ...(selected?.media_type === "tv" ? [{ key: "stagioni", label: t("ui.seasons") || "Stagioni" }] : []),
-  ], [t, selectedLogo, selected?.media_type])
+  ], [t, selected?.media_type])
 
   useEffect(() => {
     if (!rightTabs.some((tab) => tab.key === activeRightTab)) {
@@ -224,7 +238,7 @@ export default function EditView() {
                 type="button"
                 aria-label={t("ui.savePoster")}
                 onClick={handleSave}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-accent-orange to-amber-500 text-white font-semibold text-xs shadow-md shadow-accent-orange/20 active:scale-95 transition-all shrink-0 cursor-pointer"
+                className="btn-primary flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-white font-semibold text-xs shrink-0 cursor-pointer"
               >
                 <Save className="w-3.5 h-3.5" />
                 <span>{t("ui.save")}</span>
@@ -233,13 +247,27 @@ export default function EditView() {
           </div>
 
           {/* Mobile Segmented Switcher (Scegli Poster / Anteprima / Modifica) */}
-          <div className="flex lg:hidden items-center justify-center p-1 bg-surface/90 backdrop-blur-md rounded-2xl border border-white/[0.08] mb-4 w-full max-w-md mx-auto shadow-lg shadow-black/20">
+          <div className="relative flex lg:hidden items-center justify-center p-1 bg-surface/90 backdrop-blur-md rounded-2xl border border-white/[0.08] mb-4 w-full max-w-md mx-auto shadow-lg shadow-black/20 overflow-hidden">
+            {/* Sliding Pill Indicator (GPU-accelerated) */}
+            <div
+              className="absolute top-1 bottom-1 rounded-xl bg-accent-orange shadow-md shadow-accent-orange/25 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none"
+              style={{
+                width: "calc((100% - 8px) / 3)",
+                left: "4px",
+                transform:
+                  mobileSection === "poster"
+                    ? "translateX(0%)"
+                    : mobileSection === "preview"
+                      ? "translateX(100%)"
+                      : "translateX(200%)",
+              }}
+            />
             <button
               type="button"
               onClick={() => setMobileSection("poster")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
+              className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-semibold transition-colors duration-200 cursor-pointer ${
                 mobileSection === "poster"
-                  ? "bg-accent-orange text-white shadow-md shadow-accent-orange/20"
+                  ? "text-white"
                   : "text-zinc-400 hover:text-zinc-200"
               }`}
             >
@@ -249,9 +277,9 @@ export default function EditView() {
             <button
               type="button"
               onClick={() => setMobileSection("preview")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
+              className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-semibold transition-colors duration-200 cursor-pointer ${
                 mobileSection === "preview"
-                  ? "bg-accent-orange text-white shadow-md shadow-accent-orange/20"
+                  ? "text-white"
                   : "text-zinc-400 hover:text-zinc-200"
               }`}
             >
@@ -260,9 +288,9 @@ export default function EditView() {
             <button
               type="button"
               onClick={() => setMobileSection("customize")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
+              className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-semibold transition-colors duration-200 cursor-pointer ${
                 mobileSection === "customize"
-                  ? "bg-accent-orange text-white shadow-md shadow-accent-orange/20"
+                  ? "text-white"
                   : "text-zinc-400 hover:text-zinc-200"
               }`}
             >
@@ -278,7 +306,9 @@ export default function EditView() {
                 {loadingImages ? (
                   <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-8 rounded-lg skeleton-shimmer" />)}</div>
                 ) : (
-                  <PosterOptions posters={posters} posterActivePath={posterActivePath} lang={lang} selectPoster={selectPoster} activeGroup={activePosterTab} onActiveGroupChange={setActivePosterTab} showTabs />
+                  <PosterOptions posters={posters} posterActivePath={posterActivePath}
+                    lang={lang} selectPoster={handleSelectPoster} activeGroup={activePosterTab} onActiveGroupChange={setActivePosterTab}
+                    showTabs />
                 )}
               </EditorPanel>
             </div>
@@ -328,6 +358,7 @@ export default function EditView() {
                         badgeYear: ed.badgeYear,
                         badgeRating: ed.badgeRating,
                         badgeQuality: ed.badgeQuality,
+                        customRatings: ed.customRatings,
                         ratingSources: ed.ratingSources,
                         badgeStyle: ed.badgeStyle,
                         rankingBadgeStyle: ed.rankingBadgeStyle,
@@ -345,6 +376,18 @@ export default function EditView() {
                         badgeBottomOffset: ed.badgeBottomOffset,
                         logoBottomOffset: ed.logoBottomOffset,
                         ribbonSide: ed.ribbonSide,
+                        topBadgeScale: ed.topBadgeScale,
+                        topBadgeOffsetX: ed.topBadgeOffsetX,
+                        topBadgeOffsetY: ed.topBadgeOffsetY,
+                        genreBadgeScale: ed.genreBadgeScale,
+                        qualityBadgeScale: ed.qualityBadgeScale,
+                        genreBadgeOffsetX: ed.genreBadgeOffsetX,
+                        genreBadgeOffsetY: ed.genreBadgeOffsetY,
+                        qualityBadgeOffsetX: ed.qualityBadgeOffsetX,
+                        qualityBadgeOffsetY: ed.qualityBadgeOffsetY,
+                        networkLogoScale: ed.networkLogoScale,
+                        networkLogoOffsetX: ed.networkLogoOffsetX,
+                        networkLogoOffsetY: ed.networkLogoOffsetY,
                       })
                       if (!url) return
                       setUrlCopied(false)
@@ -515,12 +558,11 @@ export default function EditView() {
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button type="button" onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(testUrl)
-                  setUrlCopied(true)
-                  if (urlCopiedTimerRef.current) clearTimeout(urlCopiedTimerRef.current)
-                  urlCopiedTimerRef.current = setTimeout(() => setUrlCopied(false), 2000)
-                } catch { /* clipboard non disponibile */ }
+                // copyText non lancia mai: false se la clipboard non è disponibile.
+                if (!(await copyText(testUrl))) return
+                setUrlCopied(true)
+                if (urlCopiedTimerRef.current) clearTimeout(urlCopiedTimerRef.current)
+                urlCopiedTimerRef.current = setTimeout(() => setUrlCopied(false), 2000)
               }} className="btn-secondary min-h-[44px] rounded-xl text-xs">{urlCopied ? t("ui.copied") : t("ui.copyPosterUrl")}</button>
               <button type="button" onClick={() => window.open(testUrl, "_blank")} className="btn-primary min-h-[44px] rounded-xl text-xs">{t("ui.openInNewTab")}</button>
             </div>

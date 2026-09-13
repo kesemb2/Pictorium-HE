@@ -4,21 +4,25 @@ import React, { useState, useEffect, useRef, useMemo } from "react"
 import { X, Check, Copy, Download, ExternalLink, Tv, Sparkles, Film, Search } from "lucide-react"
 import QRCode from "qrcode"
 import { useT } from "@/lib/contexts/TranslationContext"
+import { copyText } from "@/lib/clipboard"
+import { Modal } from "@/components/ui/Modal"
 
 interface InstallModalProps {
   isOpen: boolean
   onClose: () => void
   manifestUrl?: string
+  posterUrlPattern?: string
 }
 
-export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl }: InstallModalProps) {
+export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, posterUrlPattern }: InstallModalProps) {
   const { t } = useT()
   const [hubMode, setHubMode] = useState<"all" | "catalogs" | "search">("all")
   const [copied, setCopied] = useState(false)
+  const [copiedPosterUrl, setCopiedPosterUrl] = useState(false)
   const [qrSvg, setQrSvg] = useState<string>("")
   const [baseManifestUrl, setBaseManifestUrl] = useState(propManifestUrl || "")
-  const popoverRef = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const posterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (propManifestUrl) {
@@ -88,42 +92,32 @@ export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl }: 
   }, [isOpen, resolvedManifestUrl])
 
   useEffect(() => {
-    if (!isOpen) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose()
-    }
-    const handleClickOutside = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        onClose()
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    const clickTimer = setTimeout(() => {
-      window.addEventListener("click", handleClickOutside)
-    }, 50)
     return () => {
-      clearTimeout(clickTimer)
-      window.removeEventListener("keydown", handleKeyDown)
-      window.removeEventListener("click", handleClickOutside)
       if (timerRef.current) clearTimeout(timerRef.current)
+      if (posterTimerRef.current) clearTimeout(posterTimerRef.current)
     }
-  }, [isOpen, onClose])
+  }, [])
 
   if (!isOpen) return null
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(resolvedManifestUrl)
+    if (!(await copyText(resolvedManifestUrl))) return
     setCopied(true)
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => setCopied(false), 2000)
   }
 
+  const handleCopyPosterUrl = async () => {
+    if (!posterUrlPattern) return
+    if (!(await copyText(posterUrlPattern))) return
+    setCopiedPosterUrl(true)
+    if (posterTimerRef.current) clearTimeout(posterTimerRef.current)
+    posterTimerRef.current = setTimeout(() => setCopiedPosterUrl(false), 2000)
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fade-in">
-      <div
-        ref={popoverRef}
-        className="w-full max-w-sm bg-[#141418] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-fade-scale-in"
-      >
+    <Modal isOpen={isOpen} onClose={onClose} labelledBy="install-hub-title" className="max-w-sm max-h-[90vh] overflow-y-auto p-0 space-y-0">
+      <div className="w-full flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/5">
           <div className="flex items-center gap-2">
@@ -131,7 +125,7 @@ export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl }: 
               <Download className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white leading-tight">{t("ui.installHubTitle")}</h2>
+              <h2 id="install-hub-title" className="text-sm font-bold text-white leading-tight">{t("ui.installHubTitle")}</h2>
               <p className="text-[11px] text-muted">{t("ui.installHubSub")}</p>
             </div>
           </div>
@@ -258,9 +252,48 @@ export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl }: 
               <ExternalLink className="w-3 h-3" />
             </a>
           </div>
+
+          {/* AIOMetadata & External Poster URL */}
+          {posterUrlPattern && (
+            <div className="pt-3 border-t border-white/10 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-zinc-300 text-[11px] font-semibold">
+                  <Sparkles className="w-3.5 h-3.5 text-accent-orange" />
+                  <span>{t("ui.aiomLinkTitle") || "Link per AIO e custom URL:"}</span>
+                </div>
+                <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-mono">Template URL</span>
+              </div>
+
+              <p className="text-[10px] text-zinc-400 leading-tight">
+                {t("ui.aiomLinkDesc")}
+              </p>
+
+              <div className="flex items-center gap-1.5 p-1 bg-black/40 border border-white/10 rounded-xl">
+                <input
+                  type="text"
+                  readOnly
+                  value={posterUrlPattern}
+                  aria-label={t("ui.aiomLinkTitle") || "AIOMetadata URL"}
+                  className="w-full bg-transparent px-2 py-1 text-[10px] font-mono text-zinc-300 truncate select-all focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleCopyPosterUrl}
+                  className={`shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-medium flex items-center gap-1 transition-all cursor-pointer ${
+                    copiedPosterUrl
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm"
+                      : "bg-white/10 hover:bg-white/15 text-zinc-200 border border-white/10 active:scale-95"
+                  }`}
+                >
+                  {copiedPosterUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-muted" />}
+                  <span>{copiedPosterUrl ? t("ui.copied") : t("ui.copyUrl")}</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 

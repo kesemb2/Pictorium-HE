@@ -11,7 +11,9 @@ import { SliderRow } from "@/components/SliderRow"
 import { Toggle } from "@/components/Toggle"
 import { BadgeStyleSelector, MenuItem } from "@/components/ui"
 import { UI_RATING_SOURCES } from "@/lib/ratings"
+import { formatRating } from "@/lib/custom-rating/formatter"
 import { REGIONS } from "@/lib/regions"
+import { UI_LANGUAGES } from "@/lib/utils"
 import { RatingSourceIcon } from "@/components/RatingSourceIcon"
 import {
   Star,
@@ -32,11 +34,17 @@ import {
   Flame,
   ChevronDown,
   Sliders,
+  Move,
   Database,
   Layers,
   Wand2,
   Globe,
   X,
+  Lock,
+  KeyRound,
+  Search,
+  ArrowLeftRight,
+  ArrowUpDown,
 } from "lucide-react"
 
 interface Props {
@@ -48,15 +56,15 @@ interface Props {
 
 export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile }: Props) {
   const accentColor = usePSelector((v) => v.accentColor)
+  const lang = usePSelector((v) => v.lang)
+  const pickLang = usePSelector((v) => v.pickLang)
   const uiAccent = usePSelector((v) => v.uiAccent)
   const setUiAccent = usePSelector((v) => v.setUiAccent)
-  const selected = usePSelector((v) => v.selected)
-  const mappingsMap = usePSelector((v) => v.mappingsMap)
   const setShowLangPicker = usePSelector((v) => v.setShowLangPicker)
   const { t } = useT()
   const ed = usePosterEditor()
 
-  const [activeTab, setActiveTab] = useState<"style" | "prefs" | "data">("style")
+  const [activeTab, setActiveTab] = useState<"badge" | "trasforma" | "prefs" | "data">("badge")
   const [sourcesOpen, setSourcesOpen] = useState(false)
   const [editVal, setEditVal] = useState<string | null>(null)
   const [editTxt, setEditTxt] = useState("")
@@ -81,6 +89,62 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
         if (data && typeof data.totalEntries === "number") setCacheCount(data.totalEntries)
       })
       .catch(() => null)
+  }, [])
+
+  const [pinConfig, setPinConfig] = useState<{ hasPin: boolean } | null>(null)
+  const [pinModalMode, setPinModalMode] = useState<"set" | "remove" | null>(null)
+  const [curPinInput, setCurPinInput] = useState("")
+  const [newPinInput, setNewPinInput] = useState("")
+  const [pinBusy, setPinBusy] = useState(false)
+
+  // Test provider custom rating (sample fisso server-side, chiave mai esposta).
+  const [crTestBusy, setCrTestBusy] = useState(false)
+  const [crTestResult, setCrTestResult] = useState<{
+    ok: boolean
+    status: number | null
+    ms: number
+    ratings?: { id: string; name: string; value: number; format: string }[]
+    error?: string
+  } | null>(null)
+
+  const runCustomRatingTest = async () => {
+    setCrTestBusy(true)
+    setCrTestResult(null)
+    try {
+      // Flush dei default appena digitati: il test gira sulla config salvata.
+      await saveDefaults(ed)
+      const res = await http("/api/custom-rating/test", { method: "POST" })
+      setCrTestResult(res as typeof crTestResult)
+    } catch {
+      setCrTestResult({ ok: false, status: null, ms: 0, error: "unreachable" })
+    } finally {
+      setCrTestBusy(false)
+    }
+  }
+
+  const customRatingTestErrorLabel = (code?: string) => {
+    switch (code) {
+      case "disabled": return t("ui.customRatingTestErrDisabled")
+      case "no-endpoint": return t("ui.customRatingTestErrNoEndpoint")
+      case "unsafe-endpoint": return t("ui.customRatingTestErrUnsafe")
+      case "http-error": return t("ui.customRatingTestErrHttp")
+      case "oversized": return t("ui.customRatingTestErrOversized")
+      case "invalid-response": return t("ui.customRatingTestErrInvalid")
+      default: return t("ui.customRatingTestErrUnreachable")
+    }
+  }
+
+  const refreshPin = () => {
+    fetch("/api/auth/pin")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && typeof data.hasPin === "boolean") setPinConfig(data)
+      })
+      .catch(() => null)
+  }
+
+  useEffect(() => {
+    refreshPin()
   }, [])
 
   // Focus trap su mobile
@@ -141,7 +205,7 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
   }
 
   const handleSaveDefaults = () => {
-    void saveDefaults({ selected, mappingsMap }, ed).then((synced) => {
+    void saveDefaults(ed).then((synced) => {
       if (!synced) toast.warning(t("ui.defaultsSyncFailed"))
     })
     setSaved(true)
@@ -159,16 +223,30 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
       <button
         type="button"
         role="tab"
-        aria-selected={activeTab === "style"}
-        onClick={() => setActiveTab("style")}
+        aria-selected={activeTab === "badge"}
+        onClick={() => setActiveTab("badge")}
         className={`flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 transition-all cursor-pointer ${
-          activeTab === "style"
+          activeTab === "badge"
             ? "border-accent-orange text-accent-orange"
             : "border-transparent text-zinc-400 hover:text-zinc-200"
         }`}
       >
-        <Palette className="w-3.5 h-3.5" />
-        <span>{t("ui.settingsTabStyle")}</span>
+        <Layers className="w-3.5 h-3.5" />
+        <span>{t("ui.badgeSection")}</span>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={activeTab === "trasforma"}
+        onClick={() => setActiveTab("trasforma")}
+        className={`flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 transition-all cursor-pointer ${
+          activeTab === "trasforma"
+            ? "border-accent-orange text-accent-orange"
+            : "border-transparent text-zinc-400 hover:text-zinc-200"
+        }`}
+      >
+        <Move className="w-3.5 h-3.5" />
+        <span>{t("ui.transform")}</span>
       </button>
       <button
         type="button"
@@ -201,12 +279,12 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
     </div>
   )
 
-  // Scheda 1: Stile Poster
-  const stylePanel = (
+  // Scheda 1: Badge (specchio del tab Badge dell'editor, valori default)
+  const badgePanel = (
     <div
       role="tabpanel"
-      aria-label={t("ui.settingsTabStyle")}
-      className={`space-y-3.5 text-xs ${activeTab === "style" ? "block" : "hidden"}`}
+      aria-label={t("ui.badgeSection")}
+      className={`space-y-3.5 text-xs ${activeTab === "badge" ? "block" : "hidden"}`}
     >
       {/* Badge & Provider Predefiniti */}
       <div className="bg-surface/50 border border-surface2/60 rounded-xl p-3.5 space-y-3 shadow-sm">
@@ -214,6 +292,7 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
           <Layers className="w-3.5 h-3.5 text-accent-orange" />
           {t("ui.badgeSection")}
         </span>
+        <p className="text-[10px] text-zinc-500 italic -mt-1">{t("ui.badgeDefaultsHint")}</p>
 
         {/* Master Toggle Genere / Rating */}
         <div className="space-y-2">
@@ -226,7 +305,6 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
               value={ed.defaultGlobalBadges}
               onChange={(v) => {
                 ed.setDefaultGlobalBadges(v)
-                ed.setGlobalBadges(v)
               }}
               label={t("ui.genreRatingBadge")}
             />
@@ -241,7 +319,6 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
                   value={ed.defaultBadgeGenre}
                   onChange={(v) => {
                     ed.setDefaultBadgeGenre(v)
-                    ed.setBadgeGenre(v)
                   }}
                   label={t("ui.badgeGenre")}
                 />
@@ -252,7 +329,6 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
                   value={ed.defaultBadgeYear}
                   onChange={(v) => {
                     ed.setDefaultBadgeYear(v)
-                    ed.setBadgeYear(v)
                   }}
                   label={t("ui.badgeYear")}
                 />
@@ -263,7 +339,6 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
                   value={ed.defaultBadgeRating}
                   onChange={(v) => {
                     ed.setDefaultBadgeRating(v)
-                    ed.setBadgeRating(v)
                   }}
                   label={t("ui.badgeRating")}
                 />
@@ -306,7 +381,6 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
                             onClick={() => {
                               const all = UI_RATING_SOURCES.map((s) => s.id)
                               ed.setDefaultRatingSources(all)
-                              ed.setRatingSources(all)
                             }}
                             className="text-accent-orange hover:underline font-semibold transition-colors cursor-pointer"
                           >
@@ -318,7 +392,6 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
                             onClick={() => {
                               const def = ["imdb", "tmdb"]
                               ed.setDefaultRatingSources(def)
-                              ed.setRatingSources(def)
                             }}
                             className="text-muted hover:text-zinc-200 transition-colors cursor-pointer"
                           >
@@ -339,12 +412,10 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
                                   if (current.length > 1) {
                                     const updated = current.filter((x) => x !== s.id)
                                     ed.setDefaultRatingSources(updated)
-                                    ed.setRatingSources(updated)
                                   }
                                 } else {
                                   const updated = [...current, s.id]
                                   ed.setDefaultRatingSources(updated)
-                                  ed.setRatingSources(updated)
                                 }
                               }}
                               className={`flex items-center justify-between px-2 py-1.5 rounded-lg text-[10.5px] transition-all duration-150 border cursor-pointer ${
@@ -387,7 +458,6 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
               value={ed.defaultRankingBadges}
               onChange={(v) => {
                 ed.setDefaultRankingBadges(v)
-                ed.setRankingBadges(v)
               }}
               label={t("ui.trendBadge")}
             />
@@ -402,10 +472,70 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
               value={ed.defaultBadgeQuality}
               onChange={(v) => {
                 ed.setDefaultBadgeQuality(v)
-                ed.setBadgeQuality(v)
               }}
               label={t("ui.badgeQuality")}
             />
+          </div>
+
+          <div className="flex items-center justify-between" title={t("ui.customRatingsHint")}>
+            <span className="text-zinc-300 font-medium flex items-center gap-1.5">
+              <Star className="w-3.5 h-3.5 text-teal-400" />
+              {t("ui.customRatings")}
+            </span>
+            <Toggle
+              value={ed.defaultCustomRatings}
+              onChange={(v) => {
+                ed.setDefaultCustomRatings(v)
+              }}
+              label={t("ui.customRatings")}
+            />
+          </div>
+
+          <div className="pl-3 py-1 space-y-2 border-l-2 border-surface2 ml-1 animate-fade-in">
+            <div>
+              <label className="text-[10px] text-muted block mb-1">{t("ui.customRatingEndpoint")}</label>
+              <input
+                type="url"
+                value={ed.defaultCustomRatingEndpoint ?? ""}
+                onChange={(e) => ed.setDefaultCustomRatingEndpoint(e.target.value)}
+                placeholder="https://example.com/ratings/{imdbId}"
+                maxLength={500}
+                className="w-full text-xs font-mono py-1.5 px-2.5 rounded-lg bg-black/40 border border-white/10 text-white placeholder-zinc-600 focus:outline-none focus:border-teal-500/50"
+              />
+            </div>
+            <p className="text-[10px] text-zinc-500 italic">{t("ui.customRatingKeyHint")}</p>
+            <div className="pt-1">
+              <button
+                type="button"
+                disabled={crTestBusy}
+                onClick={runCustomRatingTest}
+                className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-teal-500/15 text-teal-300 border border-teal-500/30 hover:bg-teal-500/25 disabled:opacity-50 transition-colors cursor-pointer"
+              >
+                {crTestBusy ? t("ui.customRatingTesting") : t("ui.customRatingTest")}
+              </button>
+              {crTestResult && (
+                <div className={`mt-2 p-2 rounded-lg border text-[11px] ${crTestResult.ok ? "bg-emerald-500/10 border-emerald-500/30" : "bg-red-500/10 border-red-500/30"}`}>
+                  {crTestResult.ok ? (
+                    <div className="space-y-1">
+                      <div className="font-semibold text-emerald-300">
+                        {t("ui.customRatingTestOk")} · {crTestResult.status} OK · {crTestResult.ms} ms
+                      </div>
+                      {crTestResult.ratings?.map((r) => (
+                        <div key={r.id} className="flex items-center justify-between text-zinc-200">
+                          <span className="truncate">{r.name}</span>
+                          <span className="font-mono ml-2 shrink-0">{formatRating(r.value, r.format as "decimal" | "percent")}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-red-300">
+                      {customRatingTestErrorLabel(crTestResult.error)}
+                      {crTestResult.status ? ` · ${crTestResult.status}` : ""} · {crTestResult.ms} ms
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center justify-between">
@@ -417,9 +547,36 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
               value={ed.defaultNetworkLogo}
               onChange={(v) => {
                 ed.setDefaultNetworkLogo(v)
-                ed.setNetworkLogo(v)
               }}
               label={t("ui.networkLogo")}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-300 font-medium flex items-center gap-1.5">
+              <Cloud className="w-3.5 h-3.5 text-cyan-400" />
+              {t("ui.blurSection")}
+            </span>
+            <Toggle
+              value={ed.defaultBlurEnabled}
+              onChange={(v) => {
+                ed.setDefaultBlurEnabled(v)
+              }}
+              label={t("ui.blurSection")}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-300 font-medium flex items-center gap-1.5">
+              <Flame className="w-3.5 h-3.5 text-orange-400" />
+              {t("ui.preRelease")}
+            </span>
+            <Toggle
+              value={ed.defaultPreRelease}
+              onChange={(v) => {
+                ed.setDefaultPreRelease(v)
+              }}
+              label={t("ui.preRelease")}
             />
           </div>
 
@@ -433,7 +590,6 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
                 type="button"
                 onClick={() => {
                   ed.setDefaultRibbonSide("left")
-                  ed.setRibbonSide("left")
                 }}
                 className={`flex-1 py-1 rounded-lg text-[11px] font-semibold transition-all duration-150 cursor-pointer ${
                   ed.defaultRibbonSide === "left"
@@ -447,7 +603,6 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
                 type="button"
                 onClick={() => {
                   ed.setDefaultRibbonSide("right")
-                  ed.setRibbonSide("right")
                 }}
                 className={`flex-1 py-1 rounded-lg text-[11px] font-semibold transition-all duration-150 cursor-pointer ${
                   ed.defaultRibbonSide === "right"
@@ -478,7 +633,6 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
             options={["default", "colored", "pill"]}
             onChange={(v) => {
               ed.setDefaultRankingBadgeStyle(v)
-              ed.setRankingBadgeStyle(v)
             }}
             t={t}
             accentColor={accentColor}
@@ -494,32 +648,390 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
             options={["shadow", "pill", "bar", "colored", "bordo", "vetro"]}
             onChange={(v) => {
               ed.setDefaultBadgeStyle(v)
-              ed.setBadgeStyle(v)
             }}
             t={t}
           />
         </div>
       </div>
+    </div>
+  )
+
+  // Scheda 2: Trasforma (specchio del tab Trasforma dell'editor, valori default)
+  const trasformaPanel = (
+    <div
+      role="tabpanel"
+      aria-label={t("ui.transform")}
+      className={`space-y-3.5 text-xs ${activeTab === "trasforma" ? "block" : "hidden"}`}
+    >
+      {/* Badge Superiore Predefinito */}
+      {ed.defaultRankingBadges && (
+      <div className="bg-surface/50 border border-surface2/60 rounded-xl p-3.5 space-y-2.5 shadow-sm animate-fade-in">
+        <div className="flex items-center justify-between">
+          <span className="text-zinc-300 font-medium flex items-center gap-1.5">
+            <Trophy className="w-3.5 h-3.5 text-amber-500" />
+            {t("ui.topBadge")}
+          </span>
+          <button type="button" aria-label={t("ui.reset")}
+                  onClick={() => {
+                    ed.setDefaultTopBadgeScale(100)
+                    ed.setDefaultTopBadgeOffsetX(0)
+                    ed.setDefaultTopBadgeOffsetY(0)
+                  }}
+                  className="text-xs text-muted hover:text-accent transition-colors px-2 py-0.5 rounded-md border border-border/50 hover:border-accent/30">
+            {t("ui.reset")}
+          </button>
+        </div>
+
+        <div className="space-y-1.5 pt-1">
+          <SliderRow
+            icon={<Search className="w-3.5 h-3.5" />}
+            label={t("ui.scale")}
+            value={ed.defaultTopBadgeScale}
+            min={50}
+            max={150}
+            boundsMin={10}
+            boundsMax={200}
+            onChange={(v) => {
+              ed.setDefaultTopBadgeScale(v)
+            }}
+            onDoubleClick={() => {
+              ed.setDefaultTopBadgeScale(100)
+            }}
+            editingValue={editVal}
+            editText={editTxt}
+            setEditingValue={setEditVal}
+            setEditText={setEditTxt}
+            editingKey="tbs"
+            suffix="%"
+          />
+          <SliderRow
+            icon={<ArrowLeftRight className="w-3.5 h-3.5" />}
+            label="X"
+            value={ed.defaultTopBadgeOffsetX}
+            min={-100}
+            max={100}
+            boundsMin={-500}
+            boundsMax={500}
+            onChange={(v) => {
+              ed.setDefaultTopBadgeOffsetX(v)
+            }}
+            onDoubleClick={() => {
+              ed.setDefaultTopBadgeOffsetX(0)
+            }}
+            editingValue={editVal}
+            editText={editTxt}
+            setEditingValue={setEditVal}
+            setEditText={setEditTxt}
+            editingKey="tbx"
+            suffix="px"
+          />
+          <SliderRow
+            icon={<ArrowUpDown className="w-3.5 h-3.5" />}
+            label="Y"
+            value={ed.defaultTopBadgeOffsetY}
+            min={-100}
+            max={100}
+            boundsMin={-500}
+            boundsMax={500}
+            onChange={(v) => {
+              ed.setDefaultTopBadgeOffsetY(v)
+            }}
+            onDoubleClick={() => {
+              ed.setDefaultTopBadgeOffsetY(0)
+            }}
+            editingValue={editVal}
+            editText={editTxt}
+            setEditingValue={setEditVal}
+            setEditText={setEditTxt}
+            editingKey="tby"
+            suffix="px"
+          />
+        </div>
+      </div>
+      )}
+
+      {/* Badge Genere Predefinito */}
+      {ed.defaultGlobalBadges && (
+      <div className="bg-surface/50 border border-surface2/60 rounded-xl p-3.5 space-y-2.5 shadow-sm animate-fade-in">
+        <div className="flex items-center justify-between">
+          <span className="text-zinc-300 font-medium flex items-center gap-1.5">
+            <Star className="w-3.5 h-3.5 text-amber-400" />
+            {t("ui.genreRatingBadge")}
+          </span>
+          <button type="button" aria-label={t("ui.reset")}
+                  onClick={() => {
+                    ed.setDefaultGenreBadgeScale(100)
+                    ed.setDefaultGenreBadgeOffsetX(0)
+                    ed.setDefaultGenreBadgeOffsetY(0)
+                  }}
+                  className="text-xs text-muted hover:text-accent transition-colors px-2 py-0.5 rounded-md border border-border/50 hover:border-accent/30">
+            {t("ui.reset")}
+          </button>
+        </div>
+
+        <div className="space-y-1.5 pt-1">
+          <SliderRow
+            icon={<Search className="w-3.5 h-3.5" />}
+            label={t("ui.scale")}
+            value={ed.defaultGenreBadgeScale}
+            min={50}
+            max={150}
+            boundsMin={10}
+            boundsMax={200}
+            onChange={(v) => {
+              ed.setDefaultGenreBadgeScale(v)
+            }}
+            onDoubleClick={() => {
+              ed.setDefaultGenreBadgeScale(100)
+            }}
+            editingValue={editVal}
+            editText={editTxt}
+            setEditingValue={setEditVal}
+            setEditText={setEditTxt}
+            editingKey="gbs"
+            suffix="%"
+          />
+          <SliderRow
+            icon={<ArrowLeftRight className="w-3.5 h-3.5" />}
+            label="X"
+            value={ed.defaultGenreBadgeOffsetX}
+            min={-100}
+            max={100}
+            boundsMin={-500}
+            boundsMax={500}
+            onChange={(v) => {
+              ed.setDefaultGenreBadgeOffsetX(v)
+            }}
+            onDoubleClick={() => {
+              ed.setDefaultGenreBadgeOffsetX(0)
+            }}
+            editingValue={editVal}
+            editText={editTxt}
+            setEditingValue={setEditVal}
+            setEditText={setEditTxt}
+            editingKey="gbx"
+            suffix="px"
+          />
+          <SliderRow
+            icon={<ArrowUpDown className="w-3.5 h-3.5" />}
+            label="Y"
+            value={ed.defaultGenreBadgeOffsetY}
+            min={-100}
+            max={100}
+            boundsMin={-500}
+            boundsMax={500}
+            onChange={(v) => {
+              ed.setDefaultGenreBadgeOffsetY(v)
+            }}
+            onDoubleClick={() => {
+              ed.setDefaultGenreBadgeOffsetY(0)
+            }}
+            editingValue={editVal}
+            editText={editTxt}
+            setEditingValue={setEditVal}
+            setEditText={setEditTxt}
+            editingKey="gby"
+            suffix="px"
+          />
+        </div>
+      </div>
+      )}
+
+      {/* Badge Qualità Predefinito */}
+      {ed.defaultBadgeQuality && (
+      <div className="bg-surface/50 border border-surface2/60 rounded-xl p-3.5 space-y-2.5 shadow-sm animate-fade-in">
+        <div className="flex items-center justify-between">
+          <span className="text-zinc-300 font-medium flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            {t("ui.badgeQuality")}
+          </span>
+          <button type="button" aria-label={t("ui.reset")}
+                  onClick={() => {
+                    ed.setDefaultQualityBadgeScale(100)
+                    ed.setDefaultQualityBadgeOffsetX(0)
+                    ed.setDefaultQualityBadgeOffsetY(0)
+                  }}
+                  className="text-xs text-muted hover:text-accent transition-colors px-2 py-0.5 rounded-md border border-border/50 hover:border-accent/30">
+            {t("ui.reset")}
+          </button>
+        </div>
+
+        <div className="space-y-1.5 pt-1">
+          <SliderRow
+            icon={<Search className="w-3.5 h-3.5" />}
+            label={t("ui.scale")}
+            value={ed.defaultQualityBadgeScale}
+            min={50}
+            max={150}
+            boundsMin={10}
+            boundsMax={200}
+            onChange={(v) => {
+              ed.setDefaultQualityBadgeScale(v)
+            }}
+            onDoubleClick={() => {
+              ed.setDefaultQualityBadgeScale(100)
+            }}
+            editingValue={editVal}
+            editText={editTxt}
+            setEditingValue={setEditVal}
+            setEditText={setEditTxt}
+            editingKey="qbs"
+            suffix="%"
+          />
+          <SliderRow
+            icon={<ArrowLeftRight className="w-3.5 h-3.5" />}
+            label="X"
+            value={ed.defaultQualityBadgeOffsetX}
+            min={-100}
+            max={100}
+            boundsMin={-500}
+            boundsMax={500}
+            onChange={(v) => {
+              ed.setDefaultQualityBadgeOffsetX(v)
+            }}
+            onDoubleClick={() => {
+              ed.setDefaultQualityBadgeOffsetX(0)
+            }}
+            editingValue={editVal}
+            editText={editTxt}
+            setEditingValue={setEditVal}
+            setEditText={setEditTxt}
+            editingKey="qbx"
+            suffix="px"
+          />
+          <SliderRow
+            icon={<ArrowUpDown className="w-3.5 h-3.5" />}
+            label="Y"
+            value={ed.defaultQualityBadgeOffsetY}
+            min={-100}
+            max={100}
+            boundsMin={-500}
+            boundsMax={500}
+            onChange={(v) => {
+              ed.setDefaultQualityBadgeOffsetY(v)
+            }}
+            onDoubleClick={() => {
+              ed.setDefaultQualityBadgeOffsetY(0)
+            }}
+            editingValue={editVal}
+            editText={editTxt}
+            setEditingValue={setEditVal}
+            setEditText={setEditTxt}
+            editingKey="qby"
+            suffix="px"
+          />
+        </div>
+      </div>
+      )}
+
+      {/* Logo Network Predefinito */}
+      {ed.defaultNetworkLogo && (
+      <div className="bg-surface/50 border border-surface2/60 rounded-xl p-3.5 space-y-2.5 shadow-sm animate-fade-in">
+        <div className="flex items-center justify-between">
+          <span className="text-zinc-300 font-medium flex items-center gap-1.5">
+            <Tv className="w-3.5 h-3.5 text-sky-400" />
+            {t("ui.networkLogo")}
+          </span>
+          <button type="button" aria-label={t("ui.reset")}
+                  onClick={() => {
+                    ed.setDefaultNetworkLogoScale(100)
+                    ed.setDefaultNetworkLogoOffsetX(0)
+                    ed.setDefaultNetworkLogoOffsetY(0)
+                  }}
+                  className="text-xs text-muted hover:text-accent transition-colors px-2 py-0.5 rounded-md border border-border/50 hover:border-accent/30">
+            {t("ui.reset")}
+          </button>
+        </div>
+
+        <div className="space-y-1.5 pt-1">
+          <SliderRow
+            icon={<Search className="w-3.5 h-3.5" />}
+            label={t("ui.scale")}
+            value={ed.defaultNetworkLogoScale}
+            min={50}
+            max={150}
+            boundsMin={10}
+            boundsMax={200}
+            onChange={(v) => {
+              ed.setDefaultNetworkLogoScale(v)
+            }}
+            onDoubleClick={() => {
+              ed.setDefaultNetworkLogoScale(100)
+            }}
+            editingValue={editVal}
+            editText={editTxt}
+            setEditingValue={setEditVal}
+            setEditText={setEditTxt}
+            editingKey="nls"
+            suffix="%"
+          />
+          <SliderRow
+            icon={<ArrowLeftRight className="w-3.5 h-3.5" />}
+            label="X"
+            value={ed.defaultNetworkLogoOffsetX}
+            min={-100}
+            max={100}
+            boundsMin={-500}
+            boundsMax={500}
+            onChange={(v) => {
+              ed.setDefaultNetworkLogoOffsetX(v)
+            }}
+            onDoubleClick={() => {
+              ed.setDefaultNetworkLogoOffsetX(0)
+            }}
+            editingValue={editVal}
+            editText={editTxt}
+            setEditingValue={setEditVal}
+            setEditText={setEditTxt}
+            editingKey="nlx"
+            suffix="px"
+          />
+          <SliderRow
+            icon={<ArrowUpDown className="w-3.5 h-3.5" />}
+            label="Y"
+            value={ed.defaultNetworkLogoOffsetY}
+            min={-100}
+            max={100}
+            boundsMin={-500}
+            boundsMax={500}
+            onChange={(v) => {
+              ed.setDefaultNetworkLogoOffsetY(v)
+            }}
+            onDoubleClick={() => {
+              ed.setDefaultNetworkLogoOffsetY(0)
+            }}
+            editingValue={editVal}
+            editText={editTxt}
+            setEditingValue={setEditVal}
+            setEditText={setEditTxt}
+            editingKey="nly"
+            suffix="px"
+          />
+        </div>
+      </div>
+      )}
 
       {/* Sfumatura & Blur Predefiniti */}
-      <div className="bg-surface/50 border border-surface2/60 rounded-xl p-3.5 space-y-2.5 shadow-sm">
+      {ed.defaultBlurEnabled && (
+      <div className="bg-surface/50 border border-surface2/60 rounded-xl p-3.5 space-y-2.5 shadow-sm animate-fade-in">
         <div className="flex items-center justify-between">
           <span className="text-zinc-300 font-medium flex items-center gap-1.5">
             <Cloud className="w-3.5 h-3.5 text-cyan-400" />
             {t("ui.blurDefault")}
           </span>
-          <Toggle
-            value={ed.defaultBlurEnabled}
-            onChange={(v) => {
-              ed.setDefaultBlurEnabled(v)
-              ed.setBlurEnabled(v)
-            }}
-            label={t("ui.blurDefault")}
-          />
+          <button type="button" aria-label={t("ui.reset")}
+                  onClick={() => {
+                    ed.setDefaultGradientHeight(30)
+                    ed.setDefaultBlurIntensity(5)
+                    ed.setDefaultBlurFade(60)
+                    ed.setDefaultBlurDarkness(40)
+                  }}
+                  className="text-xs text-muted hover:text-accent transition-colors px-2 py-0.5 rounded-md border border-border/50 hover:border-accent/30">
+            {t("ui.reset")}
+          </button>
         </div>
 
-        {ed.defaultBlurEnabled && (
-          <div className="space-y-1.5 pt-1.5 border-t border-surface2/50 animate-fade-in">
+        <div className="space-y-1.5 pt-1 animate-fade-in">
             <SliderRow
               icon={<Ruler className="w-3.5 h-3.5" />}
               label={t("ui.height")}
@@ -530,11 +1042,9 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
               boundsMax={100}
               onChange={(v) => {
                 ed.setDefaultGradientHeight(v)
-                ed.setGradientHeight(v)
               }}
               onDoubleClick={() => {
                 ed.setDefaultGradientHeight(30)
-                ed.setGradientHeight(30)
               }}
               editingValue={editVal}
               editText={editTxt}
@@ -553,11 +1063,9 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
               boundsMax={50}
               onChange={(v) => {
                 ed.setDefaultBlurIntensity(v)
-                ed.setBlurIntensity(v)
               }}
               onDoubleClick={() => {
                 ed.setDefaultBlurIntensity(5)
-                ed.setBlurIntensity(5)
               }}
               editingValue={editVal}
               editText={editTxt}
@@ -576,11 +1084,9 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
               boundsMax={100}
               onChange={(v) => {
                 ed.setDefaultBlurFade(v)
-                ed.setBlurFade(v)
               }}
               onDoubleClick={() => {
                 ed.setDefaultBlurFade(60)
-                ed.setBlurFade(60)
               }}
               editingValue={editVal}
               editText={editTxt}
@@ -599,11 +1105,9 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
               boundsMax={100}
               onChange={(v) => {
                 ed.setDefaultBlurDarkness(v)
-                ed.setBlurDarkness(v)
               }}
               onDoubleClick={() => {
                 ed.setDefaultBlurDarkness(40)
-                ed.setBlurDarkness(40)
               }}
               editingValue={editVal}
               editText={editTxt}
@@ -698,8 +1202,8 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
               suffix="px"
             />
           </div>
-        )}
       </div>
+      )}
     </div>
   )
 
@@ -717,12 +1221,28 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
           {t("ui.region")}
         </span>
         <div className="flex items-center justify-between gap-2 pt-0.5">
+          <span className="text-zinc-300 font-medium">{t("ui.chooseLanguage")}</span>
+          <select
+            value={lang}
+            onChange={(e) => {
+              pickLang(e.target.value)
+            }}
+            aria-label={t("ui.chooseLanguage")}
+            className="max-w-[190px] truncate px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-white/5 text-zinc-100 border border-white/10 hover:bg-white/10 focus:outline-none focus:border-accent-orange/50 cursor-pointer"
+          >
+            {UI_LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code} className="bg-zinc-900 text-zinc-100">
+                {l.flag} {l.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center justify-between gap-2 pt-0.5">
           <span className="text-zinc-300 font-medium">{t("ui.region")}</span>
           <select
             value={ed.defaultRegion}
             onChange={(e) => {
               ed.setDefaultRegion(e.target.value)
-              ed.setRegion(e.target.value)
             }}
             aria-label={t("ui.region")}
             className="max-w-[190px] truncate px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-white/5 text-zinc-100 border border-white/10 hover:bg-white/10 focus:outline-none focus:border-accent-orange/50 cursor-pointer"
@@ -750,7 +1270,6 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
               type="button"
               onClick={() => {
                 ed.setDefaultEpisodeMetadataSource("tmdb")
-                ed.setEpisodeMetadataSource("tmdb")
               }}
               className={`px-3 py-1 rounded-lg text-[11px] font-semibold transition-all duration-150 cursor-pointer ${
                 ed.episodeMetadataSource === "tmdb"
@@ -764,7 +1283,6 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
               type="button"
               onClick={() => {
                 ed.setDefaultEpisodeMetadataSource("tvdb")
-                ed.setEpisodeMetadataSource("tvdb")
               }}
               className={`px-3 py-1 rounded-lg text-[11px] font-semibold transition-all duration-150 cursor-pointer ${
                 ed.episodeMetadataSource === "tvdb"
@@ -794,7 +1312,6 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
             value={ed.defaultAutoRotateClean}
             onChange={(v) => {
               ed.setDefaultAutoRotateClean(v)
-              ed.setAutoRotateClean(v)
             }}
             label={t("ui.autoRotateDefault")}
           />
@@ -905,6 +1422,205 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
           </button>
         </div>
       </div>
+
+      {/* Sicurezza & Accesso PIN */}
+      <div className="bg-surface/50 border border-surface2/60 rounded-xl p-3.5 space-y-2.5 shadow-sm">
+        <div className="flex items-center justify-between text-[11px] font-medium text-muted px-0.5">
+          <span className="flex items-center gap-1.5 text-zinc-200 font-semibold">
+            <Lock className="w-3.5 h-3.5 text-amber-400" />
+            <span>{t("ui.pinSecurityTitle")}</span>
+          </span>
+          <span
+            className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
+              pinConfig?.hasPin
+                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                : "bg-white/5 text-zinc-400 border-white/5"
+            }`}
+          >
+            {pinConfig?.hasPin ? t("ui.pinActive") : t("ui.pinNotConfigured")}
+          </span>
+        </div>
+        <p className="text-[10px] text-muted leading-tight">
+          {t("ui.pinSecurityDesc")}
+        </p>
+
+        {pinModalMode === null ? (
+          <div className="flex gap-2 pt-1">
+            {!pinConfig?.hasPin ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setCurPinInput("")
+                  setNewPinInput("")
+                  setPinModalMode("set")
+                }}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-medium bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 active:scale-[0.98] transition-all border border-amber-500/20 cursor-pointer"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                {t("ui.pinConfigure")}
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurPinInput("")
+                    setNewPinInput("")
+                    setPinModalMode("set")
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-medium bg-white/[0.05] text-zinc-200 hover:bg-white/[0.1] active:scale-[0.98] transition-all border border-white/10 cursor-pointer"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                  {t("ui.pinChange")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurPinInput("")
+                    setPinModalMode("remove")
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-medium bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 active:scale-[0.98] transition-all border border-rose-500/20 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  {t("ui.pinRemove")}
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-2 pt-1 border-t border-white/5">
+            {pinModalMode === "set" ? (
+              <>
+                {pinConfig?.hasPin && (
+                  <div>
+                    <label className="text-[10px] text-muted block mb-1">{t("ui.pinCurrentLabel")}</label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={8}
+                      value={curPinInput}
+                      onChange={(e) => setCurPinInput(e.target.value.replace(/\D/g, ""))}
+                      placeholder="••••"
+                      className="w-full text-center text-sm font-mono tracking-widest py-1.5 px-3 rounded-lg bg-black/40 border border-white/10 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50"
+                    />
+                  </div>
+                )}
+                <div>
+                  <label className="text-[10px] text-muted block mb-1">{t("ui.pinNewLabel")}</label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={8}
+                    value={newPinInput}
+                    onChange={(e) => setNewPinInput(e.target.value.replace(/\D/g, ""))}
+                    placeholder="••••"
+                    className="w-full text-center text-sm font-mono tracking-widest py-1.5 px-3 rounded-lg bg-black/40 border border-white/10 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50"
+                  />
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setPinModalMode(null)}
+                    disabled={pinBusy}
+                    className="flex-1 py-1.5 rounded-lg text-[11px] font-medium bg-white/5 text-zinc-400 hover:text-zinc-200 border border-white/5 cursor-pointer"
+                  >
+                    {t("ui.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={newPinInput.length < 6 || (pinConfig?.hasPin && !curPinInput) || pinBusy}
+                    onClick={async () => {
+                      setPinBusy(true)
+                      try {
+                        const res = await fetch("/api/auth/pin", {
+                          method: "PUT",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ currentPin: curPinInput, newPin: newPinInput }),
+                        })
+                        if (res.ok) {
+                          if (typeof window !== "undefined") {
+                            window.dispatchEvent(new CustomEvent("pictorium:pin-change", { detail: { unlocked: true } }))
+                          }
+                          toast.success(t("ui.pinSavedSuccess"))
+                          setPinModalMode(null)
+                          refreshPin()
+                        } else {
+                          const err = await res.json().catch(() => ({}))
+                          toast.error(err.error || t("ui.pinSaveError"))
+                        }
+                      } catch {
+                        toast.error(t("ui.pinConnError"))
+                      } finally {
+                        setPinBusy(false)
+                      }
+                    }}
+                    className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold bg-amber-500 text-black hover:bg-amber-400 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                  >
+                    {pinBusy ? t("ui.saving") : t("ui.save")}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="text-[10px] text-muted block mb-1">{t("ui.pinRemoveConfirmLabel")}</label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={8}
+                    value={curPinInput}
+                    onChange={(e) => setCurPinInput(e.target.value.replace(/\D/g, ""))}
+                    placeholder="••••"
+                    className="w-full text-center text-sm font-mono tracking-widest py-1.5 px-3 rounded-lg bg-black/40 border border-white/10 text-white placeholder-zinc-600 focus:outline-none focus:border-rose-500/50"
+                  />
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setPinModalMode(null)}
+                    disabled={pinBusy}
+                    className="flex-1 py-1.5 rounded-lg text-[11px] font-medium bg-white/5 text-zinc-400 hover:text-zinc-200 border border-white/5 cursor-pointer"
+                  >
+                    {t("ui.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!curPinInput || pinBusy}
+                    onClick={async () => {
+                      setPinBusy(true)
+                      try {
+                        const res = await fetch("/api/auth/pin", {
+                          method: "DELETE",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ currentPin: curPinInput }),
+                        })
+                        if (res.ok) {
+                          if (typeof window !== "undefined") {
+                            window.dispatchEvent(new CustomEvent("pictorium:pin-change", { detail: { unlocked: false } }))
+                          }
+                          toast.success(t("ui.pinRemovedSuccess"))
+                          setPinModalMode(null)
+                          refreshPin()
+                        } else {
+                          const err = await res.json().catch(() => ({}))
+                          toast.error(err.error || t("ui.pinLockWrong"))
+                        }
+                      } catch {
+                        toast.error(t("ui.pinConnError"))
+                      } finally {
+                        setPinBusy(false)
+                      }
+                    }}
+                    className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                  >
+                    {pinBusy ? t("ui.loading") : t("ui.pinConfirmRemove")}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 
@@ -944,7 +1660,8 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
       <div ref={settingsRef} className="space-y-4">
         {tabsNav}
         <div className="pt-2">
-          {stylePanel}
+          {badgePanel}
+          {trasformaPanel}
           {prefsPanel}
           {dataPanel}
         </div>
@@ -999,7 +1716,8 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
 
         {/* Contenuto scrollabile */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-          {stylePanel}
+          {badgePanel}
+          {trasformaPanel}
           {prefsPanel}
           {dataPanel}
         </div>

@@ -40,9 +40,6 @@ const POSTER_MAX_TOKENS = (() => {
 })()
 
 const limits: Record<string, BucketConfig> = {
-  // Validate-key è un oracolo di validità per chiavi rubate: burst contenuto e
-  // ~5/min sostenuti (un token ogni 12s). La UI legittima ne fa una manciata.
-  "validate-key": { maxTokens: 10, refillRate: 1, refillWindow: 12000 },
   default: { maxTokens: 120, refillRate: 10, refillWindow: 1000 },
   tmdb:    { maxTokens: 60,  refillRate: 5,  refillWindow: 1000 },
   poster:  { maxTokens: POSTER_MAX_TOKENS, refillRate: 20, refillWindow: 1000 },
@@ -56,6 +53,13 @@ const limits: Record<string, BucketConfig> = {
   // che l'endpoint venga usato come generatore massivo.
   config:   { maxTokens: 30, refillRate: 3,  refillWindow: 1000 },
   defaults: { maxTokens: 30, refillRate: 3,  refillWindow: 1000 },
+  // Validate-key: oracolo di validità per chiavi rubate — burst contenuto e
+  // ~5/min sostenuti (1 token ogni 12s). La legittima UI ne fa una manciata.
+  "validate-key": { maxTokens: 10, refillRate: 1,  refillWindow: 12000 },
+  // PIN auth: tentativi di brute-force su 4-8 cifre — burst contenuto e
+  // refill lento (20 burst, ~2/s sostenuti). La protezione reale viene da
+  // PIN min 6 cifre + rotazione sessionSecret a ogni setPin.
+  "auth-pin": { maxTokens: 20, refillRate: 2,  refillWindow: 1000 },
 }
 
 function memoryRateLimit(bucketKey: string, cfg: BucketConfig, now: number): { ok: boolean; retAfter: number } {

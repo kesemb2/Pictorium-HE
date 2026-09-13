@@ -55,10 +55,31 @@ export interface PosterRenderConfig {
   badgeYear: boolean
   badgeRating: boolean
   badgeQuality: boolean
+  /** Riga rating custom provider (display). Default ON quando il provider è configurato. */
+  customRatings: boolean
   ratingSources: string[]
   logoScale: number | null
   logoOffsetX: number | null
   logoOffsetY: number | null
+  /** Scala % del badge superiore (default 100). Offset solo stili centrati. */
+  topBadgeScale: number
+  topBadgeOffsetX: number
+  topBadgeOffsetY: number
+  /** Scala % del badge genere/rating in basso (default 100). */
+  genreBadgeScale: number
+  /** Offset px del badge genere/rating, solo stili non-bar. */
+  genreBadgeOffsetX: number
+  genreBadgeOffsetY: number
+  /** Scala % del badge qualità streaming (default 100). */
+  qualityBadgeScale: number
+  /** Offset px del badge qualità. */
+  qualityBadgeOffsetX: number
+  qualityBadgeOffsetY: number
+  /** Scala % del logo network (default 100). */
+  networkLogoScale: number
+  /** Offset px del logo network. */
+  networkLogoOffsetX: number
+  networkLogoOffsetY: number
   queryExtra: string | null
   qNetLogo: string | null
   networkLogo: boolean
@@ -74,6 +95,8 @@ export interface PosterRenderConfig {
   textShadowOffset: number
   ratingStar: boolean
   ribbonSide: "left" | "right"
+  /** Stato pre-digitale (darken + badge Coming Soon, solo film). Default OFF. */
+  preRelease: boolean
 }
 
 export function resolvePosterRenderConfig(input: PosterRenderConfigInput): PosterRenderConfig {
@@ -150,6 +173,12 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
   const badgeRating = qBr !== null ? qBr !== "0" : (mapping?.badgeRating ?? configOverride?.badgeRating ?? sd.badgeRating ?? true)
   const badgeQuality = qBq !== null ? qBq !== "0" : (mapping?.badgeQuality ?? configOverride?.badgeQuality ?? sd.badgeQuality ?? true)
 
+  // Riga rating custom provider (display) — precedenza: query `cr` > mapping
+  // salvato > config token/profilo > server defaults > true (ON di default).
+  // L'effettivo rendering richiede comunque il provider configurato (env).
+  const qCr = q.get("cr")
+  const customRatings = qCr !== null ? qCr !== "0" : (mapping?.customRatings ?? configOverride?.customRatings ?? sd.customRatings ?? true)
+
   const qRsrc = q.get("rsrc")
   const validSources = SUPPORTED_RATING_SOURCES as readonly string[]
   const ratingSources: string[] = qRsrc !== null
@@ -167,18 +196,16 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
   const qScale = q.get("scale")
   const qOx = q.get("ox")
   const qOy = q.get("oy")
-  // Bound anti-DoS: una scale fuori da 10..200 arrivava a `resizeLogoCached`
-  // con dimensioni assurde (sharp va in OOM), e una scale NEGATIVA faceva
-  // crashare il resize, cioè un 500 permanente per quel poster. `scale=0` e i
-  // non-numerici restano null come prima.
-  const qScaleNum = qScale ? Number(qScale) : NaN
+  // Bound anti-DoS (R1): scale fuori 10..200 arrivava a resizeLogoCached con
+  // dimensioni assurde (sharp OOM); scale negativa addirittura crashava il
+  // resize → 500 permanente. `scale=0`/non-numerico resta null come prima.
+const qScaleNum = qScale ? Number(qScale) : NaN
   const logoScale = qScale
     ? (Number.isFinite(qScaleNum) && qScaleNum !== 0 ? clamp(Math.round(qScaleNum), 10, 200) : null)
     : mapping?.logoScale ?? null
-  // Offset: ±2000px, oltre è comunque fuori dal canvas. A differenza di prima
-  // un `ox=0` esplicito vince sul mapping — lo zero è un valore, non un
-  // "assente", lo stesso bug che `geom()` corregge per gli offset dei badge.
-  const qOxNum = qOx ? Number(qOx) : NaN
+  // Offset: clamp ±2000px (oltre è comunque fuori canvas). A differenza di
+  // prima, `ox=0` esplicito vince sul mapping (0 reale invece di null).
+const qOxNum = qOx ? Number(qOx) : NaN
   const logoOffsetX = qOx
     ? (Number.isFinite(qOxNum) ? clamp(Math.round(qOxNum), -2000, 2000) : null)
     : mapping?.logoOffsetX ?? null
@@ -187,6 +214,93 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
     ? (Number.isFinite(qOyNum) ? clamp(Math.round(qOyNum), -2000, 2000) : null)
     : mapping?.logoOffsetY ?? null
 
+  // Badge superiore — stessa catena di blur/gradient (query > mapping > config
+  // > server defaults > default), stessi bound del logo (scala %, offset px).
+  const qTScaleNum = q.get("tscale") ? Number(q.get("tscale")) : NaN
+  const topBadgeScale = q.get("tscale") !== null
+    ? (Number.isFinite(qTScaleNum) && qTScaleNum !== 0 ? clamp(Math.round(qTScaleNum), 10, 200) : 100)
+    : (mapping?.topBadgeScale != null && Number.isFinite(mapping.topBadgeScale)
+        ? clamp(Math.round(mapping.topBadgeScale), 10, 200)
+        : (configOverride?.topBadgeScale != null && Number.isFinite(configOverride.topBadgeScale)
+            ? clamp(Math.round(configOverride.topBadgeScale), 10, 200)
+            : (sd.topBadgeScale != null && Number.isFinite(sd.topBadgeScale)
+                ? clamp(Math.round(sd.topBadgeScale), 10, 200)
+                : 100)))
+  const qToxNum = q.get("tox") ? Number(q.get("tox")) : NaN
+  const topBadgeOffsetX = q.get("tox") !== null
+    ? (Number.isFinite(qToxNum) ? clamp(Math.round(qToxNum), -2000, 2000) : 0)
+    : (mapping?.topBadgeOffsetX ?? configOverride?.topBadgeOffsetX ?? sd.topBadgeOffsetX ?? 0)
+  const qToyNum = q.get("toy") ? Number(q.get("toy")) : NaN
+  const topBadgeOffsetY = q.get("toy") !== null
+    ? (Number.isFinite(qToyNum) ? clamp(Math.round(qToyNum), -2000, 2000) : 0)
+    : (mapping?.topBadgeOffsetY ?? configOverride?.topBadgeOffsetY ?? sd.topBadgeOffsetY ?? 0)
+
+  // Badge genere/rating in basso — stessa catena (query > mapping > config >
+  // server defaults > default), stessi bound della scala (%, 10..200).
+  const qGScaleNum = q.get("gscale") ? Number(q.get("gscale")) : NaN
+  const genreBadgeScale = q.get("gscale") !== null
+    ? (Number.isFinite(qGScaleNum) && qGScaleNum !== 0 ? clamp(Math.round(qGScaleNum), 10, 200) : 100)
+    : (mapping?.genreBadgeScale != null && Number.isFinite(mapping.genreBadgeScale)
+        ? clamp(Math.round(mapping.genreBadgeScale), 10, 200)
+        : (configOverride?.genreBadgeScale != null && Number.isFinite(configOverride.genreBadgeScale)
+            ? clamp(Math.round(configOverride.genreBadgeScale), 10, 200)
+            : (sd.genreBadgeScale != null && Number.isFinite(sd.genreBadgeScale)
+                ? clamp(Math.round(sd.genreBadgeScale), 10, 200)
+                : 100)))
+
+  // Offset badge genere — stessa catena, clamp px come il logo.
+  const qGoxNum = q.get("gox") ? Number(q.get("gox")) : NaN
+  const genreBadgeOffsetX = q.get("gox") !== null
+    ? (Number.isFinite(qGoxNum) ? clamp(Math.round(qGoxNum), -2000, 2000) : 0)
+    : (mapping?.genreBadgeOffsetX ?? configOverride?.genreBadgeOffsetX ?? sd.genreBadgeOffsetX ?? 0)
+  const qGoyNum = q.get("goy") ? Number(q.get("goy")) : NaN
+  const genreBadgeOffsetY = q.get("goy") !== null
+    ? (Number.isFinite(qGoyNum) ? clamp(Math.round(qGoyNum), -2000, 2000) : 0)
+    : (mapping?.genreBadgeOffsetY ?? configOverride?.genreBadgeOffsetY ?? sd.genreBadgeOffsetY ?? 0)
+
+  // Badge qualità streaming — stessa catena, stessi bound (%, 10..200).
+  const qQScaleNum = q.get("qscale") ? Number(q.get("qscale")) : NaN
+  const qualityBadgeScale = q.get("qscale") !== null
+    ? (Number.isFinite(qQScaleNum) && qQScaleNum !== 0 ? clamp(Math.round(qQScaleNum), 10, 200) : 100)
+    : (mapping?.qualityBadgeScale != null && Number.isFinite(mapping.qualityBadgeScale)
+        ? clamp(Math.round(mapping.qualityBadgeScale), 10, 200)
+        : (configOverride?.qualityBadgeScale != null && Number.isFinite(configOverride.qualityBadgeScale)
+            ? clamp(Math.round(configOverride.qualityBadgeScale), 10, 200)
+            : (sd.qualityBadgeScale != null && Number.isFinite(sd.qualityBadgeScale)
+                ? clamp(Math.round(sd.qualityBadgeScale), 10, 200)
+                : 100)))
+
+  // Offset badge qualità — stessa catena, clamp px come il logo.
+  const qQoxNum = q.get("qox") ? Number(q.get("qox")) : NaN
+  const qualityBadgeOffsetX = q.get("qox") !== null
+    ? (Number.isFinite(qQoxNum) ? clamp(Math.round(qQoxNum), -2000, 2000) : 0)
+    : (mapping?.qualityBadgeOffsetX ?? configOverride?.qualityBadgeOffsetX ?? sd.qualityBadgeOffsetX ?? 0)
+  const qQoyNum = q.get("qoy") ? Number(q.get("qoy")) : NaN
+  const qualityBadgeOffsetY = q.get("qoy") !== null
+    ? (Number.isFinite(qQoyNum) ? clamp(Math.round(qQoyNum), -2000, 2000) : 0)
+    : (mapping?.qualityBadgeOffsetY ?? configOverride?.qualityBadgeOffsetY ?? sd.qualityBadgeOffsetY ?? 0)
+
+  // Logo network — stessa catena, stessi bound (%, 10..200).
+  const qNScaleNum = q.get("netscale") ? Number(q.get("netscale")) : NaN
+  const networkLogoScale = q.get("netscale") !== null
+    ? (Number.isFinite(qNScaleNum) && qNScaleNum !== 0 ? clamp(Math.round(qNScaleNum), 10, 200) : 100)
+    : (mapping?.networkLogoScale != null && Number.isFinite(mapping.networkLogoScale)
+        ? clamp(Math.round(mapping.networkLogoScale), 10, 200)
+        : (configOverride?.networkLogoScale != null && Number.isFinite(configOverride.networkLogoScale)
+            ? clamp(Math.round(configOverride.networkLogoScale), 10, 200)
+            : (sd.networkLogoScale != null && Number.isFinite(sd.networkLogoScale)
+                ? clamp(Math.round(sd.networkLogoScale), 10, 200)
+                : 100)))
+
+  // Offset logo network — stessa catena, clamp px come il logo.
+  const qNoxNum = q.get("nox") ? Number(q.get("nox")) : NaN
+  const networkLogoOffsetX = q.get("nox") !== null
+    ? (Number.isFinite(qNoxNum) ? clamp(Math.round(qNoxNum), -2000, 2000) : 0)
+    : (mapping?.networkLogoOffsetX ?? configOverride?.networkLogoOffsetX ?? sd.networkLogoOffsetX ?? 0)
+  const qNoyNum = q.get("noy") ? Number(q.get("noy")) : NaN
+  const networkLogoOffsetY = q.get("noy") !== null
+    ? (Number.isFinite(qNoyNum) ? clamp(Math.round(qNoyNum), -2000, 2000) : 0)
+    : (mapping?.networkLogoOffsetY ?? configOverride?.networkLogoOffsetY ?? sd.networkLogoOffsetY ?? 0)
   // Fix L32: le label prefissate (__badge.*) vengono risolte con la lingua
   // della richiesta — prima un customBadge "__badge.anime" dal config token
   // arrivava letterale al renderer (la preview invece la risolveva → desync).
@@ -241,13 +355,20 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
   const accentDominant: boolean = rawAccentDominant !== null
     ? rawAccentDominant !== "0"
     : (mapping?.accentDominant ?? (configOverride !== null ? configOverride.accentDominant : undefined) ?? sd.accentDominant ?? true)
-  // Modalità layout nastro Netflix + logo network: query `side=right` (Stremio) o `side=left` (Nuvio), mapping salvato o config/profilo
-  const qSide = q.get("side")
+  // Modalità layout nastro Netflix + logo network: query `side=right` (Stremio)
+  // o `side=left` (Nuvio), poi config/profilo. Globale: nessun override
+  // per-titolo (il mapping storico con ribbonSide viene ignorato).
+const qSide = q.get("side")
   const ribbonSide: "left" | "right" = qSide === "right"
     ? "right"
     : qSide === "left"
       ? "left"
-      : (mapping?.ribbonSide === "right" || configOverride?.ribbonSide === "right" ? "right" : "left")
+      : (configOverride?.ribbonSide === "right" ? "right" : "left")
+
+  // Pre-release pre-digitale (solo film): query `pre` > config token > server
+  // defaults > false. Globale, nessun override per-titolo.
+  const qPre = q.get("pre")
+  const preRelease = qPre !== null ? qPre !== "0" : (configOverride?.preRelease ?? sd.preRelease ?? false)
 
   return {
     badgeStyle,
@@ -263,10 +384,23 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
     badgeYear,
     badgeRating,
     badgeQuality,
+    customRatings,
     ratingSources,
     logoScale,
     logoOffsetX,
     logoOffsetY,
+    topBadgeScale,
+    topBadgeOffsetX,
+    topBadgeOffsetY,
+    genreBadgeScale,
+    qualityBadgeScale,
+    genreBadgeOffsetX,
+    genreBadgeOffsetY,
+    qualityBadgeOffsetX,
+    qualityBadgeOffsetY,
+    networkLogoScale,
+    networkLogoOffsetX,
+    networkLogoOffsetY,
     queryExtra,
     qNetLogo,
     networkLogo,
@@ -282,6 +416,6 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
     textShadowOffset,
     ratingStar,
     ribbonSide,
+    preRelease,
   }
 }
-

@@ -22,7 +22,9 @@ import {
 } from "lucide-react"
 import { usePSelector } from "@/lib/context"
 import { useT } from "@/lib/contexts/TranslationContext"
-import { PICTORIUM_CATALOGS } from "@/lib/catalog-definitions"
+import { usePosterEditor } from "@/lib/contexts/PosterEditorContext"
+import { PICTORIUM_CATALOGS, regionJwName } from "@/lib/catalog-definitions"
+import { getRegionDef } from "@/lib/regions"
 import { EmojiPicker } from "@/components/ui"
 
 interface CatalogManagerModalProps {
@@ -43,6 +45,11 @@ interface CatalogEntryItem {
 
 export function CatalogManagerModal({ isOpen, onClose }: CatalogManagerModalProps) {
   const { t } = useT()
+  // Regione attiva: i nomi dei cataloghi JW seguono la classifica (bandiera
+  // dinamica via regionJwName, stessa del manifest Stremio). Senza, il modal
+  // restava inchiodato al nome statico "Top 20 Italia" al cambio regione.
+  const { defaultRegion } = usePosterEditor()
+  const activeRegion = getRegionDef(defaultRegion)
   const customCatalogs = usePSelector((v) => v.customCatalogs)
   const toggleCustomCatalog = usePSelector((v) => v.toggleCustomCatalog)
   const removeCustomCatalog = usePSelector((v) => v.removeCustomCatalog)
@@ -93,12 +100,13 @@ export function CatalogManagerModal({ isOpen, onClose }: CatalogManagerModalProp
   const allCatalogs = useMemo(() => {
     const list: CatalogEntryItem[] = []
 
-    // Built-in catalogs
+    // Built-in catalogs (i nomi JW seguono la regione attiva)
     for (const c of PICTORIUM_CATALOGS) {
+      const defaultName = regionJwName(c.id, c.type, activeRegion) ?? c.name
       list.push({
         id: c.id,
-        name: catalogRenames[c.id] || c.name,
-        originalName: c.name,
+        name: catalogRenames[c.id] || defaultName,
+        originalName: defaultName,
         type: c.type,
         isCustom: false,
         enabled: !disabledCatalogIds.includes(c.id),
@@ -159,7 +167,7 @@ export function CatalogManagerModal({ isOpen, onClose }: CatalogManagerModalProp
     }
 
     return list
-  }, [customCatalogs, disabledCatalogIds, homeDisabledCatalogIds, catalogOrder, catalogRenames, t])
+  }, [customCatalogs, disabledCatalogIds, homeDisabledCatalogIds, catalogOrder, catalogRenames, activeRegion, t])
 
   if (!isOpen) return null
 
@@ -184,8 +192,15 @@ export function CatalogManagerModal({ isOpen, onClose }: CatalogManagerModalProp
   }
 
   const saveRename = (id: string) => {
-    if (editName.trim()) {
-      renameCatalog(id, editName.trim())
+    const trimmed = editName.trim()
+    // Mai pinnare il default dinamico: salvare il nome uguale al default
+    // bloccherebbe la bandiera al cambio regione (la chiave rename vince
+    // sempre). In quel caso si cancella l'override ed emerge il dinamico.
+    const item = allCatalogs.find((c) => c.id === id)
+    if (trimmed && item && trimmed === item.originalName) {
+      renameCatalog(id, "")
+    } else if (trimmed) {
+      renameCatalog(id, trimmed)
     }
     setEditingId(null)
   }
@@ -458,9 +473,10 @@ export function CatalogManagerModal({ isOpen, onClose }: CatalogManagerModalProp
                   )}
                 </button>
 
-                {/* 3 lines Drag Handle */}
+                {/* 3 lines Drag Handle: solo mouse (su touch il drag HTML5 non
+                    esiste — restano le frecce qui sotto, sempre funzionanti) */}
                 <div
-                  className="cursor-grab active:cursor-grabbing p-1.5 rounded-lg hover:bg-white/10 text-muted hover:text-white transition-colors"
+                  className="pointer-coarse:hidden cursor-grab active:cursor-grabbing p-1.5 rounded-lg hover:bg-white/10 text-muted hover:text-white transition-colors"
                   title={
                     isSelected && selectedIds.size > 1
                       ? t("ui.dragMany", { count: selectedIds.size })
@@ -476,7 +492,7 @@ export function CatalogManagerModal({ isOpen, onClose }: CatalogManagerModalProp
                     disabled={index === 0}
                     onClick={() => (isSelected ? moveSelectedUp() : moveCatalog(item.id, "up"))}
                     title={t("ui.moveUp")}
-                    className="p-0.5 rounded hover:bg-white/10 text-muted hover:text-white disabled:opacity-15 transition-colors"
+                    className="p-1 pointer-coarse:p-2 rounded hover:bg-white/10 text-muted hover:text-white disabled:opacity-15 transition-colors"
                   >
                     <ArrowUp className="w-3 h-3" />
                   </button>
@@ -485,7 +501,7 @@ export function CatalogManagerModal({ isOpen, onClose }: CatalogManagerModalProp
                     disabled={index === allCatalogs.length - 1}
                     onClick={() => (isSelected ? moveSelectedDown() : moveCatalog(item.id, "down"))}
                     title={t("ui.moveDown")}
-                    className="p-0.5 rounded hover:bg-white/10 text-muted hover:text-white disabled:opacity-15 transition-colors"
+                    className="p-1 pointer-coarse:p-2 rounded hover:bg-white/10 text-muted hover:text-white disabled:opacity-15 transition-colors"
                   >
                     <ArrowDown className="w-3 h-3" />
                   </button>

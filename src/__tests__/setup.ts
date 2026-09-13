@@ -2,6 +2,8 @@ import { expect, afterEach, vi } from "vitest"
 import { cleanup } from "@testing-library/react"
 import * as matchers from "@testing-library/jest-dom/matchers"
 
+import { _resetPinCache } from "@/lib/pin-auth"
+
 expect.extend(matchers)
 
 // I test simulano un'istanza pubblica (route admin aperte senza ADMIN_TOKEN):
@@ -10,13 +12,16 @@ process.env.POSTERIUM_PUBLIC_INSTANCE = "1"
 
 afterEach(() => {
   cleanup()
+  vi.unstubAllEnvs()
+  _resetPinCache()
+  process.env.POSTERIUM_PUBLIC_INSTANCE = "1"
 })
 
 const itDict: Record<string, string> = {
   "badge.newMovie": "Nuovo film",
   "badge.newSeries": "Nuova serie",
   "badge.newSeason": "Nuova stagione",
-  "badge.newSeasonN": "Nuova stagione S{n}",
+  "badge.newSeasonN": "Nuova S{n}",
   "badge.anime": "Anime",
   "badge.today": "Oggi",
   "badge.movie": "Film",
@@ -76,7 +81,10 @@ const itDict: Record<string, string> = {
   "ui.profileCreateOrAccess": "Crea o accedi ad un profilo per iniziare",
   "ui.uuidGenerating": "Generazione UUID...",
   "ui.copyUuid": "Copia UUID",
-  "ui.aiomLinkTitle": "Link per AIOMetadata & Stremio:",
+  "ui.aiomLinkTitle": "Link per AIO e custom URL:",
+  "ui.aiomLinkDesc": "Usa questo template URL nei campi AIOMetadata o Custom URL della tua app o add-on per visualizzare i poster di Pictorium:",
+  "ui.copyUrl": "Copia URL",
+  "ui.copyUrlTooltip": "Copia l'URL del poster personalizzato da usare in AIOMetadata o Stremio",
   "ui.existingProfileUuid": "UUID Profilo Esistente",
   "ui.profileYourPassword": "La tua password",
   "ui.loadAndAccess": "Accedi & Carica Profilo",
@@ -97,7 +105,7 @@ const itDict: Record<string, string> = {
   "badge.basedOn.theater": "Dal teatro",
   "badge.basedOn.poetry": "Dalla poesia",
   "badge.basedOn.fallback": "Tratto da",
-  "badge.winner": "Vincitore {name}",
+  "badge.winner": "{name}",
   "badge.nominee": "Candidato {name}",
   "award.oscar": "Oscar",
   "award.bafta": "BAFTA",
@@ -109,6 +117,13 @@ const itDict: Record<string, string> = {
   "franchise.mcu": "MCU",
   "franchise.dc_extended_universe": "DC Extended Universe",
   "franchise.star_wars": "Star Wars",
+  "ui.setupPinTitle": "Proteggi il tuo pannello",
+  "ui.setupPinSubtitle": "Imposta un PIN di sicurezza per accedere all'editor e salvare modifiche",
+  "ui.setupPinSave": "Salva PIN e Inizia",
+  "ui.setupPinSaving": "Salvataggio...",
+  "ui.setupPinSkip": "Salta questo passaggio",
+  "ui.setupPinMinDigits": "Il PIN deve contenere almeno 6 cifre",
+  "ui.setupPinStremioNotice": "Manifest e poster Stremio restano aperti",
 }
 
 function mockT(key: string, params?: Record<string, string | number>): string {

@@ -1,13 +1,13 @@
 import crypto from "node:crypto"
 import { NextRequest } from "next/server"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
-import { cacheGet, cacheSet } from "@/lib/cache"
+import { cacheGet, cacheGetShared, cacheSet } from "@/lib/cache"
 import { getTop10 } from "@/lib/flixpatrol"
 import { getServerDefaults } from "@/lib/server-defaults"
 import { POSTER_URL_VERSION } from "@/lib/render-version"
 import { getById } from "@/lib/store"
 import { decodeConfig, type PictoriumUserConfig } from "@/lib/config-token"
-import { getDetails, getGenreList, getImages, personMovieCredits, personTvCredits, posterUrlOriginal, resolveRequestApiKey, searchMovies, searchPerson, searchTV, tmdbFindByImdb, type TMDBDetails } from "@/lib/tmdb"
+import { getDetails, getDetailsWithExternalIds, getGenreList, getImages, personMovieCredits, personTvCredits, posterUrlOriginal, resolveRequestApiKey, searchMovies, searchPerson, searchTV, tmdbFindByImdb, type TMDBDetails } from "@/lib/tmdb"
 import { resolveImdbId } from "@/lib/imdb-cache"
 import { fetchMDBList } from "@/lib/mdblist"
 import { fetchUnifiedCatalogItems } from "@/lib/custom-catalog-providers"
@@ -48,7 +48,21 @@ export interface CatalogExtraParams {
 /**
  * Estrae parametri extra da Stremio (sia da segmenti di path es. `search=Avatar&skip=0.json`
  * sia da query string `?search=Avatar`).
+ *
+ * Bound anti cache-flood (C4): skip entra in chiaro nel cache key
+ * (`:s${skip}` — ogni valore distinto = entry), search/genre viaggiano verso
+ * gli upstream. Cap generosi, nessun client legittimo li supera (liste max
+ * 500 item, query di ricerca e label genere corte).
  */
+export const MAX_CATALOG_SKIP = 1000
+export const MAX_CATALOG_SEARCH_LENGTH = 100
+export const MAX_CATALOG_GENRE_LENGTH = 40
+
+function clampCatalogSkip(parsed: number): number | undefined {
+  if (Number.isNaN(parsed) || parsed < 0) return undefined
+  return Math.min(Math.floor(parsed), MAX_CATALOG_SKIP)
+}
+
 export function parseCatalogExtra(
   extraSegments?: string[] | string | null,
   searchParams?: URLSearchParams | null,
@@ -57,14 +71,14 @@ export function parseCatalogExtra(
 
   if (searchParams) {
     const s = searchParams.get("search")
-    if (s && s.trim()) result.search = s.trim()
+    if (s && s.trim()) result.search = s.trim().slice(0, MAX_CATALOG_SEARCH_LENGTH)
     const sk = searchParams.get("skip")
     if (sk) {
-      const parsed = parseInt(sk, 10)
-      if (!Number.isNaN(parsed) && parsed >= 0) result.skip = parsed
+      const clamped = clampCatalogSkip(parseInt(sk, 10))
+      if (clamped !== undefined) result.skip = clamped
     }
     const g = searchParams.get("genre")
-    if (g && g.trim()) result.genre = g.trim()
+    if (g && g.trim()) result.genre = g.trim().slice(0, MAX_CATALOG_GENRE_LENGTH)
   }
 
   if (extraSegments) {
@@ -80,12 +94,12 @@ export function parseCatalogExtra(
             const key = decodeURIComponent(pair.slice(0, eqIdx))
             const val = decodeURIComponent(pair.slice(eqIdx + 1))
             if (key === "search" && val.trim()) {
-              result.search = val.trim()
+              result.search = val.trim().slice(0, MAX_CATALOG_SEARCH_LENGTH)
             } else if (key === "skip") {
-              const parsed = parseInt(val, 10)
-              if (!Number.isNaN(parsed) && parsed >= 0) result.skip = parsed
+              const clamped = clampCatalogSkip(parseInt(val, 10))
+              if (clamped !== undefined) result.skip = clamped
             } else if (key === "genre" && val.trim()) {
-              result.genre = val.trim()
+              result.genre = val.trim().slice(0, MAX_CATALOG_GENRE_LENGTH)
             }
           } catch {
             // Ignora frammenti non decodificabili
@@ -140,8 +154,9 @@ const PLATFORM_SLUGS: Record<string, string> = {
 
 type StremioCatalogType = "movie" | "series"
 
-function catalogResponse(body: { metas: StremioMeta[] }): Response {
+function catalogResponse(body: { metas: StremioMeta[] }, status = 200): Response {
   return Response.json(body, {
+    status,
     headers: {
       "Cache-Control": "no-cache, max-age=0, must-revalidate",
       "Access-Control-Allow-Origin": "*",
@@ -149,9 +164,38 @@ function catalogResponse(body: { metas: StremioMeta[] }): Response {
   })
 }
 
-function normalizeCatalogType(type: string): StremioCatalogType {
+/**
+ * Tipi catalogo riconosciuti (C4): movie + famiglia tv/series + varianti anime
+ * di Stremio. Qualsiasi altro (es. `/catalog/garbage/...`) prima veniva
+ * servito silenziosamente come series — ora null e la route risponde 400.
+ */
+const KNOWN_CATALOG_TYPES = new Set([
+  "movie", "series", "tv", "show", "tvshow", "anime.movie", "anime.series", "anime",
+])
+
+function normalizeCatalogType(type: string): StremioCatalogType | null {
   const t = type.toLowerCase()
+  if (!KNOWN_CATALOG_TYPES.has(t)) return null
   return (t === "movie" || t === "anime.movie") ? "movie" : "series"
+}
+
+/**
+ * ID catalogo riconosciuti (C4): built-in + custom dinamici (`pictorium-custom-`,
+ * risolti contro userConfig) + ricerca. Gli ID ignoti prima producevano
+ * `metas:[]` cachato 60s (riempimento cache su enumerazione) — ora 404 senza
+ * scrittura in cache. Il confronto usa l'ID già normalizzato (alias legacy).
+ */
+function isKnownCatalogId(catalogId: string): boolean {
+  if (
+    catalogId.startsWith("pictorium-search-") ||
+    catalogId.startsWith("pictorium-custom-") ||
+    catalogId.startsWith("pictorium-jw") ||
+    catalogId.startsWith("pictorium-anime")
+  ) return true
+  for (const k of Object.keys(PLATFORM_SLUGS)) {
+    if (catalogId === `pictorium-${k}-movies` || catalogId === `pictorium-${k}-series`) return true
+  }
+  return false
 }
 
 /**
@@ -167,7 +211,11 @@ export function resolveCatalogRegion(req: NextRequest, userConfig: Partial<Picto
   return getRegionDef(normalizeRegion(getServerDefaults().region))
 }
 
-async function pictoriumPosterUrl(req: NextRequest, type: "movie" | "series", id: number, configParam?: string | null, userParam?: string | null, mdblistKeyParam?: string | null, animeRankParam?: number | null, posterLang = "it"): Promise<string> {
+// La chiave MDBList della richiesta resta SOLO server-side (fetch rank/voti
+// al momento del catalogo): non entra mai nel poster URL (M2 — finirebbe nel
+// DB Stremio/log/proxy). Il poster risolve il rank via `animerank` incorporato
+// o fallback d'istanza/mapping.
+async function pictoriumPosterUrl(req: NextRequest, type: "movie" | "series", id: number, configParam?: string | null, userParam?: string | null, animeRankParam?: number | null, posterLang = "it", posterRegion?: string | null): Promise<string> {
   const serverDefaults = getServerDefaults()
   const userConfig = configParam ? decodeConfig(configParam) : null
   const defaults = userConfig ? { ...serverDefaults, ...userConfig } : serverDefaults
@@ -179,6 +227,7 @@ async function pictoriumPosterUrl(req: NextRequest, type: "movie" | "series", id
     defaults,
     mapping,
     lang: posterLang,
+    region: posterRegion || undefined,
     config: configParam || undefined,
     user: userParam || undefined,
     animerank: animeRankParam ?? undefined,
@@ -230,14 +279,33 @@ function genreNamesFromIds(genreIds: number[] | undefined, genreNames: Map<numbe
 }
 
 async function catalogLogo(mediaType: "movie" | "tv", tmdbId: number, apiKey?: string, tmdbLang = "it-IT"): Promise<string | undefined> {
+  // A5: memo 24h (hit) / 1h (miss). Il logo in catalogo è richiesto per ogni
+  // item a ogni catalogo freddo (fino a 3N upstream con details+externalIds):
+  // i path TMDB sono immutabili, quindi l'hit vale 24h; il miss solo 1h così
+  // un logo aggiunto su TMDB viene scoperto entro l'ora. Wrapper oggetto
+  // perché cacheGet segnala il miss con null (un null cachato sarebbe
+  // indistinguibile). La chiave esclude l'api_key (non influisce sul payload).
+  // Solo gli esiti certi vanno in memo: su eccezione (timeout/rate-limit) non
+  // si cacha, così un errore transient non oscura il logo per un'ora.
+  const primary = tmdbLang.slice(0, 2).toLowerCase()
+  const memoKey = `catalog:logo:${mediaType}:${tmdbId}:${primary}`
+  const memo = cacheGet<{ logo: string | null }>(memoKey)
+  if (memo) return memo.logo ?? undefined
   try {
-    const signal = typeof AbortSignal !== "undefined" && "timeout" in AbortSignal ? AbortSignal.timeout(2500) : undefined
-    const primary = tmdbLang.slice(0, 2).toLowerCase()
+    // D4: tetto 1500ms (prima 2500). Il logo in catalogo è guarnizione: su
+    // cold catalog 20 loghi × coda/concorrenza 5 valgono secondi di route
+    // (maxDuration 60). Oltre il tetto → undefined, il poster resta completo.
+    const signal = typeof AbortSignal !== "undefined" && "timeout" in AbortSignal ? AbortSignal.timeout(1500) : undefined
     const images = await getImages(mediaType, tmdbId, `${primary},en,null`, apiKey, signal)
     if (images?.logos && images.logos.length > 0) {
       const itLogo = images.logos.find((l) => l.iso_639_1 === primary) || images.logos[0]
-      if (itLogo?.file_path) return posterUrlOriginal(itLogo.file_path)
+      if (itLogo?.file_path) {
+        const logoUrl = posterUrlOriginal(itLogo.file_path)
+        cacheSet(memoKey, { logo: logoUrl }, ["catalog", "tmdb"], 24 * 60 * 60 * 1000)
+        return logoUrl
+      }
     }
+    cacheSet(memoKey, { logo: null }, ["catalog", "tmdb"], 60 * 60 * 1000)
   } catch {
     // logo opzionale — ignora errori (rate limit, 404, timeout)
   }
@@ -275,7 +343,9 @@ export async function pictoriumCatalog(
   // `posterium-*` — vengono normalizzati al canonico `pictorium-*`.
   const catalogId = normalizeCatalogId(rawId.replace(/\.json$/, ""))
   if (catalogId.length > 80) return catalogResponse({ metas: [] })
+  // C4: tipo ignoto → 400 invece di servire silenziosamente dati series.
   const stType = normalizeCatalogType(mediaType)
+  if (!stType) return catalogResponse({ metas: [] }, 400)
   const extra = parseCatalogExtra(extraSegments, req.nextUrl.searchParams)
   const mdblistKeyParam = req.nextUrl.searchParams.get("mdblist_key") || undefined
   // Chiave TMDB della richiesta: parte del cache key così un catalogo vuoto
@@ -374,7 +444,7 @@ export async function pictoriumCatalog(
         const results: (StremioMeta | null)[] = await concurrentMap(paged, async (item) => {
           if (!item.id) return null
           const imdbId = await resolveImdbId(stType === "movie" ? "movie" : "tv", item.id, apiKey)
-          const poster = await pictoriumPosterUrl(req, stType, item.id, configParam, userParam, mdblistKeyParam, undefined, posterLang)
+          const poster = await pictoriumPosterUrl(req, stType, item.id, configParam, userParam, undefined, posterLang, region.code)
           const releaseInfo = (item.release_date || item.first_air_date || "").slice(0, 4) || undefined
           return {
             id: catalogMetaId(imdbId, item.id),
@@ -415,7 +485,7 @@ export async function pictoriumCatalog(
       const results: (StremioMeta | null)[] = await concurrentMap(items, async (item) => {
         if (!item.id) return null
         const imdbId = await resolveImdbId(stType === "movie" ? "movie" : "tv", item.id, apiKey)
-        const poster = await pictoriumPosterUrl(req, stType, item.id, configParam, userParam, mdblistKeyParam, undefined, posterLang)
+        const poster = await pictoriumPosterUrl(req, stType, item.id, configParam, userParam, undefined, posterLang, region.code)
         const releaseInfo = (item.release_date || item.first_air_date || "").slice(0, 4) || undefined
         return {
           id: catalogMetaId(imdbId, item.id),
@@ -444,10 +514,18 @@ export async function pictoriumCatalog(
     return catalogResponse({ metas: [] })
   }
 
+  // C4: ID non riconosciuto → 404 SENZA scrittura in cache. Prima produceva
+  // `metas:[]` cachato 60s: enumerazione di skip/search/genre riempiva la
+  // cache (MAX_ENTRIES) di spazzatura.
+  if (!isKnownCatalogId(catalogId)) {
+    return catalogResponse({ metas: [] }, 404)
+  }
+
   const skipFragment = typeof extra.skip === "number" && extra.skip > 0 ? `:s${extra.skip}` : ""
   const genreFragment = extra.genre && extra.genre !== "Tutti" ? `:g${hashFragment(extra.genre)}` : ""
   const cacheKey = `stremio:catalog:v2:${stType}:${catalogId}:pv${POSTER_URL_VERSION}${userParam ? `:u${hashFragment(userParam)}` : ""}:ak${apiKey ? hashFragment(apiKey) : "none"}${configParam ? `:cfg${hashFragment(configParam)}` : ""}${mdblistKey ? `:mk${hashFragment(mdblistKey)}` : ""}${genreFragment}${skipFragment}${regionFragment}${freshness}`
-  const cached = cacheGet<{ metas: StremioMeta[] }>(cacheKey)
+  // C1: L1 + L2 condivisa (KV su multi-istanza, no-op locale/VPS).
+  const cached = await cacheGetShared<{ metas: StremioMeta[] }>(cacheKey, ["stremio", "catalog"])
   if (cached) return catalogResponse(cached)
 
   let isCustomGenreFiltered = false
@@ -521,7 +599,7 @@ export async function pictoriumCatalog(
         metas = await concurrentMap(validResults, async (r) => {
           const [imdbId, poster, logo] = await Promise.all([
             r.imdb ? Promise.resolve(r.imdb) : resolveImdbId(stType === "movie" ? "movie" : "tv", r.tmdbId, apiKey),
-            pictoriumPosterUrl(req, stType, r.tmdbId, configParam, userParam, mdblistKeyParam, r.rank, posterLang),
+            pictoriumPosterUrl(req, stType, r.tmdbId, configParam, userParam, r.rank, posterLang, region.code),
             apiKey ? catalogLogo(stType === "movie" ? "movie" : "tv", r.tmdbId, apiKey, tmdbLang) : Promise.resolve(undefined),
           ])
           const background = catalogBackground(r.backdropPath)
@@ -570,7 +648,8 @@ export async function pictoriumCatalog(
 
       const results = await concurrentMap(uniqueRows, async (row) => {
         try {
-          const d = await getDetails(stType === "movie" ? "movie" : "tv", row.tmdbId, tmdbLang, apiKey)
+          // D4: external_ids in append — niente secondo fetch per-titolo.
+          const d = await getDetailsWithExternalIds(stType === "movie" ? "movie" : "tv", row.tmdbId, tmdbLang, apiKey)
           if (!d?.id) return null
           return { d, tmdbId: row.tmdbId, imdbId: row.imdbId }
         } catch {
@@ -580,8 +659,8 @@ export async function pictoriumCatalog(
       const validResults = results.filter((r): r is { d: TMDBDetails; tmdbId: number; imdbId: string | null } => r !== null)
       metas = await concurrentMap(validResults, async (r) => {
         const [imdbId, poster, logo] = await Promise.all([
-          r.imdbId ? Promise.resolve(r.imdbId) : resolveImdbId(stType === "movie" ? "movie" : "tv", r.tmdbId, apiKey),
-          pictoriumPosterUrl(req, stType, r.tmdbId, configParam, userParam, mdblistKeyParam, undefined, posterLang),
+          r.imdbId || r.d.external_ids?.imdb_id || null,
+          pictoriumPosterUrl(req, stType, r.tmdbId, configParam, userParam, undefined, posterLang, region.code),
           apiKey ? catalogLogo(stType === "movie" ? "movie" : "tv", r.tmdbId, apiKey, tmdbLang) : Promise.resolve(undefined),
         ])
         const background = catalogBackground(r.d.backdrop_path)
@@ -640,7 +719,7 @@ export async function pictoriumCatalog(
       metas = await concurrentMap(validResults, async (r) => {
         const [imdbId, poster, logo] = await Promise.all([
           r.imdb ? Promise.resolve(r.imdb) : resolveImdbId(mediaType, r.tmdbId, apiKey),
-          pictoriumPosterUrl(req, stType, r.tmdbId, configParam, userParam, mdblistKeyParam, r.rank, posterLang),
+          pictoriumPosterUrl(req, stType, r.tmdbId, configParam, userParam, r.rank, posterLang, region.code),
           apiKey ? catalogLogo(mediaType, r.tmdbId, apiKey, tmdbLang) : Promise.resolve(undefined),
         ])
         const background = catalogBackground(r.backdropPath)
@@ -709,7 +788,8 @@ export async function pictoriumCatalog(
             let details: TMDBDetails | null = null
             if (apiKey) {
               try {
-                details = await getDetails(stType === "movie" ? "movie" : "tv", row.tmdbId, tmdbLang, apiKey)
+                // D4: external_ids in append — niente secondo fetch per-titolo.
+                details = await getDetailsWithExternalIds(stType === "movie" ? "movie" : "tv", row.tmdbId, tmdbLang, apiKey)
               } catch {
                 details = null
               }
@@ -718,6 +798,7 @@ export async function pictoriumCatalog(
             return {
               tmdbId: row.tmdbId,
               imdbId: row.imdbId,
+              externalImdbId: details?.external_ids?.imdb_id ?? null,
               title,
               releaseInfo: (details?.release_date || details?.first_air_date || "").slice(0, 4) || undefined,
               genres: (details?.genres || []).map((g) => g.name).filter(Boolean),
@@ -729,8 +810,8 @@ export async function pictoriumCatalog(
           const validResults = results.filter((r) => r.title.length > 0)
           metas = await concurrentMap(validResults, async (r) => {
             const [imdbId, poster, logo] = await Promise.all([
-              r.imdbId ? Promise.resolve(r.imdbId) : resolveImdbId(stType === "movie" ? "movie" : "tv", r.tmdbId, apiKey),
-              pictoriumPosterUrl(req, stType, r.tmdbId, configParam, userParam, mdblistKeyParam, undefined, posterLang),
+              r.imdbId || r.externalImdbId || null,
+              pictoriumPosterUrl(req, stType, r.tmdbId, configParam, userParam, undefined, posterLang, region.code),
               apiKey ? catalogLogo(stType === "movie" ? "movie" : "tv", r.tmdbId, apiKey, tmdbLang) : Promise.resolve(undefined),
             ])
             const background = catalogBackground(r.backdropPath)
@@ -767,7 +848,7 @@ export async function pictoriumCatalog(
               const [imdbId, details, poster, logo] = await Promise.all([
                 resolveImdbId(stType === "movie" ? "movie" : "tv", item.tmdbId, apiKey),
                 getDetails(stType === "movie" ? "movie" : "tv", item.tmdbId, tmdbLang, apiKey).catch(() => null),
-                pictoriumPosterUrl(req, stType, item.tmdbId, configParam, userParam, mdblistKeyParam, undefined, posterLang),
+                pictoriumPosterUrl(req, stType, item.tmdbId, configParam, userParam, undefined, posterLang, region.code),
                 catalogLogo(stType === "movie" ? "movie" : "tv", item.tmdbId, apiKey, tmdbLang),
               ])
               const italianTitle = details?.title || details?.name || item.title

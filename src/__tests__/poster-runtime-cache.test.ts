@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { cacheClear } from "@/lib/cache"
 import {
+  beginPosterRender,
+  convertPosterFormat,
+  getPendingPoster,
   isImmutablePosterRequest,
   posterHeaders,
   posterNotModifiedHeaders,
   readPosterError,
   resolveImageFormat,
+  variantEtagFor,
   writePosterError,
 } from "@/lib/poster-runtime-cache"
 
@@ -156,18 +160,68 @@ describe("poster negative cache (F3)", () => {
   })
 })
 
+describe("poster inflight coalescing (R4)", () => {
+  it("second begin on the same key is a no-op (no duplicate registration)", () => {
+    const key = `poster:r4:noop:${Date.now()}`
+    const first = beginPosterRender(key)
+    expect(getPendingPoster(key)).not.toBeNull()
+    const second = beginPosterRender(key)
+    // Il no-op non deve toccare l'entry del primo.
+    second(null)
+    expect(getPendingPoster(key)).not.toBeNull()
+    first(null)
+    expect(getPendingPoster(key)).toBeNull()
+  })
+
+  it("watchdog completion keeps the entry reserved for the zombie (no duplicate renders)", async () => {
+    const key = `poster:r4:zombie:${Date.now()}`
+    const complete = beginPosterRender(key)
+    const waiter = getPendingPoster(key)
+    expect(waiter).not.toBeNull()
+
+    // Watchdog: waiter risolti con null, entry ancora prenotata.
+    complete(null, true)
+    await expect(waiter).resolves.toBeNull()
+    expect(getPendingPoster(key)).not.toBeNull()
+
+    // Un nuovo begin non deve registrare un secondo render...
+    const late = beginPosterRender(key)
+    late(null)
+    expect(getPendingPoster(key)).not.toBeNull()
+
+    // ...e i nuovi arrivati vedono subito null (503 immediato, zero lavoro).
+    await expect(getPendingPoster(key)).resolves.toBeNull()
+
+    // Fine zombie: l'entry si libera.
+    complete({ buffer: Buffer.from("x"), etag: '"x"' })
+    expect(getPendingPoster(key)).toBeNull()
+  })
+
+  it("normal completion clears the entry", async () => {
+    const key = `poster:r4:normal:${Date.now()}`
+    const complete = beginPosterRender(key)
+    complete({ buffer: Buffer.from("x"), etag: '"x"' })
+    expect(getPendingPoster(key)).toBeNull()
+  })
+})
+
 describe("poster image format negotiation (WebP / AVIF)", () => {
   it("resolves output format from Accept header correctly", () => {
     expect(resolveImageFormat(null)).toBe("jpeg")
     expect(resolveImageFormat("image/jpeg,image/png")).toBe("jpeg")
     expect(resolveImageFormat("image/webp,image/apng,*/*")).toBe("webp")
-    expect(resolveImageFormat("image/avif,image/webp,image/apng,*/*")).toBe("avif")
+    // C3: Accept avif → webp (encode avif 3-5×, i client avif accettano webp);
+    // bare "image/avif" senza webp → jpeg (fallback universale, mai webp non negoziato)
+    expect(resolveImageFormat("image/avif,image/webp,image/apng,*/*")).toBe("webp")
+    expect(resolveImageFormat("image/avif")).toBe("jpeg")
   })
 
   it("prioritizes query param fmt over Accept header", () => {
     expect(resolveImageFormat("image/avif", "webp")).toBe("webp")
     expect(resolveImageFormat("image/webp", "jpeg")).toBe("jpeg")
     expect(resolveImageFormat("image/webp", "jpg")).toBe("jpeg")
+    // C3: ?fmt=avif esplicito resta onorato (render dedicato legacy)
+    expect(resolveImageFormat("image/webp", "avif")).toBe("avif")
   })
 
   it("sets correct Content-Type and Vary headers according to format", () => {
@@ -182,5 +236,28 @@ describe("poster image format negotiation (WebP / AVIF)", () => {
     const avifHeaders = posterHeaders("\"etag\"", false, false, false, "avif")
     expect(avifHeaders["Content-Type"]).toBe("image/avif")
     expect(avifHeaders.Vary).toBe("Accept")
+  })
+
+  it("converts canonical jpeg to webp with matching encoder options", async () => {
+    const sharp = (await import("sharp")).default
+    const jpeg = await sharp({ create: { width: 16, height: 16, channels: 3, background: { r: 200, g: 30, b: 40 } } })
+      .jpeg({ quality: 70 })
+      .toBuffer()
+    const webp = await convertPosterFormat(jpeg)
+    // Magic bytes WebP: RIFF....WEBP
+    expect(webp.subarray(0, 4).toString()).toBe("RIFF")
+    expect(webp.subarray(8, 12).toString()).toBe("WEBP")
+    const meta = await sharp(webp).metadata()
+    expect(meta.format).toBe("webp")
+    expect(meta.width).toBe(16)
+    expect(meta.height).toBe(16)
+  })
+
+  it("derives a deterministic variant etag distinct from the canonical one", () => {
+    const canonical = "\"abc123\""
+    const variant = variantEtagFor(canonical)
+    expect(variant).not.toBe(canonical)
+    expect(variant).toBe(variantEtagFor(canonical))
+    expect(variant.startsWith("\"") && variant.endsWith("\"")).toBe(true)
   })
 })

@@ -29,12 +29,38 @@ const defaultsSchema = z.object({
   blurFade: z.number().optional(),
   blurDarkness: z.number().optional(),
   gradientHeight: z.number().optional(),
+  topBadgeScale: z.number().optional(),
+  topBadgeOffsetX: z.number().optional(),
+  topBadgeOffsetY: z.number().optional(),
+  genreBadgeScale: z.number().optional(),
+  qualityBadgeScale: z.number().optional(),
+  networkLogoScale: z.number().optional(),
+  genreBadgeOffsetX: z.number().optional(),
+  genreBadgeOffsetY: z.number().optional(),
+  qualityBadgeOffsetX: z.number().optional(),
+  qualityBadgeOffsetY: z.number().optional(),
+  networkLogoOffsetX: z.number().optional(),
+  networkLogoOffsetY: z.number().optional(),
   globalBadges: z.boolean().optional(),
   rankingBadges: z.boolean().optional(),
   badgeGenre: z.boolean().optional(),
   badgeYear: z.boolean().optional(),
   badgeRating: z.boolean().optional(),
   badgeQuality: z.boolean().optional(),
+  customRatings: z.boolean().optional(),
+  // Endpoint provider custom rating (non-segreto; la chiave resta solo env).
+  // Stessi vincoli del fetch: placeholder {imdbId}, http/https, no credenziali.
+  customRatingEndpoint: z.string().max(500).optional().refine((v) => {
+    if (!v) return true
+    if (!v.includes("{imdbId}")) return false
+    try {
+      const url = new URL(v)
+      return (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password
+    } catch {
+      return false
+    }
+  }, { message: "customRatingEndpoint must be an http(s) URL containing {imdbId} without credentials" }),
+  customRatingApiKeyHeader: z.string().max(64).optional(),
   ratingSources: z.array(z.string()).optional(),
   autoRotateClean: z.boolean().optional(),
   defaultLogoFitEnabled: z.boolean().optional(),
@@ -55,6 +81,7 @@ const defaultsSchema = z.object({
   badgeTopOffset: z.number().optional(),
   badgeBottomOffset: z.number().optional(),
   logoBottomOffset: z.number().optional(),
+  preRelease: z.boolean().optional(),
   ribbonSide: z.enum(["left", "right"]).optional(),
   episodeMetadataSource: z.enum(["tmdb", "tvdb"]).optional(),
   region: z.string().max(32).optional(),
@@ -68,10 +95,8 @@ const defaultsSchema = z.object({
 export async function GET(req: NextRequest) {
   const d = getServerDefaults()
   // Le chiavi d'istanza non devono mai trapelare su istanze pubbliche:
-  // `checkAdminToken` è true per CHIUNQUE con PICTORIUM_PUBLIC_INSTANCE=1,
-  // quindi qui serve `requireAdminToken`, che pretende un ADMIN_TOKEN valido.
-  // Conseguenza voluta: su istanza pubblica senza ADMIN_TOKEN l'editor non
-  // riceve più le chiavi del server.
+  // checkAdminToken è true per chiunque con PICTORIUM_PUBLIC_INSTANCE=1,
+  // quindi qui serve requireAdminToken (solo ADMIN_TOKEN o sessione PIN valida).
   if (requireAdminToken(req)) {
     const serverKeys = {
       tmdbKey: envWithFallback("TMDB_KEY") || process.env.TMDB_API_KEY || "",

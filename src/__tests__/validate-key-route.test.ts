@@ -14,7 +14,7 @@ describe("POST /api/validate-key", () => {
   it("returns 400 when missing key or provider", async () => {
     const req = new NextRequest("http://localhost:3000/api/validate-key", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-real-ip": "10.0.0.1" },
       body: JSON.stringify({}),
     })
     const res = await POST(req)
@@ -28,7 +28,7 @@ describe("POST /api/validate-key", () => {
 
     const req = new NextRequest("http://localhost:3000/api/validate-key", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-real-ip": "10.0.0.2" },
       body: JSON.stringify({ provider: "tmdb", key: "valid-tmdb-key" }),
     })
     const res = await POST(req)
@@ -44,7 +44,7 @@ describe("POST /api/validate-key", () => {
 
     const req = new NextRequest("http://localhost:3000/api/validate-key", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-real-ip": "10.0.0.3" },
       body: JSON.stringify({ provider: "tmdb", key: "invalid-tmdb-key" }),
     })
     const res = await POST(req)
@@ -60,7 +60,7 @@ describe("POST /api/validate-key", () => {
 
     const req = new NextRequest("http://localhost:3000/api/validate-key", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-real-ip": "10.0.0.4" },
       body: JSON.stringify({ provider: "mdblist", key: "valid-mdblist-key" }),
     })
     const res = await POST(req)
@@ -76,7 +76,7 @@ describe("POST /api/validate-key", () => {
 
     const req = new NextRequest("http://localhost:3000/api/validate-key", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-real-ip": "10.0.0.5" },
       body: JSON.stringify({ provider: "mdblist", key: "invalid-mdblist-key" }),
     })
     const res = await POST(req)
@@ -92,13 +92,41 @@ describe("POST /api/validate-key", () => {
 
     const req = new NextRequest("http://localhost:3000/api/validate-key", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-real-ip": "10.0.0.6" },
       body: JSON.stringify({ provider: "tvdb", key: "valid-tvdb-key" }),
     })
     const res = await POST(req)
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(json.valid).toBe(true)
+  })
+
+  it("rejects cross-origin requests (C6)", async () => {
+    const req = new NextRequest("http://localhost:3000/api/validate-key", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://evil.example",
+        Host: "localhost:3000",
+      },
+      body: JSON.stringify({ provider: "tmdb", key: "some-key" }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(403)
+  })
+
+  it("merges upstream errors into the generic invalid response, never 502 (C6)", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("connection reset"))
+
+    const req = new NextRequest("http://localhost:3000/api/validate-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-real-ip": "10.0.0.7" },
+      body: JSON.stringify({ provider: "tmdb", key: "any-key" }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.valid).toBe(false)
   })
 
   it("validates invalid TVDB key", async () => {
@@ -108,7 +136,7 @@ describe("POST /api/validate-key", () => {
 
     const req = new NextRequest("http://localhost:3000/api/validate-key", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-real-ip": "10.0.0.8" },
       body: JSON.stringify({ provider: "tvdb", key: "bad-tvdb-key" }),
     })
     const res = await POST(req)
@@ -135,7 +163,7 @@ describe("POST /api/validate-key", () => {
 
     const req = new NextRequest("http://localhost:3000/api/validate-key", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-real-ip": "10.0.0.9" },
       body: JSON.stringify({ provider: "tmdb", key: "any-key" }),
     })
     const res = await POST(req)

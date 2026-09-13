@@ -61,6 +61,12 @@ pinned: false
   <img src="https://raw.githubusercontent.com/Eful97/Pictorium/master/public/Screen/66732.jpg" alt="Poster Demo — Stranger Things" width="32%" style="border-radius: 6px;" />
 </div>
 
+<div align="center" style="margin-top: 12px;">
+  <img src="https://raw.githubusercontent.com/Eful97/Pictorium/master/public/Screen/1368337.jpg" alt="Pre-Digital Effect — Coming Soon" width="32%" style="border-radius: 6px;" />
+  <br />
+  <em>Pre-Digital Effect: dark veil + "Coming Soon" ribbon on movies not yet streaming</em>
+</div>
+
 ---
 
 ## ⚡ Key Features
@@ -70,9 +76,10 @@ pinned: false
 | 🎯 **WYSIWYG Graphics Engine** | A single endpoint (`/api/poster/{type}/{id}`) powered by Sharp C++ and SVG serves both the real-time web preview and the final poster on Stremio with pixel-perfect sync. |
 | 📦 **100% Standalone Addon** | Directly delivers rich metadata cards, multilingual synopses, transparent logos, 4K backdrops, YouTube trailers, and full seasons with thumbnails and translated episodes to Stremio. |
 | 📺 **Smart Parts & Anime Splitting** | Automatically detects **Original Parts** (e.g. *Money Heist*, *Lupin*) and splits giant single-season anime entries on TMDB (e.g. *Re:ZERO*, *Jujutsu Kaisen*) into their true release seasons. |
-| 🏷️ **Quality Badges & Ratings** | Real-time video resolution detection (4K/1080p/720p), aggregated ratings from over 16 sources (IMDb, TMDB, Rotten Tomatoes, Letterboxd, MAL), Academy/Cannes awards, and Netflix Top 10 ribbons. |
+| 🏷️ **Quality Badges & Ratings** | Real-time video resolution detection (4K/FHD/HD), aggregated ratings from over 16 sources (IMDb, TMDB, Rotten Tomatoes, Letterboxd, MAL), Academy/Cannes awards, and Netflix Top 10 ribbons. |
 | 🌐 **Custom Catalogs** | Import watchlists and custom lists from **Letterboxd, Trakt, TMDb, TheTVDB, MDBList**, along with real-time trending charts via JustWatch GraphQL. |
 | 🌍 **Dynamic Multilingual UI** | Fully localized interface (Italian, English, French, German, Spanish, Portuguese, Japanese, Korean) with instant real-time language switching without page refresh. |
+| 🔒 **PIN Protection & Security** | Lock screen protection on every launch and page reload (F5) for the editor, configurable right during the initial setup wizard (Step 3) or in Settings. Stremio manifests and posters remain 100% open and unaffected. |
 | ⚡ **Zero Cache Conflicts** | Deterministic versioning with automated `RENDER_VERSION` and `APP_VERSION`. Change any styling parameter and Stremio updates cached images immediately. |
 
 ---
@@ -87,17 +94,60 @@ pinned: false
 * **Official Network Logos**: Automatic detection and embedding for Netflix, Prime Video, Disney+, Apple TV+, HBO Max, Paramount+, Sky/NOW, Crunchyroll, and 30+ studios (Marvel, Pixar, Ghibli, Warner Bros, A24).
 
 ### 🏷️ Badges, Ratings & Accolades
-* **✨ Streaming Quality (4K / 1080p / 720p / SD)**: Detected live from Stremio video streams with automatic fallback to JustWatch.
+
+- **Custom Rating Provider**: Connect any external rating API using an IMDb ID through server-side configuration and render its ratings as separate pills, each with decimal or percentage formatting. Provider failures are non-blocking and never prevent the poster from rendering.
+* **✨ Streaming Quality (4K / FHD / HD / SD)**: Detected live from Stremio video streams with automatic fallback to JustWatch.
 * **6 Genre & Rating Badge Styles**: *Shadow, Pill, Bar, Colored, Border, Glass* with adaptive palette matching the poster.
 * **Vertical Netflix Top 10 Ribbon**: The iconic red side ribbon with live rank position (dedicated support for Anime).
 * **Film Awards & Accolades**: Automatic recognition of Oscars, Cannes, BAFTA, Emmy, and the *"Absolute Cinema"* badge for IMDb Top 250 titles.
 * **Always-in-Sync Charts**: Top 10/20 badges track live charts; if a title leaves the ranking, its badge updates automatically.
+* **✨ Pre-Digital Effect (Coming Soon)**: For movies out in theaters but not yet streaming (detected via JustWatch with fallback to the TMDB digital date): darkened poster with a red "Coming Soon" corner ribbon. Movies only, default OFF; enable per-title, via `?pre=1`, config token or environment variable.
+
+### 🔌 Custom Rating Provider
+
+Pictorium can optionally fetch multiple ratings from any external HTTP(S) API using the title's IMDb ID.
+
+Example endpoint:
+```text
+https://example.com/ratings/{imdbId}
+```
+
+Expected response:
+```json
+{
+  "ratings": [
+    { "id": "source1", "name": "Source 1", "value": 8.8, "format": "decimal" },
+    { "id": "source2", "name": "Source 2", "value": 87, "format": "percent" }
+  ]
+}
+```
+
+The provider supports any number of rating items, optional API-key authentication
+via HTTP header, and fails gracefully without blocking poster generation.
+
+Configuration: endpoint from the editor (Settings) or server-side;
+the saved UI value wins over env (empty falls back to env). The API key and
+key header stay env-only and never appear in the UI. Display is per-title (`cr` / mapping /
+config / defaults, default ON) ANDed with the provider being enabled.
+Use `PICTORIUM_CUSTOM_RATING_ENABLED`, `PICTORIUM_CUSTOM_RATING_ENDPOINT`,
+`PICTORIUM_CUSTOM_RATING_API_KEY`, and `PICTORIUM_CUSTOM_RATING_API_KEY_HEADER`.
+The existing `POSTERIUM_` prefix remains a fallback; `PICTORIUM_` takes precedence.
+
+For full configuration and API details, see
+[Custom Rating Provider documentation](docs/custom-rating.md).
 
 ### 📺 Seasons, Episodes & Anime
 * **✨ Automatic Parts Detection**: Automatically maps standard seasons to original Parts for series like *Money Heist / La Casa de Papel* (5 parts) and *Lupin* (4 parts).
 * **🌀 Anime Season Unpacking**: Resolves TMDB's cataloging issue where entire anime series are compressed into a single giant season (e.g. *Re:ZERO* 85 episodes, *Jujutsu Kaisen* 59 episodes), restoring proper seasonal distribution (S1, S2, S3, S4 + Specials in S0).
 * **TheTVDB & AniZip Support**: Manually select alternative ordering from TheTVDB (*Aired, DVD, Absolute, Alternate*) or AniZip (*AniList / AniDB*).
 * **Live Episode Preview**: Check exactly how seasons, episode titles, and thumbnails will appear in Stremio before saving.
+
+### 🔒 Panel Security & PIN Protection
+* **Panel Lock on Launch & Reload (F5)**: Automatically prompts for your PIN whenever the web app is loaded or refreshed to safeguard your custom posters and settings.
+* **Initial Setup Wizard Integration**: Step 3 of the guided onboarding wizard lets you configure a personal PIN in seconds (or skip this step).
+* **Virtual Keypad & Keyboard Support**: Seamless numeric input on mobile devices and desktop keyboards, complete with visual shake animation on wrong PIN.
+* **Flexible Management**: Change or remove your PIN anytime from *Settings → Data & Cache*.
+* **100% Unaffected Stremio Endpoints**: The PIN strictly shields editor routes: Stremio endpoints (`/manifest.json`, `/api/poster/*`, `/catalog/*`, `/api/health`) remain always accessible and uninterrupted.
 
 ---
 
@@ -107,42 +157,56 @@ Choose the preferred deployment method for your setup:
 
 | Platform | Cost | Type | Persistence | Recommended For |
 |---|---|---|---|---|
-| [▲ **Vercel**](#-vercel) | **Free** | Serverless | Upstash Redis (KV) | **Recommended**: 1-click, zero maintenance, global CDN |
+| [▲ **Vercel**](#-vercel) | **Free** | Serverless | Upstash Redis (KV) | **Recommended**: 1-click, zero maintenance, global CDN ([📺 Video Guide](https://www.youtube.com/watch?v=FP6VJ2vGYiY)) |
 | [🐳 **Docker Compose**](#-docker--compose) | **Free** | Container | Local Volume (`/data`) | NAS, Home Server, mini-PC (Unraid/TrueNAS) |
 | [🤗 **Hugging Face**](#-hugging-face-spaces) | **Free** | Docker (16GB RAM) | Storage Bucket | Great free RAM for shared instances |
 | [🦾 **Oracle Cloud**](#-other-deployment-methods) | **Free** | ARM VPS (24GB RAM) | Local Disk | Always-online with dedicated resources at zero cost |
 
 ---
 
-### ▲ Vercel
+### ☁️ Vercel (Free & Recommended)
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FEful97%2FPictorium)
+[![YouTube Video Guide](https://img.shields.io/badge/YouTube-Video_Setup_Guide-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=FP6VJ2vGYiY)
 
-Ideal if you don't own a home server. Setup takes under 2 minutes and is 100% free:
+> 📺 **Step-by-Step Video Guide**: Prefer following along visually? Watch the [**YouTube Video Tutorial**](https://www.youtube.com/watch?v=FP6VJ2vGYiY) to get everything set up in under 2 minutes.
+
+Ideal if you don't own a home server. Setup takes under 2 minutes, 100% free with 1-click automatic updates:
 
 1. **Get your free TMDB API Key**:
    * Create an account on [themoviedb.org](https://www.themoviedb.org/signup).
    * Go to **Settings → API** ([themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)) and generate an API key (*Developer*).
    * Copy the **API Key (v3 auth)** (a 32-character string, *not* the long read access token).
-2. **Import Project on Vercel**:
-   * Log into [vercel.com](https://vercel.com).
+2. **Fork the Repository**:
+   * Go to [**github.com/Eful97/Pictorium**](https://github.com/Eful97/Pictorium).
+   * Click **Fork** in the top-right corner and then **Create fork** (you can keep it public or private).
+3. **Import Project to Vercel**:
+   * Go to [vercel.com](https://vercel.com) and log in with your GitHub account.
    * Click **Add New…** → **Project** at the top.
-   * Under "Import Third-Party Git Repository", paste the repository URL: `https://github.com/Eful97/Pictorium` and click **Import**.
-   * In the **Environment Variables** section, add:
+   * Find your newly forked **Pictorium** repository and click **Import**.
+   * Under **Environment Variables**, add:
      * `PICTORIUM_TMDB_KEY` = your 32-character TMDB API key.
      * `PICTORIUM_PUBLIC_INSTANCE` = `1`
    * Click **Deploy**.
-3. **Link Upstash Redis (free database to save your custom posters)**:
+4. **Link Upstash Redis (free database to save your custom posters)**:
    * Once the deploy finishes, open your project dashboard in Vercel.
    * Go to the **Storage** tab at the top → click **Connect Store** (or **Create Database**) → choose **Upstash (Redis)**.
    * Select a region close to you and click **Create & Connect** (Vercel automatically configures `KV_REST_API_URL` and `KV_REST_API_TOKEN`).
-4. **Redeploy (Crucial Step!)**:
+5. **Redeploy (Crucial Step!)**:
    * Go to the **Deployments** tab in your Vercel project.
    * Click the **three dots (⋯)** on the latest deployment and select **Redeploy**.
    * *(Note: Vercel only binds the new Upstash database variables on subsequent deployments)*.
-5. **Done!**:
+6. **Initial Setup Wizard & Stremio Installation**:
    * Open your deployed URL (e.g. `https://your-pictorium.vercel.app`).
+   * Complete the guided setup (Language, Region, and configure your **Security PIN**).
    * Click **Install on Stremio**! *(You can confirm everything is running smoothly by checking `/api/health`, which should return `"storage": "kv"` and `"status": "ok"`)*.
+
+---
+
+#### 🔄 How to Receive Updates (1-Click with Sync Fork)
+Since you forked the repository in step 2, updating your instance whenever new versions are released takes just one click without reconfiguring anything:
+1. Open your fork page on GitHub (`https://github.com/<your-username>/Pictorium`).
+2. Click **Sync fork** (located below the repository title) → **Update branch**.
+3. Vercel automatically detects the new commit and **builds and deploys the update in 60 seconds**, preserving your Upstash database, environment keys, PIN security, and saved posters!
 
 ---
 
@@ -227,7 +291,7 @@ npm install --ignore-scripts && npm run build && npm start
 | `PICTORIUM_TMDB_KEY` | *(optional)* | Instance TMDB API key to generate posters and catalogs without requiring users to input one. |
 | `PICTORIUM_TVDB_API_KEY` | *(optional)* | TheTVDB API key for alternative season ordering and episode descriptions. |
 | `PICTORIUM_MDBLIST_KEY` | *(optional)* | MDBList API key for custom lists and anime catalogs. |
-| `PICTORIUM_REGION` | `IT` | Default country for JustWatch/FlixPatrol charts and title language (`IT`, `US`, `GB`, `FR`, `DE`, `ES`, `JP`, `KR`, `BR`, `IN`, `CA`, `AU`). Overridable per-request via `?region=` and per-user via config token or saved defaults. |
+| `PICTORIUM_REGION` | `IT` | Default country for JustWatch/FlixPatrol charts and title language (`IT`, `US`, `GB`, `FR`, `DE`, `ES`, `MX`, `IL`, `JP`, `KR`, `BR`, `IN`, `CA`, `AU`). Overridable per-request via `?region=` and per-user via config token or saved defaults. |
 | `PICTORIUM_DATA_DIR` | `./data` | Local disk persistence folder for database and saved files. |
 | `KV_REST_API_URL` / `TOKEN` | *(empty)* | Upstash Redis connection parameters for serverless deployment on Vercel. |
 
@@ -243,9 +307,18 @@ npm install --ignore-scripts && npm run build && npm start
 | `PICTORIUM_RANKING_BADGE_STYLE` | `default`, `bar`, `colored`, `pill`, `netflix` | Style for ranking badges. |
 | `PICTORIUM_RIBBON_SIDE` | `left` / `right` | Position of the vertical Netflix Top 10 ribbon. |
 | `PICTORIUM_BLUR_ENABLED` | `1` / `0` | Enable or disable the blurred background. |
-| `PICTORIUM_BADGE_QUALITY` | `1` / `0` | Show or hide the streaming quality badge (4K/1080p). |
+| `PICTORIUM_BADGE_QUALITY` | `1` / `0` | Show or hide the streaming quality badge (4K/FHD). |
 | `PICTORIUM_NETWORK_LOGO` | `1` / `0` | Show or hide the network logo (Netflix, Prime, ecc.). |
+| `PICTORIUM_PRE_RELEASE` | `1` / `0` | Dark veil + "Coming Soon" ribbon on movies not yet available digitally (default OFF). |
 | `PICTORIUM_GRADIENT_HEIGHT` | `5` – `100` | Percentage height of the bottom black gradient. |
+| `PICTORIUM_TOP_BADGE_SCALE` | `10` – `200` | Scale % of the top rank/extra badge (default `100`). |
+| `PICTORIUM_TOP_BADGE_OFFSET_X` / `_Y` | `±2000` px | Offset of the top badge, centered styles only (default `0`). |
+| `PICTORIUM_GENRE_BADGE_SCALE` | `10` – `200` | Scale % of the genre/rating badge (default `100`, 120% native base). |
+| `PICTORIUM_GENRE_BADGE_OFFSET_X` / `_Y` | `±2000` px | Offset of the genre/rating badge, non-bar styles only (default `0`). |
+| `PICTORIUM_QUALITY_BADGE_SCALE` | `10` – `200` | Scale % of the streaming quality badge (default `100`, 120% native base). |
+| `PICTORIUM_QUALITY_BADGE_OFFSET_X` / `_Y` | `±2000` px | Offset of the quality badge (default `0`). |
+| `PICTORIUM_NETWORK_LOGO_SCALE` | `10` – `200` | Scale % of the network logo (default `100`). |
+| `PICTORIUM_NETWORK_LOGO_OFFSET_X` / `_Y` | `±2000` px | Offset of the network logo (default `0`). |
 
 ### Concurrency & Memory Protection
 | Variable | Default | Description |
@@ -283,6 +356,7 @@ npm run verify
 ## 📄 License & Credits
 
 * Released under the open-source **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+* Third-party integrators (poster endpoint only): see [`docs/INTEGRATION.md`](docs/INTEGRATION.md) for the stable contract, API keys, fail-safe behavior, and attribution rules.
 * Inspired by the [erdb](https://github.com/realbestia1/erdb) project by realbestia1.
 * Metadata and assets provided by [TMDb](https://www.themoviedb.org/), [TheTVDB](https://thetvdb.com/), and [JustWatch](https://www.justwatch.com/).
 * Network and studio logos courtesy of [Wikimedia Commons](https://commons.wikimedia.org/).

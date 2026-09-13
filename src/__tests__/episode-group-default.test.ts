@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   groupDetailsEpisodeCount,
+  groupDetailsRegularEpisodeCount,
   pickDefaultEpisodeGroupId,
   resolveDefaultEpisodeGroupId,
 } from "@/lib/episode-group-default"
@@ -128,6 +129,72 @@ describe("pickDefaultEpisodeGroupId", () => {
       ),
     ).toBe("641eb9d6b234b9007ac67063")
   })
+
+  it("seleziona il gruppo Seasons anche quando il conteggio speciali su TMDB è fluttuato (166 nel gruppo vs 167 totali)", () => {
+    const rezeroGroup = item({
+      id: "641eb9d6b234b9007ac67063",
+      name: "Seasons",
+      description: "There are 4 seasons of the show. First season comprises of 25 episodes. Second one is also 25 episodes...",
+      type: 6,
+      group_count: 5,
+      episode_count: 166,
+    })
+    const storyArcGroup = item({
+      id: "69ec40bc75c2e8fbcd17cb5f",
+      name: "Story Arc",
+      description: "Arcs...",
+      type: 5,
+      group_count: 5,
+      episode_count: 66,
+    })
+    // TMDB attuale: 85 regolari + 82 speciali = 167 totali
+    expect(
+      pickDefaultEpisodeGroupId(
+        [storyArcGroup, rezeroGroup],
+        1,
+        85,
+        167,
+      ),
+    ).toBe("641eb9d6b234b9007ac67063")
+  })
+
+  it("preserva le 5 stagioni standard scartando lo split in volumi (caso reale Stranger Things 66732)", () => {
+    const releaseVolumes = item({
+      id: "6927abf75b39bb2ce1248ec4",
+      name: "Release Volumes",
+      description: "This episode group is for the release volumes used by Stranger Things 4 and Stranger Things 5",
+      type: 1,
+      group_count: 8,
+      episode_count: 42,
+    })
+    // Standard: 5 stagioni (8+9+8+9+8 = 42ep). Il gruppo ha lo stesso totale
+    // ma spezza solo S4/S5: la mappatura posizionale darebbe 8 stagioni
+    // rietichettate male → scartato anche se type 1.
+    expect(pickDefaultEpisodeGroupId([releaseVolumes], 5, 42)).toBeNull()
+  })
+
+  it("accetta lo split in volumi su standard a stagione unica (produce stagioni nuove)", () => {
+    const volumes = item({
+      id: "gv",
+      name: "Release Volumes",
+      description: "",
+      type: 1,
+      group_count: 3,
+      episode_count: 24,
+    })
+    expect(pickDefaultEpisodeGroupId([volumes], 1, 24)).toBe("gv")
+  })
+
+  it("preserva le 4 stagioni standard per Attack on Titan scartando gruppi Production/OVAs (caso reale 1429)", () => {
+    const aotGroups = [
+      item({ id: "g_ova", name: "All Episodes + OVAs", type: 2, group_count: 1, episode_count: 97 }),
+      item({ id: "g_prod", name: "Original Production + OVAs", type: 6, group_count: 8, episode_count: 136 }),
+      item({ id: "g_seas_ova", name: "Seasons + OVAs", type: 6, group_count: 5, episode_count: 97 }),
+      item({ id: "g_prod_s", name: "Original Production by Seasons", type: 6, group_count: 5, episode_count: 124 }),
+    ]
+    // AoT standard: 4 stagioni (87ep regolari, 124 totali con speciali)
+    expect(pickDefaultEpisodeGroupId(aotGroups, 4, 87, 124)).toBeNull()
+  })
 })
 
 describe("groupDetailsEpisodeCount", () => {
@@ -148,6 +215,28 @@ describe("groupDetailsEpisodeCount", () => {
   it("ritorna 0 su input nullo", () => {
     expect(groupDetailsEpisodeCount(null)).toBe(0)
     expect(groupDetailsEpisodeCount(undefined)).toBe(0)
+  })
+})
+
+describe("groupDetailsRegularEpisodeCount", () => {
+  it("somma solo gli episodi regolari escludendo la Season 0/Specials", () => {
+    const details = {
+      id: "g",
+      name: "Seasons",
+      description: "",
+      group_count: 3,
+      groups: [
+        { id: "s0", name: "Specials", order: 0, episodes: [{}, {}] },
+        { id: "s1", name: "Season 1", order: 1, episodes: [{}, {}, {}] },
+        { id: "s2", name: "Season 2", order: 2, episodes: [{}, {}] },
+      ],
+    } as unknown as Parameters<typeof groupDetailsRegularEpisodeCount>[0]
+    expect(groupDetailsRegularEpisodeCount(details)).toBe(5)
+  })
+
+  it("ritorna 0 su input nullo", () => {
+    expect(groupDetailsRegularEpisodeCount(null)).toBe(0)
+    expect(groupDetailsRegularEpisodeCount(undefined)).toBe(0)
   })
 })
 

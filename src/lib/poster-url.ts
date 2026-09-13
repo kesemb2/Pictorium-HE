@@ -19,6 +19,8 @@ interface BadgeParams {
   badgeYear?: boolean
   badgeRating?: boolean
   badgeQuality?: boolean
+  /** Riga rating custom provider (display). `false` emette `cr=0`. */
+  customRatings?: boolean
   ratingSources?: string[]
   customBadge: string | null
   gradientHeight: number
@@ -26,6 +28,25 @@ interface BadgeParams {
   blurFade: number
   blurDarkness: number
   blurEnabled: boolean
+  /** Scala % + offset px del badge superiore (solo stili centrati per gli offset). */
+  topBadgeScale: number
+  topBadgeOffsetX: number
+  topBadgeOffsetY: number
+  /** Scala % del badge genere/rating in basso. */
+  genreBadgeScale: number
+  /** Offset px del badge genere/rating, solo stili non-bar. */
+  genreBadgeOffsetX: number
+  genreBadgeOffsetY: number
+  /** Scala % del badge qualità streaming. */
+  qualityBadgeScale: number
+  /** Offset px del badge qualità. */
+  qualityBadgeOffsetX: number
+  qualityBadgeOffsetY: number
+  /** Scala % del logo network. */
+  networkLogoScale: number
+  /** Offset px del logo network. */
+  networkLogoOffsetX: number
+  networkLogoOffsetY: number
   networkLogo?: boolean
   accentDominant?: boolean
   badgeTopScale?: number
@@ -38,6 +59,8 @@ interface BadgeParams {
   badgeTopOffset?: number
   badgeBottomOffset?: number
   logoBottomOffset?: number
+  /** Effetto pre-digitale (darken + Coming Soon, solo film). Default OFF. */
+  preRelease?: boolean
   ribbonSide?: "left" | "right"
 }
 
@@ -81,6 +104,7 @@ interface PosterState {
    */
   autoAccentColor?: string | null
   lang: string
+  region?: string
   tmdbKey: string
 }
 
@@ -94,6 +118,7 @@ export function buildUrlPattern(bp: BadgeParams & { tmdbKey: string; lang: strin
     badgeYear: bp.badgeYear,
     badgeRating: bp.badgeRating,
     badgeQuality: bp.badgeQuality,
+    customRatings: bp.customRatings,
     ratingSources: bp.ratingSources,
     badgeStyle: bp.badgeStyle,
     rankingBadgeStyle: bp.rankingBadgeStyle,
@@ -115,11 +140,25 @@ export function buildUrlPattern(bp: BadgeParams & { tmdbKey: string; lang: strin
     badgeBottomOffset: bp.badgeBottomOffset,
     logoBottomOffset: bp.logoBottomOffset,
 
+    preRelease: bp.preRelease,
     ribbonSide: bp.ribbonSide,
+    topBadgeScale: bp.topBadgeScale,
+    topBadgeOffsetX: bp.topBadgeOffsetX,
+    topBadgeOffsetY: bp.topBadgeOffsetY,
+    genreBadgeScale: bp.genreBadgeScale,
+    qualityBadgeScale: bp.qualityBadgeScale,
+    genreBadgeOffsetX: bp.genreBadgeOffsetX,
+    genreBadgeOffsetY: bp.genreBadgeOffsetY,
+    qualityBadgeOffsetX: bp.qualityBadgeOffsetX,
+    qualityBadgeOffsetY: bp.qualityBadgeOffsetY,
+    networkLogoScale: bp.networkLogoScale,
+    networkLogoOffsetX: bp.networkLogoOffsetX,
+    networkLogoOffsetY: bp.networkLogoOffsetY,
   })
-  // Template che l'utente copia per sé, come la URL del manifest: qui le
-  // chiavi sono volute, perché Stremio non invia header custom e il server le
-  // legge dalla query. Mai negli URL poster SERVITI (stremio-poster-params.ts).
+  // Template che l'utente copia per sé (come la manifest URL con chiavi):
+  // qui le chiavi sono volute — Stremio non invia header custom, quindi il
+  // server le legge dalla query al momento del render. Mai nei poster URL
+  // serviti (vedi stremio-poster-params.ts).
   if (bp.tmdbKey) params.set("api_key", bp.tmdbKey)
   if (bp.mdblistApiKey) params.set("mdblist_key", bp.mdblistApiKey)
   const str = params.toString()
@@ -137,19 +176,39 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
   params.push(`by=${bp.badgeYear !== false ? "1" : "0"}`)
   params.push(`br=${bp.badgeRating !== false ? "1" : "0"}`)
   params.push(`bq=${bp.badgeQuality !== false ? "1" : "0"}`)
+  // cr SEMPRE esplicito in preview (ON e OFF): senza, un mapping salvato con
+  // customRatings=false scavalcerebbe il toggle editor (desync WYSIWYG).
+  params.push(`cr=${bp.customRatings === false ? "0" : "1"}`)
   if (bp.ratingSources && bp.ratingSources.length > 0) params.push(`rsrc=${encodeURIComponent(bp.ratingSources.join(","))}`)
   if (ps.previewPoster) {
     params.push(`poster=${encodeURIComponent(ps.previewPoster.file_path)}`)
     const genre = ps.metaInfo.genres[0]?.name
     if (genre) params.push(`genreName=${encodeURIComponent(genre)}`)
-    if (ps.metaInfo.voteAverage > 0) params.push(`voteAverage=${ps.metaInfo.voteAverage}`)
+    // Un decimale come il badge (`toFixed(1)` nel renderer): la media grezza
+    // può essere un float lungo (es. 7.080000000000001) che supera il bound
+    // anti-flood della query e fa rispondere 400 al poster.
+    if (ps.metaInfo.voteAverage > 0 && Number.isFinite(ps.metaInfo.voteAverage)) {
+      params.push(`voteAverage=${ps.metaInfo.voteAverage.toFixed(1)}`)
+    }
     // Fix M1: l'anno della preview — senza, il server non imposta
     // releaseDate/firstAirDate nel ramo query e il badge genere della preview
     // omette "• 2024" che compare invece sul poster finale.
     const year = ps.metaInfo.release_date?.slice(0, 4) || ps.metaInfo.first_air_date?.slice(0, 4) || ps.selected?.release_date?.slice(0, 4) || ps.selected?.first_air_date?.slice(0, 4)
     if (year) params.push(`year=${year}`)
+    // Date complete per il rilevamento pre-digitale: l'anno da solo diventa
+    // `${y}-01-01` sul server e cade fuori dalla finestra theatrical (desync
+    // preview/finale). Formato TMDB YYYY-MM-DD, solo se valido.
+    const fullRd = ps.metaInfo.release_date || ps.selected?.release_date
+    if (/^\d{4}-\d{2}-\d{2}$/.test(fullRd || "")) params.push(`rd=${fullRd}`)
+    const fullFad = ps.metaInfo.first_air_date || ps.selected?.first_air_date
+    if (/^\d{4}-\d{2}-\d{2}$/.test(fullFad || "")) params.push(`fad=${fullFad}`)
     const imdbId = ps.metaInfo.imdb_id || ps.selected.imdb_id
     if (imdbId) params.push(`imdbId=${encodeURIComponent(imdbId)}`)
+    // Titolo per il match JustWatch (rilevamento pre-digitale + qualità):
+    // senza, il server ripiega su genreName ("Avventura") e il match per
+    // tmdbId fallisce sempre.
+    const title = ps.selected?.title || ps.selected?.name
+    if (title) params.push(`title=${encodeURIComponent(title)}`)
   }
   if (ps.selectedLogo && ps.previewPoster?.iso_639_1 === null) {
     params.push(`logo=${encodeURIComponent(ps.selectedLogo.file_path)}`)
@@ -176,12 +235,25 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
     params.push(`boy=${ps.backdropOffsetY}`)
   }
   if (ps.lang) params.push(`lang=${ps.lang}`)
+  if (ps.region) params.push(`region=${encodeURIComponent(ps.region)}`)
   params.push(`gradHeight=${bp.gradientHeight}`)
   params.push(`blur=${bp.blurIntensity}`)
   params.push(`bf=${bp.blurFade}`)
   params.push(`bd=${bp.blurDarkness}`)
   params.push(`bs=${bp.badgeStyle}`)
   params.push(`rs=${bp.rankingBadgeStyle}`)
+  params.push(`tscale=${bp.topBadgeScale}`)
+  params.push(`tox=${bp.topBadgeOffsetX}`)
+  params.push(`toy=${bp.topBadgeOffsetY}`)
+  params.push(`gscale=${bp.genreBadgeScale}`)
+  params.push(`gox=${bp.genreBadgeOffsetX}`)
+  params.push(`goy=${bp.genreBadgeOffsetY}`)
+  params.push(`qscale=${bp.qualityBadgeScale}`)
+  params.push(`qox=${bp.qualityBadgeOffsetX}`)
+  params.push(`qoy=${bp.qualityBadgeOffsetY}`)
+  params.push(`netscale=${bp.networkLogoScale}`)
+  params.push(`nox=${bp.networkLogoOffsetX}`)
+  params.push(`noy=${bp.networkLogoOffsetY}`)
   if (!bp.blurEnabled) params.push("be=0")
   params.push(`netLogo=${bp.networkLogo !== false ? "1" : "0"}`)
   params.push(`ad=${bp.accentDominant !== false ? "1" : "0"}`)
@@ -195,6 +267,7 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
   params.push(`bto=${bp.badgeTopOffset ?? 0}`)
   params.push(`bbo=${bp.badgeBottomOffset ?? 0}`)
   params.push(`lbo=${bp.logoBottomOffset ?? 0}`)
+  if (bp.preRelease) params.push("pre=1")
   // Fix M2: side viene emesso SEMPRE (left|right) — prima soltanto "right";
   // senza il parametro il server risolve dal mapping/config salvati (di
   // default right in modalità Stremio) e la preview rendeva a destra anche

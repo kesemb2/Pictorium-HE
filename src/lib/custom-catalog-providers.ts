@@ -56,6 +56,7 @@ interface TmdbListPart {
   release_date?: string
   first_air_date?: string
   media_type?: string
+  poster_path?: string | null
 }
 
 /**
@@ -96,23 +97,29 @@ export function detectCatalogProvider(input: string): ProviderDetectionResult | 
   }
 
   // 3. TMDb Collection
-  // es. https://www.themoviedb.org/collection/86311-the-avengers-collection
-  const tmdbColMatch = trimmed.match(/^(?:https?:\/\/)?(?:www\.)?themoviedb\.org\/collection\/([0-9]+)(?:-[a-zA-Z0-9_-]+)?\/?(?:[?#].*)?$/i)
+  // es. https://www.themoviedb.org/collection/86311-the-avengers-collection o tmdb:collection:86311
+  const tmdbColMatch = trimmed.match(/^(?:https?:\/\/)?(?:www\.)?themoviedb\.org\/collection\/([0-9]+)(?:-([a-zA-Z0-9_-]+))?\/?(?:[?#].*)?$/i)
+    || trimmed.match(/^tmdb:collection:([0-9]+)$/i)
   if (tmdbColMatch) {
+    const slug = tmdbColMatch[2]
     return {
       provider: "tmdb_collection",
       identifier: tmdbColMatch[1],
+      nameSuggestion: slug ? slug.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : `TMDb Collezione ${tmdbColMatch[1]}`,
       defaultType: "movie",
     }
   }
 
   // 4. TMDb List
-  // es. https://www.themoviedb.org/list/8249673
-  const tmdbListMatch = trimmed.match(/^(?:https?:\/\/)?(?:www\.)?themoviedb\.org\/list\/([0-9]+)\/?(?:[?#].*)?$/i)
+  // es. https://www.themoviedb.org/list/8249673-marvel-cinematic-universe o https://www.themoviedb.org/list/8249673 o tmdb:list:8249673
+  const tmdbListMatch = trimmed.match(/^(?:https?:\/\/)?(?:www\.)?themoviedb\.org\/(?:u\/[^\/]+\/)?list\/([0-9]+)(?:-([a-zA-Z0-9_-]+))?\/?(?:[?#].*)?$/i)
+    || trimmed.match(/^tmdb:list:([0-9]+)$/i)
   if (tmdbListMatch) {
+    const slug = tmdbListMatch[2]
     return {
       provider: "tmdb_list",
       identifier: tmdbListMatch[1],
+      nameSuggestion: slug ? slug.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : `TMDb Lista ${tmdbListMatch[1]}`,
       defaultType: "movie",
     }
   }
@@ -298,15 +305,83 @@ async function fetchTmdbCollectionOrList(
   if (!key || !identifier) return []
 
   try {
-    const endpoint = provider === "tmdb_collection"
-      ? `https://api.themoviedb.org/3/collection/${encodeURIComponent(identifier)}?api_key=${encodeURIComponent(key)}&language=it-IT`
-      : `https://api.themoviedb.org/3/list/${encodeURIComponent(identifier)}?api_key=${encodeURIComponent(key)}&language=it-IT`
+    if (provider === "tmdb_collection") {
+      const endpoint = `https://api.themoviedb.org/3/collection/${encodeURIComponent(identifier)}?api_key=${encodeURIComponent(key)}&language=it-IT`
+      const res = await fetch(endpoint, { signal: AbortSignal.timeout(8000) }).catch(() => null)
+      if (!res || !res.ok) return []
 
-    const res = await fetch(endpoint, { signal: AbortSignal.timeout(8000) }).catch(() => null)
-    if (!res || !res.ok) return []
+      const data = await res.json()
+      const rawParts: TmdbListPart[] = data?.parts || []
 
-    const data = await res.json()
-    const rawParts: TmdbListPart[] = data?.parts || data?.items || []
+      return rawParts.slice(0, limit).map((p) => ({
+        imdb: "",
+        tmdb: Number(p.id) || undefined,
+        title: p.title || p.name || "",
+        year: Number((p.release_date || p.first_air_date || "").slice(0, 4)) || 0,
+        mediatype: "movie",
+        poster_path: p.poster_path ?? null,
+      }))
+    }
+
+    // provider === "tmdb_list"
+    // 1. Prova prima endpoint v3: /3/list/{list_id}
+    const v3Endpoint = `https://api.themoviedb.org/3/list/${encodeURIComponent(identifier)}?api_key=${encodeURIComponent(key)}&language=it-IT`
+    const res = await fetch(v3Endpoint, { signal: AbortSignal.timeout(8000) }).catch(() => null)
+    const data = res && res.ok ? await res.json() : null
+    let rawParts: TmdbListPart[] = data?.items || data?.parts || []
+
+    if (data?.total_pages && data.total_pages > 1 && rawParts.length < limit) {
+      const maxPages = Math.min(data.total_pages, Math.ceil(limit / 20))
+      const CHUNK_SIZE = 5
+      for (let i = 2; i <= maxPages; i += CHUNK_SIZE) {
+        const chunkPromises: Promise<TmdbListPart[]>[] = []
+        for (let p = i; p < Math.min(i + CHUNK_SIZE, maxPages + 1); p++) {
+          const pageUrl = `https://api.themoviedb.org/3/list/${encodeURIComponent(identifier)}?api_key=${encodeURIComponent(key)}&language=it-IT&page=${p}`
+          chunkPromises.push(
+            fetch(pageUrl, { signal: AbortSignal.timeout(8000) })
+              .then((r) => (r.ok ? r.json() : null))
+              .then((d) => (d?.items || d?.parts || []) as TmdbListPart[])
+              .catch(() => [] as TmdbListPart[])
+          )
+        }
+        const pageResults = await Promise.all(chunkPromises)
+        for (const items of pageResults) {
+          rawParts.push(...items)
+        }
+        if (rawParts.length >= limit) break
+      }
+    }
+
+    // 2. Se v3 non trova la lista (es. 404 per liste create su TMDB v4) o non ha elementi, tenta endpoint v4: /4/list/{list_id}
+    if (rawParts.length === 0) {
+      const v4Endpoint = `https://api.themoviedb.org/4/list/${encodeURIComponent(identifier)}?api_key=${encodeURIComponent(key)}&language=it-IT`
+      const resV4 = await fetch(v4Endpoint, { signal: AbortSignal.timeout(8000) }).catch(() => null)
+      if (resV4 && resV4.ok) {
+        const dataV4 = await resV4.json()
+        rawParts = dataV4?.results || []
+        if (dataV4?.total_pages && dataV4.total_pages > 1 && rawParts.length < limit) {
+          const maxPages = Math.min(dataV4.total_pages, Math.ceil(limit / 20))
+          const CHUNK_SIZE = 5
+          for (let i = 2; i <= maxPages; i += CHUNK_SIZE) {
+            const chunkPromises: Promise<TmdbListPart[]>[] = []
+            for (let p = i; p < Math.min(i + CHUNK_SIZE, maxPages + 1); p++) {
+              const pageUrl = `https://api.themoviedb.org/4/list/${encodeURIComponent(identifier)}?api_key=${encodeURIComponent(key)}&language=it-IT&page=${p}`
+              chunkPromises.push(
+                fetch(pageUrl, { signal: AbortSignal.timeout(8000) })
+                  .then((r) => (r.ok ? r.json() : null))
+                  .then((d) => (d?.results || []) as TmdbListPart[])
+                  .catch(() => [] as TmdbListPart[])
+              )
+            }
+            const pageResults = await Promise.all(chunkPromises)
+            for (const items of pageResults) {
+              rawParts.push(...items)
+            }
+            if (rawParts.length >= limit) break
+          }
+        }
+      }
+    }
 
     return rawParts.slice(0, limit).map((p) => ({
       imdb: "",
@@ -314,12 +389,14 @@ async function fetchTmdbCollectionOrList(
       title: p.title || p.name || "",
       year: Number((p.release_date || p.first_air_date || "").slice(0, 4)) || 0,
       mediatype: p.media_type === "tv" ? "tv" : "movie",
+      poster_path: p.poster_path ?? null,
     }))
   } catch (err) {
     log.error("Error fetching TMDb collection or list", { provider, identifier, error: (err as Error).message })
     return []
   }
 }
+
 
 /**
  * Dispatcher universale per recuperare gli elementi di qualsiasi catalogo o lista esterna.
@@ -335,10 +412,9 @@ export async function fetchUnifiedCatalogItems(
   const detection = detectCatalogProvider(trimmed)
   const provider = detection?.provider ?? "mdblist"
 
-  // Le chiavi cambiano il payload (liste private, quote diverse), quindi
-  // entrano nella cache key come hash, mai in chiaro — stesso schema di
-  // mdblist.ts. Senza, un fallback pubblico senza chiave avvelenava la vista
-  // con chiave, e viceversa.
+  // Le chiavi cambiano il payload (liste private/quote diverse) → parte del
+  // cache key come hash, mai plaintext (stesso pattern di mdblist.ts). Senza,
+  // il fallback pubblico senza chiave avvelenava la vista keyed e viceversa.
   const hashFragment = (value: string | undefined): string =>
     value ? crypto.createHash("sha1").update(value).digest("hex").slice(0, 8) : "none"
   const cacheKey = `custom_cat:${provider}:${crypto.createHash("sha1").update(trimmed).digest("hex").slice(0, 10)}:${limit}:ak${hashFragment(options?.apiKey)}:mk${hashFragment(options?.mdblistKey)}`
