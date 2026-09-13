@@ -323,7 +323,7 @@ export function TransformControls() {
             {t("ui.blurSection")}
           </span>
           <button type="button" aria-label={t("ui.reset")}
-                  onClick={() => { ed.setGradientHeight(defaultGradientHeightForPoster(previewPoster)); ed.setBlurIntensity(5); ed.setBlurFade(60); ed.setBlurDarkness(40) }}
+                  onClick={() => { ed.setGradientHeight(defaultGradientHeightForPoster(previewPoster, ed.defaultGradientHeight)); ed.setBlurIntensity(5); ed.setBlurFade(60); ed.setBlurDarkness(40) }}
                   className="text-xs text-muted hover:text-accent transition-colors px-2 py-0.5 rounded-md border border-border/50 hover:border-accent/30">
             {t("ui.reset")}
           </button>
@@ -339,7 +339,7 @@ export function TransformControls() {
               boundsMin={5}
               boundsMax={100}
               onChange={(v) => ed.setGradientHeight(v)}
-              onDoubleClick={() => ed.setGradientHeight(defaultGradientHeightForPoster(previewPoster))}
+              onDoubleClick={() => ed.setGradientHeight(defaultGradientHeightForPoster(previewPoster, ed.defaultGradientHeight))}
               editingValue={editingValue}
               editText={editText}
               setEditingValue={setEditingValue}

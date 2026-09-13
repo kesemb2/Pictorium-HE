@@ -215,4 +215,40 @@ describe("useDefaults hydration", () => {
     expect(latest!.gradientHeight).toBe(50)
     expect(latest!.defaultGradientHeight).toBe(45)
   })
+
+  // Pre-release e lato del nastro sono globali: nessun mapping per-titolo li
+  // congela, quindi la copia "viva" deve seguire il default. Prima restava
+  // indietro e spegnere l'effetto dalle impostazioni non toglieva il nastro
+  // dall'anteprima aperta finché non si ricaricava la pagina.
+  it("un default globale muove anche il valore corrente", async () => {
+    let latest: PosterEditorCtx | null = null
+    function Probe() {
+      latest = usePosterEditor()
+      return null
+    }
+    render(
+      <StrictMode>
+        <PosterEditorProvider>
+          <Probe />
+        </PosterEditorProvider>
+      </StrictMode>
+    )
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1200)
+    })
+    act(() => {
+      latest!.setDefaultPreRelease(true)
+    })
+    expect(latest!.defaultPreRelease).toBe(true)
+    expect(latest!.preRelease).toBe(true)
+    act(() => {
+      latest!.setDefaultPreRelease(false)
+    })
+    expect(latest!.preRelease).toBe(false)
+
+    act(() => {
+      latest!.setDefaultRibbonSide("right")
+    })
+    expect(latest!.ribbonSide).toBe("right")
+  })
 })

@@ -777,17 +777,17 @@ export function usePictorium(): PictoriumCtx {
             const autoLogo = selectBestLogo(data.logos || [], lang, details.original_language)
             if (autoLogo) {
               navigation.setPreviewPoster({ file_path: clean.file_path, iso_639_1: null, vote_average: 0, width: 0, height: 0 })
-              setGradientHeight(defaultGradientHeightForPoster(clean))
+              setGradientHeight(defaultGradientHeightForPoster(clean, defaultGradientHeight))
             } else {
               const enPoster = data.posters?.find((p: TMDBImage) => p.iso_639_1 === "en")
               const nextPoster = langPoster || enPoster || firstPoster || navigation.previewPoster
               navigation.setPreviewPoster(nextPoster)
-              setGradientHeight(defaultGradientHeightForPoster(nextPoster))
+              setGradientHeight(defaultGradientHeightForPoster(nextPoster, defaultGradientHeight))
             }
           } else {
             const nextPoster = langPoster || firstPoster || navigation.previewPoster
             navigation.setPreviewPoster(nextPoster)
-            setGradientHeight(defaultGradientHeightForPoster(nextPoster))
+            setGradientHeight(defaultGradientHeightForPoster(nextPoster, defaultGradientHeight))
           }
         }
       }
@@ -967,7 +967,7 @@ export function usePictorium(): PictoriumCtx {
           }
         }
         loadDefaultsToState()
-        if (chosenPoster) setGradientHeight(defaultGradientHeightForPoster(chosenPoster))
+        if (chosenPoster) setGradientHeight(defaultGradientHeightForPoster(chosenPoster, defaultGradientHeight))
       }
     } finally {
       setLoadingImages(false)
@@ -994,7 +994,7 @@ export function usePictorium(): PictoriumCtx {
     setBackdropScale, setBackdropOffsetX, setBackdropOffsetY,
     globalBadges, rankingBadges, customBadge, badgeStyle, rankingBadgeStyle,
     badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings,
-    defaultBadgeStyle, defaultRankingBadgeStyle, blurEnabled, blurIntensity, blurFade, blurDarkness, gradientHeight,
+    defaultBadgeStyle, defaultRankingBadgeStyle, blurEnabled, blurIntensity, blurFade, blurDarkness, gradientHeight, defaultGradientHeight,
     topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale,
     genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY,
     networkLogoOffsetX, networkLogoOffsetY,

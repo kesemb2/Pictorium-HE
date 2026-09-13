@@ -745,15 +745,20 @@ export function PosterEditorProvider({
       const next = typeof v === "function" ? v(defaultLogoBottomOffset) : v
       update({ defaultLogoBottomOffset: next, logoBottomOffset: next })
     }, [defaultLogoBottomOffset, update])
+  // Pre-release e lato del nastro sono GLOBALI: nessun override per-titolo, il
+  // render li risolve da config token o default d'istanza. La copia "viva" non
+  // può quindi congelare niente, e lasciarla indietro significava che spegnere
+  // l'effetto dalle impostazioni non toglieva il nastro dall'anteprima aperta
+  // (spariva solo dopo un reload). Si muovono insieme.
   const setDefaultPreRelease = useCallback(
     (v: boolean | ((prev: boolean) => boolean)) => {
       const next = typeof v === "function" ? v(defaultPreRelease) : v
-      update({ defaultPreRelease: next })
+      update({ defaultPreRelease: next, preRelease: next })
     }, [defaultPreRelease, update])
   const setDefaultRibbonSide = useCallback(
     (v: "left" | "right" | ((prev: "left" | "right") => "left" | "right")) => {
       const next = typeof v === "function" ? v(defaultRibbonSide) : v
-      update({ defaultRibbonSide: next })
+      update({ defaultRibbonSide: next, ribbonSide: next })
     }, [defaultRibbonSide, update])
   const setEpisodeMetadataSource = useCallback(
     (v: "tmdb" | "tvdb" | ((prev: "tmdb" | "tvdb") => "tmdb" | "tvdb")) => {

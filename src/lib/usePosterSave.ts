@@ -54,6 +54,8 @@ interface PosterSaveDeps {
   blurFade: number
   blurDarkness: number
   gradientHeight: number
+  /** Altezza di fascia scelta nelle impostazioni: vince sul valore di fabbrica. */
+  defaultGradientHeight: number
   setGradientHeight: (v: number) => void
   topBadgeScale: number
   topBadgeOffsetX: number
@@ -112,16 +114,16 @@ export function usePosterSave(deps: PosterSaveDeps) {
     globalBadges, rankingBadges, customBadge, badgeStyle, rankingBadgeStyle,
     badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings,
     defaultBadgeStyle, defaultRankingBadgeStyle,
-    blurEnabled, blurIntensity, blurFade, blurDarkness, gradientHeight, setGradientHeight,
+    blurEnabled, blurIntensity, blurFade, blurDarkness, gradientHeight, setGradientHeight, defaultGradientHeight,
     topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale, genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY, rotationPosters, autoRotateClean, defaultAutoRotateClean, excludedPosters, accentColor, logoDisabled, setLogoDisabled, setLogoScale, setLogoOffsetX, setLogoOffsetY, networkLogo, lang, episodeGroupId, autoAccentColor, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, ribbonSide,
   } = deps
 
   const selectPoster = useCallback(async (image: TMDBImage) => {
     if (!selected) return
     setPreviewPoster(image)
-    setGradientHeight(defaultGradientHeightForPoster(image))
+    setGradientHeight(defaultGradientHeightForPoster(image, defaultGradientHeight))
     setPreviewId(`${selected.media_type}:${selected.id}`)
-  }, [selected]) // eslint-disable-line react-hooks/exhaustive-deps -- setter refs are stable
+  }, [selected, defaultGradientHeight]) // eslint-disable-line react-hooks/exhaustive-deps -- setter refs are stable
 
   const selectLogo = useCallback(async (logo: TMDBImage) => {
     setSelectedLogo(logo)
