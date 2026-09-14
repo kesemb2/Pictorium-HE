@@ -58,6 +58,7 @@ export function saveDefaults(ed: PosterEditorCtx): Promise<boolean> {
     autoRotateClean: ed.defaultAutoRotateClean,
     defaultLogoFitEnabled: ed.defaultLogoFitEnabled,
     defaultNetworkLogo: ed.defaultNetworkLogo,
+    preRelease: ed.defaultPreRelease,
     defaultRibbonSide: ed.defaultRibbonSide,
     defaultEpisodeMetadataSource: ed.defaultEpisodeMetadataSource,
     region: ed.defaultRegion,
