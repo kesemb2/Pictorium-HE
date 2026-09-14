@@ -28,6 +28,10 @@ export function __resetMdblistBreaker(): void {
   mdblistBreaker.reset()
 }
 
+export function isMdblistBreakerOpen(): boolean {
+  return mdblistBreaker.isOpen()
+}
+
 export const SUPPORTED_RATING_SOURCES = [
   "imdb",
   "tmdb",

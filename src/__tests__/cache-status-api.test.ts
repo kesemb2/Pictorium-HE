@@ -47,6 +47,7 @@ describe("GET /api/cache/status", () => {
         memory: expect.any(Object),
         uptimeSeconds: expect.any(Number),
       }),
+      circuitBreakers: expect.any(Object),
     })
   })
 
@@ -78,6 +79,7 @@ describe("GET /api/cache/status", () => {
       poster: expect.any(Object),
       tmdb: expect.any(Object),
       system: expect.any(Object),
+      circuitBreakers: expect.any(Object),
     })
   })
 })

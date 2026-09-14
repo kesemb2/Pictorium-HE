@@ -44,6 +44,10 @@ export function __resetTvdbBreaker(): void {
   tvdbBreaker.reset()
 }
 
+export function isTvdbBreakerOpen(): boolean {
+  return tvdbBreaker.isOpen()
+}
+
 /**
  * Singolo fetch TVDB con breaker + timeout. Ritorna null su circuito aperto,
  * throw/timeout, 429/5xx (con record) — i caller trattano null come il

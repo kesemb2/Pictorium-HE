@@ -5,6 +5,10 @@ import { cacheStatus } from "@/lib/cache"
 import { getPosterStats, posterErrorStats } from "@/lib/poster-runtime-cache"
 import { getTMDBStats } from "@/lib/tmdb"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
+import { isBreakerOpen as isAwardsBreakerOpen } from "@/lib/awards"
+import { isMdblistBreakerOpen } from "@/lib/ratings"
+import { isJustwatchBreakerOpen } from "@/lib/justwatch"
+import { isTvdbBreakerOpen } from "@/lib/tvdb"
 
 export async function GET(req: NextRequest) {
   const rl = await rateLimit(rateLimitKey(req), "default")
@@ -27,6 +31,7 @@ export async function GET(req: NextRequest) {
       heapUsedMb: Math.round((procMem.heapUsed / (1024 * 1024)) * 10) / 10,
       heapTotalMb: Math.round((procMem.heapTotal / (1024 * 1024)) * 10) / 10,
       externalMb: Math.round((procMem.external / (1024 * 1024)) * 10) / 10,
+      arrayBuffersMb: Math.round(((procMem.arrayBuffers ?? 0) / (1024 * 1024)) * 10) / 10,
     },
     uptimeSeconds: Math.round(process.uptime()),
   }
@@ -37,6 +42,12 @@ export async function GET(req: NextRequest) {
     poster: getPosterStats(),
     tmdb: getTMDBStats(),
     system: systemStats,
+    circuitBreakers: {
+      awards: isAwardsBreakerOpen(),
+      mdblist: isMdblistBreakerOpen(),
+      justwatch: isJustwatchBreakerOpen(),
+      tvdb: isTvdbBreakerOpen(),
+    },
   }, {
     headers: {
       "Cache-Control": "no-store",

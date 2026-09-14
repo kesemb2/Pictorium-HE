@@ -390,6 +390,11 @@ const RENDER_QUEUE_LIMIT = (() => {
 
 let activeRenders = 0
 let zombieRenders = 0
+// Picchi cumulativi da avvio processo (telemetria bench/produzione): il
+// polling esterno di /api/cache/status può mancare slot brevi, questi
+// contatori no (due interi, costo zero). Vedi getPosterStats().
+let peakActiveRenders = 0
+let peakQueuedRenders = 0
 const renderWaiters: Array<() => void> = []
 // Quante volte uno zombie ha superato la grazia ed è stato sganciato dal
 // budget slot (metrica cumulativa, esposta in getPosterStats).
@@ -453,6 +458,7 @@ export function recordZombieRenderStart(): () => void {
 export async function acquirePosterRenderSlot(): Promise<(() => void) | null> {
   if (activeRenders + zombieRenders < MAX_CONCURRENT_RENDERS) {
     activeRenders++
+    peakActiveRenders = Math.max(peakActiveRenders, activeRenders)
     return releaseRenderSlot
   }
   if (RENDER_QUEUE_LIMIT > 0 && renderWaiters.length >= RENDER_QUEUE_LIMIT) {
@@ -472,9 +478,11 @@ export async function acquirePosterRenderSlot(): Promise<(() => void) | null> {
       settled = true
       clearTimeout(timer)
       activeRenders++
+      peakActiveRenders = Math.max(peakActiveRenders, activeRenders)
       resolve(releaseRenderSlot)
     }
     renderWaiters.push(handoff)
+    peakQueuedRenders = Math.max(peakQueuedRenders, renderWaiters.length)
   })
 }
 
@@ -482,6 +490,8 @@ export async function acquirePosterRenderSlot(): Promise<(() => void) | null> {
 export function __resetPosterRenderLimiter(): void {
   activeRenders = 0
   zombieRenders = 0
+  peakActiveRenders = 0
+  peakQueuedRenders = 0
   renderWaiters.length = 0
   for (const t of pendingGraceTimers) clearTimeout(t)
   pendingGraceTimers.clear()
@@ -491,11 +501,17 @@ export function __resetPosterRenderLimiter(): void {
 // Poster metrics & telemetry
 // ---------------------------------------------------------------------------
 
-interface PosterStats {
+export interface PosterStats {
   requests: number
   hits: number
   renders: number
   errors: number
+  staleHits: number
+  coalescedHits: number
+  rescues: {
+    tvdb: number
+    backdropCrop: number
+  }
   formats: {
     jpeg: number
     webp: number
@@ -508,6 +524,12 @@ const posterMetrics: PosterStats = {
   hits: 0,
   renders: 0,
   errors: 0,
+  staleHits: 0,
+  coalescedHits: 0,
+  rescues: {
+    tvdb: 0,
+    backdropCrop: 0,
+  },
   formats: {
     jpeg: 0,
     webp: 0,
@@ -530,6 +552,37 @@ export function recordPosterError(): void {
   posterMetrics.errors++
 }
 
+export function recordPosterStaleHit(): void {
+  posterMetrics.staleHits++
+}
+
+export function recordPosterCoalescedHit(): void {
+  posterMetrics.coalescedHits++
+}
+
+export function recordTvdbRescue(): void {
+  posterMetrics.rescues.tvdb++
+}
+
+export function recordBackdropCropRescue(): void {
+  posterMetrics.rescues.backdropCrop++
+}
+
+/** Solo per i test: azzera i contatori telemetria poster. */
+export function __resetPosterStatsForTest(): void {
+  posterMetrics.requests = 0
+  posterMetrics.hits = 0
+  posterMetrics.renders = 0
+  posterMetrics.errors = 0
+  posterMetrics.staleHits = 0
+  posterMetrics.coalescedHits = 0
+  posterMetrics.rescues.tvdb = 0
+  posterMetrics.rescues.backdropCrop = 0
+  posterMetrics.formats.jpeg = 0
+  posterMetrics.formats.webp = 0
+  posterMetrics.formats.avif = 0
+}
+
 export function getPosterStats() {
   const hitRate = posterMetrics.requests > 0
     ? Math.round((posterMetrics.hits / posterMetrics.requests) * 1000) / 10
@@ -539,6 +592,9 @@ export function getPosterStats() {
     hits: posterMetrics.hits,
     renders: posterMetrics.renders,
     errors: posterMetrics.errors,
+    staleHits: posterMetrics.staleHits,
+    coalescedHits: posterMetrics.coalescedHits,
+    rescues: { ...posterMetrics.rescues },
     hitRate: `${hitRate}%`,
     hitRateNum: hitRate,
     formats: { ...posterMetrics.formats },
@@ -546,6 +602,8 @@ export function getPosterStats() {
     zombieRenders,
     zombieGraceExpired,
     queuedRenders: renderWaiters.length,
+    peakActiveRenders,
+    peakQueuedRenders,
     maxConcurrent: MAX_CONCURRENT_RENDERS,
   }
 }

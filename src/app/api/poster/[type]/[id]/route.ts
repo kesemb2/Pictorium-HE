@@ -44,6 +44,10 @@ import {
   writePosterError,
   recordPosterRequest,
   recordPosterError,
+  recordPosterStaleHit,
+  recordPosterCoalescedHit,
+  recordTvdbRescue,
+  recordBackdropCropRescue,
   resolveImageFormat,
   type PosterCachePayload,
   type PosterErrorStatus,
@@ -316,6 +320,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     if (variantHit.payload) {
       recordPosterRequest(true, outputFormat)
       if (!isPreview && req.headers.get("If-None-Match") === variantHit.payload.etag) {
+        if (variantHit.stale) recordPosterStaleHit()
         log.debug("Poster cache: 304 (variant)", { mediaType, tmdbId, ms: Date.now() - startTime })
         return new Response(null, { status: 304, headers: posterNotModifiedHeaders(variantHit.payload.etag, immutablePoster, dynamicPoster, variantTtlSec) })
       }
@@ -323,6 +328,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         log.debug("Poster cache: fresh variant hit", { mediaType, tmdbId, ms: Date.now() - startTime })
         return posterResponse(variantHit.payload, immutablePoster, isPreview, dynamicPoster, outputFormat, variantTtlSec)
       }
+      recordPosterStaleHit()
       schedulePosterRefresh(req, isPreview)
       log.debug("Poster cache: stale variant hit (refresh scheduled)", { mediaType, tmdbId, ms: Date.now() - startTime })
       return posterResponse(variantHit.payload, immutablePoster, isPreview, dynamicPoster, outputFormat)
@@ -332,6 +338,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   if (cachedPoster.payload) {
     recordPosterRequest(true, outputFormat)
     if (!isPreview && outputFormat !== "webp" && req.headers.get("If-None-Match") === cachedPoster.payload.etag) {
+      if (cachedPoster.stale) recordPosterStaleHit()
       log.debug("Poster cache: 304", { mediaType, tmdbId, ms: Date.now() - startTime })
         return new Response(null, { status: 304, headers: posterNotModifiedHeaders(cachedPoster.payload.etag, immutablePoster, dynamicPoster, dynamicTtlSec) })
     }
@@ -341,6 +348,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       return posterResponse(cachedPoster.payload, immutablePoster, isPreview, dynamicPoster, outputFormat, dynamicTtlSec)
     }
     if (!refreshRequest) {
+      recordPosterStaleHit()
       schedulePosterRefresh(req, isPreview)
       log.debug("Poster cache: stale hit (refresh scheduled)", { mediaType, tmdbId, ms: Date.now() - startTime })
       if (outputFormat === "webp") return serveWebpVariant(cachedPoster.payload)
@@ -363,6 +371,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     if (payload) {
       log.debug("Poster cache: coalesced with in-flight render", { mediaType, tmdbId, ms: Date.now() - startTime })
       recordPosterRequest(true, outputFormat)
+      recordPosterCoalescedHit()
       // Finding 5: il waiter della preview deve ricevere gli header no-store
       // anche quando si coalesce con un render in flight (era hardcoded false).
       // C3: il payload condiviso è canonico jpeg — il waiter webp converte.
@@ -814,6 +823,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
               const rescue = pickTvdbPoster(arts, preferredLanguage)?.image ?? null
               if (rescue) {
                 log.info("Fallback: TVDB textless poster", { mediaType, tmdbId, poster: rescue })
+                recordTvdbRescue()
                 posterPath = rescue
               }
             }
@@ -835,6 +845,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
               posterPathBuffer = await cropToPoster(raw)
               posterPath = candidate
               log.info("Fallback: backdrop cropped to poster", { mediaType, tmdbId, backdrop: candidate })
+              recordBackdropCropRescue()
               break
             } catch (e) {
               log.info("Fallback: backdrop candidate failed", { mediaType, tmdbId, error: e instanceof Error ? e.message : String(e) })

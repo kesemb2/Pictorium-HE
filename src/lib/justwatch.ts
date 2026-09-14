@@ -255,6 +255,10 @@ function isCircuitOpen(): boolean {
   return justwatchBreaker.isOpen()
 }
 
+export function isJustwatchBreakerOpen(): boolean {
+  return justwatchBreaker.isOpen()
+}
+
 function recordCircuitSuccess(): void {
   justwatchBreaker.recordSuccess()
 }
