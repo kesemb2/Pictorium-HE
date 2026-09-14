@@ -89,7 +89,7 @@ pinned: false
 ### 🖼️ Posters, Logos & Graphics
 * **Clean Poster Selection**: Select textless posters with one click from official TMDB candidates (`iso_639_1 === null`).
 * **Smart Best-Fit Algorithm**: Analyzes brightness and empty space to automatically scale and position logos without obscuring faces.
-* **Cinematic Background Blur (Sharp C++)**: Ultra-fast background blur generation (10–20ms) with minimal RAM usage.
+* **Cinematic Background Blur (Sharp C++)**: Progressive intensity toward the base with same-hue scene tint, quadratic darkening and anti-seam, in a few ms with minimal RAM usage. Tint strength adjustable per-title and globally (default 20%).
 * **24h Auto-Rotation**: Automatically rotates through multiple saved clean posters daily for the same title.
 * **Official Network Logos**: Automatic detection and embedding for Netflix, Prime Video, Disney+, Apple TV+, HBO Max, Paramount+, Sky/NOW, Crunchyroll, and 30+ studios (Marvel, Pixar, Ghibli, Warner Bros, A24).
 
@@ -97,7 +97,7 @@ pinned: false
 
 - **Custom Rating Provider**: Connect any external rating API using an IMDb ID through server-side configuration and render its ratings as separate pills, each with decimal or percentage formatting. Provider failures are non-blocking and never prevent the poster from rendering.
 * **✨ Streaming Quality (4K / FHD / HD / SD)**: Detected live from Stremio video streams with automatic fallback to JustWatch.
-* **6 Genre & Rating Badge Styles**: *Shadow, Pill, Bar, Colored, Border, Glass* with adaptive palette matching the poster.
+* **7 Genre & Rating Badge Styles**: *Shadow, Pill, Bar, Colored, Border, Glass, Minimal* (`Genre | Rating | Year`) with adaptive palette matching the poster.
 * **Vertical Netflix Top 10 Ribbon**: The iconic red side ribbon with live rank position (dedicated support for Anime).
 * **Film Awards & Accolades**: Automatic recognition of Oscars, Cannes, BAFTA, Emmy, and the *"Absolute Cinema"* badge for IMDb Top 250 titles.
 * **Always-in-Sync Charts**: Top 10/20 badges track live charts; if a title leaves the ranking, its badge updates automatically.
@@ -307,6 +307,7 @@ npm install --ignore-scripts && npm run build && npm start
 | `PICTORIUM_RANKING_BADGE_STYLE` | `default`, `bar`, `colored`, `pill`, `netflix` | Style for ranking badges. |
 | `PICTORIUM_RIBBON_SIDE` | `left` / `right` | Position of the vertical Netflix Top 10 ribbon. |
 | `PICTORIUM_BLUR_ENABLED` | `1` / `0` | Enable or disable the blurred background. |
+| `PICTORIUM_TINT_STRENGTH` | `0` – `100` | Scene tint strength of the background (default `20`). |
 | `PICTORIUM_BADGE_QUALITY` | `1` / `0` | Show or hide the streaming quality badge (4K/FHD). |
 | `PICTORIUM_NETWORK_LOGO` | `1` / `0` | Show or hide the network logo (Netflix, Prime, ecc.). |
 | `PICTORIUM_PRE_RELEASE` | `1` / `0` | Dark veil + "Coming Soon" ribbon on movies not yet available digitally (default OFF). |

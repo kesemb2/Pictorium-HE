@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+- **Progressive bottom blur** (`src/lib/blur.ts`): dual-sigma a intensità crescente, bleed anti-seam 16px, alpha smoothstep, shade quadratico e tinta di scena same-hue (`findSceneTint`) con intensità regolabile (`tintStrength` 0-100, default 20: per-titolo, config token, default globale, env `PICTORIUM_TINT_STRENGTH`, slider editor)
+- **Stile badge `minimal`** (`Genere | Voto | Anno` con separatore pipe)
+- **Nuovi default sfocatura** (Altezza 30, Intensità 20, Sfumatura 50, Velatura 30, Tinta 20) e slider intensità blur fino a 100
+- **Welcome env-aware**: la schermata di benvenuto appare solo senza chiave TMDB né nel browser né sul server (`hasInstanceKeys` da `/api/defaults`)
+
 ### Changed
 - **APP_VERSION automatica**: `scripts/write-app-version.mjs` torna a `1.0.<commit count>` (`git rev-list --count HEAD`), fallback a `package.json` quando git non disponibile — versione nuova ad ogni push senza bump manuale
 
