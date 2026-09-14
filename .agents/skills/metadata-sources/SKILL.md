@@ -54,6 +54,23 @@ and/or the trend badges. Full architecture: `.agents/catalog.md`.
 - `MDBLIST_API_URL` env (mock server in e2e) always wins over the real endpoint.
 - `checkMDBLists(imdbId)` → list key + rank for the MDBList badge.
 
+## TVDB (`src/lib/tvdb.ts`)
+
+- Episodes/seasonTypes (meta route) + artwork posters rescue (B1, poster route).
+- `getTvdbArtworks(mediaType, tvdbId, apiKey)` → `TvdbArtwork[]` (`ArtworkBaseRecord`
+  spec v4.7.10: series via `/series/{id}/artworks`, movies via `/movies/{id}/extended`
+  which embeds `artworks`; no dedicated movie artworks endpoint).
+- `pickTvdbPoster(arts, lang)` (pure): portrait-only, textless (`includesText === false`)
+  first, then language (null > preferred > eng > other), then TVDB score.
+- Rescue gating (poster route, unmapped branch only): no TMDB clean poster AND logo
+  present AND key present (`?tvdb_key=` > `PICTORIUM_TVDB_API_KEY` instance fallback);
+  portrait only (landscape already has the backdrop base). Fail-open → language fallback.
+- `TVDB_API_URL` env (mock server in e2e) wins over `https://api4.thetvdb.com/v4`.
+- Shared fail-open breaker (`tvdb`, 5 fails → 60 s) + `TVDB_TIMEOUT_MS` (5000) +
+  episodes pagination budget (`TVDB_EPISODES_BUDGET_MS`, 20000).
+- Artwork images live on `https://artworks.thetvdb.com` (fixed CDN host, SSRF-allowlisted
+  in `imgSrc` alongside `image.tmdb.org`).
+
 ## Shared rules
 
 - API keys come from the request (see `tmdb-api` skill) — never env defaults.

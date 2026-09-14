@@ -13,7 +13,9 @@ import { createCircuitBreaker, parseRetryAfterMs } from "@/lib/circuit-breaker"
 const log = createLogger("tvdb")
 
 const TVDB_BASE = "https://api4.thetvdb.com/v4"
-const ARTWORKS_BASE = "https://artworks.thetvdb.com"
+// Override per E2E/mock deterministici (stesso pattern di MDBLIST_API_URL).
+const TVDB_API = process.env.TVDB_API_URL || TVDB_BASE
+export const ARTWORKS_BASE = "https://artworks.thetvdb.com"
 
 // Phase 4 (Provider Resilience): per-fetch deadline 8000/10000 → 5000ms.
 const TVDB_TIMEOUT_MS = (() => {
@@ -104,8 +106,10 @@ export function clearTvdbCache(): void {
   tokenCache.clear()
   inflightTokens.clear()
   remoteIdCache.clear()
+  movieIdCache.clear()
   episodesCache.clear()
   seasonTypesCache.clear()
+  artworksCache.clear()
   tvdbBreaker.reset()
 }
 
@@ -149,6 +153,7 @@ interface TvdbSearchResponse {
     name?: string
     type?: string
     series?: { id?: number | string }
+    movie?: { id?: number | string }
   }>
 }
 
@@ -171,7 +176,7 @@ export async function getTvdbToken(apiKey: string): Promise<string | null> {
   const fetchPromise = (async () => {
     try {
       const res = await tvdbFetch(
-        `${TVDB_BASE}/login`,
+        `${TVDB_API}/login`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -205,14 +210,40 @@ export async function getTvdbToken(apiKey: string): Promise<string | null> {
   return fetchPromise
 }
 
+// Remote ID cache per i film (mappa separata: gli id serie/film vivono in
+// namespace diversi su TVDB).
+const movieIdCache = new Map<string, { tvdbId: number; expiry: number }>()
+
+// Artworks cache: (movie|tv:tvdbId -> artworks), 6h come gli episodi.
+const artworksCache = new Map<string, { arts: TvdbArtwork[]; expiry: number }>()
+const CACHE_TTL_ARTWORKS = 6 * 60 * 60 * 1000 // 6 ore
+const MAX_ARTWORK_ENTRIES = 200
+
 /**
  * Trova l'ID numerico TheTVDB di una serie partendo da un IMDb ID (es. "tt6468322") o TMDB ID.
  */
 export async function getTvdbSeriesId(remoteId: string, apiKey: string): Promise<number | null> {
+  return getTvdbIdByRemoteId("series", remoteId, apiKey, remoteIdCache)
+}
+
+/**
+ * Trova l'ID numerico TheTVDB di un film partendo da un IMDb ID o TMDB ID.
+ * Spec v4: `/search/remoteid` ritorna `{ movie: { id } }` come per le serie.
+ */
+export async function getTvdbMovieId(remoteId: string, apiKey: string): Promise<number | null> {
+  return getTvdbIdByRemoteId("movie", remoteId, apiKey, movieIdCache)
+}
+
+async function getTvdbIdByRemoteId(
+  kind: "series" | "movie",
+  remoteId: string,
+  apiKey: string,
+  cache: Map<string, { tvdbId: number; expiry: number }>,
+): Promise<number | null> {
   const cleanRemoteId = remoteId.trim()
   if (!cleanRemoteId) return null
 
-  const cached = remoteIdCache.get(cleanRemoteId)
+  const cached = cache.get(cleanRemoteId)
   if (cached && Date.now() < cached.expiry) {
     return cached.tvdbId
   }
@@ -222,7 +253,7 @@ export async function getTvdbSeriesId(remoteId: string, apiKey: string): Promise
 
   try {
     const res = await tvdbFetch(
-      `${TVDB_BASE}/search/remoteid/${encodeURIComponent(cleanRemoteId)}`,
+      `${TVDB_API}/search/remoteid/${encodeURIComponent(cleanRemoteId)}`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -241,13 +272,15 @@ export async function getTvdbSeriesId(remoteId: string, apiKey: string): Promise
     const results = json?.data
     if (!Array.isArray(results) || results.length === 0) return null
 
-    // Estrae il primo ID serie valido
+    // Estrae il primo ID valido (decodifica difensiva: la spec dichiara
+    // `{ series: {...} }` / `{ movie: {...} }`, con fallback agli id piatti)
     for (const item of results) {
-      const rawId = item?.series?.id ?? item.tvdb_id ?? item.id
+      const rawId = (kind === "series" ? item?.series?.id : (item as { movie?: { id?: number | string } })?.movie?.id)
+        ?? item.tvdb_id ?? item.id
       if (rawId) {
         const numId = typeof rawId === "number" ? rawId : parseInt(String(rawId), 10)
         if (Number.isFinite(numId) && numId > 0) {
-          setBounded(remoteIdCache, cleanRemoteId, { tvdbId: numId, expiry: Date.now() + CACHE_TTL_REMOTE }, MAX_REMOTE_ENTRIES)
+          setBounded(cache, cleanRemoteId, { tvdbId: numId, expiry: Date.now() + CACHE_TTL_REMOTE }, MAX_REMOTE_ENTRIES)
           return numId
         }
       }
@@ -273,7 +306,7 @@ export async function getTvdbSeasonTypes(tvdbSeriesId: number, apiKey: string): 
 
   try {
     const res = await tvdbFetch(
-      `${TVDB_BASE}/series/${tvdbSeriesId}/extended`,
+      `${TVDB_API}/series/${tvdbSeriesId}/extended`,
       {
         headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
       },
@@ -347,10 +380,111 @@ export async function getTvdbSeasonTypes(tvdbSeriesId: number, apiKey: string): 
   }
 }
 
+export interface TvdbArtwork {
+  image: string
+  thumbnail?: string | null
+  language?: string | null
+  width?: number
+  height?: number
+  score?: number
+  includesText?: boolean
+}
+
+/**
+ * Artwork poster di una serie/film da TheTVDB (spec v4: `ArtworkBaseRecord`
+ * `{ image, thumbnail, language, type, width, height, includesText, score }`).
+ * Serie: `GET /series/{id}/artworks` (leggero); film: `/movies/{id}/extended`
+ * di default (include `artworks`, niente endpoint dedicato). Parsing
+ * difensivo: la spec dichiara per le serie un `SeriesExtendedRecord`, il
+ * server risponde con array o `{ artworks: [] }` — si accettano entrambi.
+ * Sotto breaker+timeout condivisi (fail-open → []).
+ */
+export async function getTvdbArtworks(
+  mediaType: "movie" | "tv",
+  tvdbId: number,
+  apiKey: string,
+): Promise<TvdbArtwork[]> {
+  if (!tvdbId || tvdbId <= 0 || !apiKey) return []
+  const cacheKey = `${mediaType}:${tvdbId}`
+  const cached = artworksCache.get(cacheKey)
+  if (cached && Date.now() < cached.expiry) return cached.arts
+
+  const token = await getTvdbToken(apiKey)
+  if (!token) return []
+
+  try {
+    const url = mediaType === "tv"
+      ? `${TVDB_API}/series/${tvdbId}/artworks`
+      : `${TVDB_API}/movies/${tvdbId}/extended`
+    const res = await tvdbFetch(
+      url,
+      { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } },
+      TVDB_TIMEOUT_MS,
+    )
+    if (!res || !res.ok) {
+      if (res) log.warn("TVDB artworks fetch failed", { status: res.status, mediaType, tvdbId })
+      return []
+    }
+    const json = (await res.json().catch(() => null)) as {
+      data?: unknown
+    } | null
+    const data = json?.data
+    const raw: unknown[] = Array.isArray(data)
+      ? data
+      : Array.isArray((data as { artworks?: unknown })?.artworks)
+        ? (data as { artworks: unknown[] }).artworks
+        : []
+    const arts: TvdbArtwork[] = []
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue
+      const r = item as Record<string, unknown>
+      if (typeof r.image !== "string" || !r.image) continue
+      arts.push({
+        image: r.image,
+        thumbnail: typeof r.thumbnail === "string" ? r.thumbnail : null,
+        language: typeof r.language === "string" ? r.language : null,
+        width: typeof r.width === "number" ? r.width : undefined,
+        height: typeof r.height === "number" ? r.height : undefined,
+        score: typeof r.score === "number" ? r.score : undefined,
+        includesText: typeof r.includesText === "boolean" ? r.includesText : undefined,
+      })
+    }
+    setBounded(artworksCache, cacheKey, { arts, expiry: Date.now() + CACHE_TTL_ARTWORKS }, MAX_ARTWORK_ENTRIES)
+    return arts
+  } catch (e) {
+    log.error("TVDB artworks exception", { error: e instanceof Error ? e.message : String(e) })
+    return []
+  }
+}
+
+/**
+ * Sceglie il miglior poster 2:3 dagli artwork TVDB (funzione pura, testabile).
+ * Solo portrait (o dimensioni ignote); textless (`includesText === false`)
+ * batte sempre il testo; a parità vince la lingua (null > preferita > eng >
+ * altre) e poi lo score TVDB.
+ */
+export function pickTvdbPoster(
+  artworks: readonly TvdbArtwork[],
+  preferredLanguage?: string | null,
+): TvdbArtwork | null {
+  const pref = (preferredLanguage || "").toLowerCase()
+  const scored: { art: TvdbArtwork; rank: number; score: number }[] = []
+  for (const art of artworks) {
+    if (!art.image) continue
+    const w = art.width ?? 0
+    const h = art.height ?? 0
+    if (w > 0 && h > 0 && w >= h) continue
+    const lang = (art.language || "").toLowerCase()
+    const langRank = !lang ? 0 : lang === pref ? 1 : lang === "eng" || lang === "en" ? 2 : 3
+    scored.push({ art, rank: (art.includesText === false ? 0 : 10) + langRank, score: art.score ?? 0 })
+  }
+  scored.sort((a, b) => a.rank - b.rank || b.score - a.score)
+  return scored[0]?.art ?? null
+}
+
 /**
  * Recupera la lista degli episodi con trame e copertine still da TheTVDB.
- */
-export async function getTvdbEpisodes(tvdbSeriesId: number, language = "ita", apiKey: string, seasonType: string = "default"): Promise<TvdbEpisode[]> {
+ */export async function getTvdbEpisodes(tvdbSeriesId: number, language = "ita", apiKey: string, seasonType: string = "default"): Promise<TvdbEpisode[]> {
   const normalizedType = seasonType?.trim() || "default"
   const cacheKey = `${tvdbSeriesId}:${language}:${normalizedType}`
   const cached = episodesCache.get(cacheKey)
@@ -375,7 +509,7 @@ export async function getTvdbEpisodes(tvdbSeriesId: number, language = "ita", ap
       // trattenere la route meta fino al maxDuration (fallback standard).
       if (Date.now() >= budgetUntil) break
       const langSegment = language && language !== "default" ? `/${encodeURIComponent(language)}` : ""
-      const url = `${TVDB_BASE}/series/${tvdbSeriesId}/episodes/${encodeURIComponent(normalizedType)}${langSegment}?page=${page}`
+      const url = `${TVDB_API}/series/${tvdbSeriesId}/episodes/${encodeURIComponent(normalizedType)}${langSegment}?page=${page}`
       const res = await tvdbFetch(
         url,
         {

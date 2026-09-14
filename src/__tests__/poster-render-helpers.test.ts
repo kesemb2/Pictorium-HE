@@ -4,6 +4,7 @@ import {
   STD_H,
   STD_W,
   fitCompositeToCanvas,
+  imgSrc,
   topLuminance,
 } from "@/lib/poster-render-helpers"
 
@@ -60,5 +61,19 @@ describe("poster render helpers", () => {
 
     expect(await topLuminance(light)).toBeGreaterThan(0.9)
     expect(await topLuminance(dark)).toBeLessThan(0.1)
+  })
+
+  it("imgSrc allows the TVDB artworks CDN alongside TMDB (B1 rescue)", () => {
+    expect(imgSrc("https://artworks.thetvdb.com/banners/v4/poster/1.jpg")).toBe(
+      "https://artworks.thetvdb.com/banners/v4/poster/1.jpg",
+    )
+    expect(imgSrc("https://image.tmdb.org/t/p/w500/a.jpg")).toBe("https://image.tmdb.org/t/p/w500/a.jpg")
+    expect(imgSrc("/a.jpg")).toBe("https://image.tmdb.org/t/p/w500/a.jpg")
+  })
+
+  it("imgSrc still blocks non-allowlisted hosts", () => {
+    expect(() => imgSrc("https://artworks.thetvdb.com.evil.example/x.jpg")).toThrow()
+    expect(() => imgSrc("https://evil.example/x.jpg")).toThrow()
+    expect(() => imgSrc("http://image.tmdb.org/t/p/w500/a.jpg")).toThrow()
   })
 })

@@ -68,6 +68,7 @@ import { isTmdbTrending } from "@/lib/tmdb-trending-badge"
 import { computeTopBadge } from "@/lib/poster-badge"
 
 import { resolveImdbToTmdb } from "@/lib/imdb-resolver"
+import { getTvdbArtworks, getTvdbMovieId, getTvdbSeriesId, pickTvdbPoster } from "@/lib/tvdb"
 import { decodeConfig } from "@/lib/config-token"
 import { createLogger } from "@/lib/logger"
 import { resolvePosterRenderConfig } from "@/lib/poster-config"
@@ -246,6 +247,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // api_key non influisce sul rendering: rimuoverla evita frammentazione della
   // cache per utente e segreti in memoria nelle chiavi.
   cacheParams.delete("api_key")
+  // B1: la chiave TVDB non entra mai in chiaro nella cache key (segreto in
+  // memoria); il flag `tvdb=1` separa le entry con rescue attivo da quelle
+  // senza (output diverso a parità di altri parametri).
+  cacheParams.delete("tvdb_key")
+  // Il flag è server-side: un `tvdb=` in query viene ignorato (solo la
+  // presenza della chiave abilita il rescue).
+  cacheParams.delete("tvdb")
+  // Chiave TVDB per il rescue poster (B1): query `tvdb_key` > fallback
+  // d'istanza (stessa precedenza della route meta). Senza chiave il rescue
+  // è spento e il comportamento resta quello storico.
+  const tvdbApiKey = req.nextUrl.searchParams.get("tvdb_key")
+    || envWithFallback("TVDB_API_KEY") || process.env.TVDB_API_KEY || undefined
+  if (tvdbApiKey) cacheParams.set("tvdb", "1")
   if (typeof cacheParams.sort === "function") cacheParams.sort()
   const cachedRank = mapping?.trendRank ?? null
   const rotateKey = isRotating ? `:ci${mapping?.cleanPosterIndex ?? "x"}` : ""
@@ -768,6 +782,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         // con il titolo già stampato; ora ci sono livelli intermedi.
         //
         //   1. poster textless di fanart.tv (lang "None")
+        //   1b. poster textless di TVDB                — solo se c'è un logo
         //   2. backdrop TMDB ritagliato a 2:3      — solo se c'è un logo
         //   3. sfondo fanart.tv ritagliato a 2:3   — solo se c'è un logo
         //   4. poster TMDB con il testo            — come prima, ultima spiaggia
@@ -779,6 +794,32 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         if (fanartPoster) {
           log.info("Fallback: textless fanart poster", { mediaType, tmdbId })
           posterPath = fanartPoster.url
+        }
+
+
+        // TVDB entra come secondo livello, subito dopo fanart: un poster
+        // textless vero batte un backdrop ritagliato. Serve un logo (senza,
+        // resta un'immagine senza titolo) e la chiave TVDB; senza chiave il
+        // costo è zero. Fail-open: qualunque errore scende al livello dopo.
+        if (!posterPath && logoPath && tvdbApiKey) {
+          try {
+            const remoteTvdbId = extIds.tvdb_id
+              ?? (imdbId
+                ? (mediaType === "movie"
+                  ? await getTvdbMovieId(imdbId, tvdbApiKey)
+                  : await getTvdbSeriesId(imdbId, tvdbApiKey))
+                : null)
+            if (remoteTvdbId) {
+              const arts = await getTvdbArtworks(mediaType, remoteTvdbId, tvdbApiKey)
+              const rescue = pickTvdbPoster(arts, preferredLanguage)?.image ?? null
+              if (rescue) {
+                log.info("Fallback: TVDB textless poster", { mediaType, tmdbId, poster: rescue })
+                posterPath = rescue
+              }
+            }
+          } catch {
+            // Si scende al livello successivo.
+          }
         }
 
         if (!posterPath && logoPath) {

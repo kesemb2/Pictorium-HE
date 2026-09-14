@@ -4,6 +4,7 @@ import { FANART_ASSET_PREFIX } from "./fanart"
 import { combineAbortSignals } from "./abort-signal"
 import { findAccentColor, findSceneTint, type AccentHueMode } from "@/lib/accent-color"
 import { GENRE_FALLBACK } from "@/lib/badges"
+import { ARTWORKS_BASE } from "@/lib/tvdb"
 // Batch B: STD_W/STD_H ora provengono da image-utils.ts (single source of truth)
 import { STD_W, STD_H, computeRegionStats } from "@/lib/image-utils"
 
@@ -49,6 +50,8 @@ export function isValidHex(color: string): boolean {
 const ALLOWED_IMAGE_PREFIXES = [
   "https://image.tmdb.org/t/p/",
   FANART_ASSET_PREFIX,
+  // CDN artwork di TVDB: host fisso, stessa asticella di TMDB (rescue poster).
+  `${ARTWORKS_BASE}/`,
 ] as const
 
 export function isAllowedImageUrl(url: string): boolean {
