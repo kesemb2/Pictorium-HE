@@ -1,5 +1,6 @@
 import { combineAbortSignals } from "./abort-signal"
 import { cacheGetShared, cacheSet } from "./cache"
+import { createCircuitBreaker } from "@/lib/circuit-breaker"
 import { createLogger } from "@/lib/logger"
 
 const log = createLogger("awards")
@@ -35,12 +36,10 @@ export interface WikidataResult {
   directorHe: string | null
 }
 
-// ---- Circuit breaker ----
-let breakerFailures = 0
-let breakerOpenUntil = 0
-let breakerHalfOpen = false
-const BREAKER_THRESHOLD = 5
-const BREAKER_BACKOFF_MS = 60_000
+// ---- Circuit breaker (Wikidata SPARQL) ----
+// Generic primitive in circuit-breaker.ts; same threshold/backoff as before
+// (5 failures → 60s backoff). Half-open semantics unchanged, see the factory.
+const wikidataBreaker = createCircuitBreaker({ name: "awards", failureThreshold: 5, backoffMs: 60_000 })
 
 /**
  * True se le richieste verso Wikidata devono essere rifiutate subito.
@@ -53,35 +52,15 @@ const BREAKER_BACKOFF_MS = 60_000
  * resettare i contatori, quindi allo scadere della finestra si riapriva.
  */
 function isBreakerOpen(): boolean {
-  const now = Date.now()
-  // Finestra di backoff: tutte le richieste rifiutate.
-  if (breakerOpenUntil > now) return true
-  // Soglia raggiunta e finestra scaduta: entra in half-open.
-  if (breakerFailures >= BREAKER_THRESHOLD) {
-    if (breakerHalfOpen) return true // una prova è già in corso → rifiuta
-    breakerHalfOpen = true
-    log.info("Circuit breaker half-open: one trial request allowed")
-    return false
-  }
-  return false
+  return wikidataBreaker.isOpen()
 }
 
 function recordSuccess(): void {
-  breakerFailures = 0
-  breakerHalfOpen = false
+  wikidataBreaker.recordSuccess()
 }
 
 function recordFailure(): void {
-  breakerFailures++
-  breakerHalfOpen = false
-  // Apre la finestra di backoff solo al raggiungimento della soglia: i primi
-  // N fallimenti non devono ancora rifiutare alcuna richiesta. Anche il
-  // fallimento della prova half-open (già sopra soglia) impone un'altra
-  // attesa prima della prossima prova.
-  if (breakerFailures >= BREAKER_THRESHOLD) {
-    breakerOpenUntil = Date.now() + BREAKER_BACKOFF_MS
-    log.warn(`Circuit breaker failure #${breakerFailures} — backoff ${BREAKER_BACKOFF_MS}ms`)
-  }
+  wikidataBreaker.recordFailure()
 }
 
 // Esposte per i test unitari del circuito (stesso pattern di __resetJWRankingsCache).
@@ -89,9 +68,7 @@ export { isBreakerOpen, recordSuccess, recordFailure }
 
 /** Solo per i test: azzera lo stato del circuit breaker. */
 export function __resetCircuitBreaker(): void {
-  breakerFailures = 0
-  breakerOpenUntil = 0
-  breakerHalfOpen = false
+  wikidataBreaker.reset()
 }
 
 // ---- Concurrency limiter (max 2 parallel SPARQL queries) ----
