@@ -35,6 +35,7 @@ import {
   posterResponse,
   convertPosterFormat,
   variantEtagFor,
+  dynamicPosterTtlSec,
   readCachedPoster,
   readPosterError,
   recordZombieRenderStart,
@@ -274,17 +275,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // stantii per un giorno intero. Il flag non cambia per tutta la richiesta.
   const dynamicPoster = !mapping
   const mappingTag = mapping ? `poster:${mediaType}:${tmdbId}` : undefined
+  // TTL reale della entry canonica (jitter deterministico ±10%): threadato
+  // negli header così restano sincronizzati con lo storage (M3). La variante
+  // webp ha storage key propria → TTL proprio (vedi serveWebpVariant).
+  const dynamicTtlSec = dynamicPoster ? dynamicPosterTtlSec(cacheKey) : undefined
+  // La variante webp è un'entry separata (storage key propria) con TTL proprio.
+  const variantTtlSec = dynamicPoster && outputFormat === "webp" ? dynamicPosterTtlSec(variantKey) : undefined
 
   // C3: risposta webp da payload canonico jpeg (cache variante o conversione).
   const serveWebpVariant = async (canonical: PosterCachePayload): Promise<Response> => {
     const variantHit = readCachedPoster(variantKey)
     if (variantHit.payload) {
-      return posterResponse(variantHit.payload, immutablePoster, isPreview, dynamicPoster, outputFormat)
+      return posterResponse(variantHit.payload, immutablePoster, isPreview, dynamicPoster, outputFormat, variantTtlSec)
     }
     const converted = await convertPosterFormat(canonical.buffer)
     const variant: PosterCachePayload = { buffer: converted, etag: variantEtagFor(canonical.etag) }
     writeCachedPoster(variantKey, variant, mappingTag)
-    return posterResponse(variant, immutablePoster, isPreview, dynamicPoster, outputFormat)
+    return posterResponse(variant, immutablePoster, isPreview, dynamicPoster, outputFormat, variantTtlSec)
   }
 
   // 3. Memory cache check
@@ -296,11 +303,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       recordPosterRequest(true, outputFormat)
       if (!isPreview && req.headers.get("If-None-Match") === variantHit.payload.etag) {
         log.debug("Poster cache: 304 (variant)", { mediaType, tmdbId, ms: Date.now() - startTime })
-        return new Response(null, { status: 304, headers: posterNotModifiedHeaders(variantHit.payload.etag, immutablePoster, dynamicPoster) })
+        return new Response(null, { status: 304, headers: posterNotModifiedHeaders(variantHit.payload.etag, immutablePoster, dynamicPoster, variantTtlSec) })
       }
       if (!variantHit.stale) {
         log.debug("Poster cache: fresh variant hit", { mediaType, tmdbId, ms: Date.now() - startTime })
-        return posterResponse(variantHit.payload, immutablePoster, isPreview, dynamicPoster, outputFormat)
+        return posterResponse(variantHit.payload, immutablePoster, isPreview, dynamicPoster, outputFormat, variantTtlSec)
       }
       schedulePosterRefresh(req, isPreview)
       log.debug("Poster cache: stale variant hit (refresh scheduled)", { mediaType, tmdbId, ms: Date.now() - startTime })
@@ -312,18 +319,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     recordPosterRequest(true, outputFormat)
     if (!isPreview && outputFormat !== "webp" && req.headers.get("If-None-Match") === cachedPoster.payload.etag) {
       log.debug("Poster cache: 304", { mediaType, tmdbId, ms: Date.now() - startTime })
-      return new Response(null, { status: 304, headers: posterNotModifiedHeaders(cachedPoster.payload.etag, immutablePoster, dynamicPoster) })
+        return new Response(null, { status: 304, headers: posterNotModifiedHeaders(cachedPoster.payload.etag, immutablePoster, dynamicPoster, dynamicTtlSec) })
     }
     if (!cachedPoster.stale) {
       log.debug("Poster cache: fresh hit", { mediaType, tmdbId, ms: Date.now() - startTime })
       if (outputFormat === "webp") return serveWebpVariant(cachedPoster.payload)
-      return posterResponse(cachedPoster.payload, immutablePoster, isPreview, dynamicPoster, outputFormat)
+      return posterResponse(cachedPoster.payload, immutablePoster, isPreview, dynamicPoster, outputFormat, dynamicTtlSec)
     }
     if (!refreshRequest) {
       schedulePosterRefresh(req, isPreview)
       log.debug("Poster cache: stale hit (refresh scheduled)", { mediaType, tmdbId, ms: Date.now() - startTime })
       if (outputFormat === "webp") return serveWebpVariant(cachedPoster.payload)
-      return posterResponse(cachedPoster.payload, immutablePoster, isPreview, dynamicPoster, outputFormat)
+      return posterResponse(cachedPoster.payload, immutablePoster, isPreview, dynamicPoster, outputFormat, dynamicTtlSec)
     }
   }
 
@@ -346,7 +353,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       // anche quando si coalesce con un render in flight (era hardcoded false).
       // C3: il payload condiviso è canonico jpeg — il waiter webp converte.
       if (outputFormat === "webp" && !legacyAvif) return serveWebpVariant(payload)
-      return posterResponse(payload, immutablePoster, isPreview, dynamicPoster, outputFormat)
+      return posterResponse(payload, immutablePoster, isPreview, dynamicPoster, outputFormat, dynamicTtlSec)
     }
     // Coalesce scaduto: o il render è fallito (negative cache) o è ancora in
     // corso — mai duplicare il render, rispondere 503 con backoff esplicito.
@@ -547,7 +554,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     if (!customRatingConfig.enabled && req.headers.get("If-None-Match") === etag) {
       clearTimeout(renderDeadline)
       completePosterRender(null)
-      return new Response(null, { status: 304, headers: posterNotModifiedHeaders(etag, immutablePoster, dynamicPoster) })
+      return new Response(null, { status: 304, headers: posterNotModifiedHeaders(etag, immutablePoster, dynamicPoster, dynamicTtlSec) })
     }
   } else {
     const preferredLanguage = req.nextUrl.searchParams.get("lang") || "it"
@@ -1395,12 +1402,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     // Enabled enrichment must revalidate against the final state, including [].
     const responseEtag = outputFormat === "webp" ? variantEtagFor(etag) : etag
     if (customRatingConfig.enabled && !isPreview && req.headers.get("If-None-Match") === responseEtag) {
-      return new Response(null, { status: 304, headers: posterNotModifiedHeaders(responseEtag, immutablePoster, dynamicPoster) })
+      return new Response(null, { status: 304, headers: posterNotModifiedHeaders(responseEtag, immutablePoster, dynamicPoster, dynamicTtlSec) })
     }
     log.info("Poster rendered", { mediaType, tmdbId, ms: Date.now() - startTime, bytes: composited.byteLength, cached: !!mappingTag, format: outputFormat })
     // C3: il webp è variante di risposta (convertita + cachata), non un render.
     if (outputFormat === "webp") return serveWebpVariant(payload)
-    return new Response(new Uint8Array(composited), { headers: posterHeaders(etag, immutablePoster, isPreview, dynamicPoster, outputFormat) })
+    return new Response(new Uint8Array(composited), { headers: posterHeaders(etag, immutablePoster, isPreview, dynamicPoster, outputFormat, dynamicTtlSec) })
   } catch (e) {
     completePosterRender(null)
     recordPosterError()

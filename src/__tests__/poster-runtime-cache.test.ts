@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { cacheClear } from "@/lib/cache"
+import * as cacheModule from "@/lib/cache"
 import {
   beginPosterRender,
   convertPosterFormat,
+  dynamicPosterTtlMs,
+  dynamicPosterTtlSec,
   getPendingPoster,
   isImmutablePosterRequest,
   posterHeaders,
@@ -10,6 +13,7 @@ import {
   readPosterError,
   resolveImageFormat,
   variantEtagFor,
+  writeCachedPoster,
   writePosterError,
 } from "@/lib/poster-runtime-cache"
 
@@ -259,5 +263,62 @@ describe("poster image format negotiation (WebP / AVIF)", () => {
     expect(variant).not.toBe(canonical)
     expect(variant).toBe(variantEtagFor(canonical))
     expect(variant.startsWith("\"") && variant.endsWith("\"")).toBe(true)
+  })
+})
+
+describe("dynamic TTL jitter (Milestone A, anti thundering-herd)", () => {
+  const BASE_MS = 6 * 60 * 60 * 1000 // default 6h
+  const key = (i: number) => `poster:ve:key:${i}:regIT:rx:sdabc:genre=Action`
+
+  it("is deterministic per cache key (same key → same TTL on every instance)", () => {
+    expect(dynamicPosterTtlMs(key(1))).toBe(dynamicPosterTtlMs(key(1)))
+    expect(dynamicPosterTtlSec(key(1))).toBe(dynamicPosterTtlSec(key(1)))
+  })
+
+  it("stays within ±10% of the base TTL", () => {
+    for (let i = 0; i < 300; i++) {
+      const ttl = dynamicPosterTtlMs(key(i))
+      expect(ttl).toBeGreaterThanOrEqual(Math.round(BASE_MS * 0.9))
+      expect(ttl).toBeLessThanOrEqual(Math.round(BASE_MS * 1.1))
+    }
+  })
+
+  it("spreads bulk-warmed keys over ~72 minutes", () => {
+    const ttls = Array.from({ length: 300 }, (_, i) => dynamicPosterTtlMs(key(i)))
+    const span = Math.max(...ttls) - Math.min(...ttls)
+    // Full symmetric range = 72min; con 300 chiavi gli estremi sono colpiti.
+    expect(span).toBeGreaterThanOrEqual(60 * 60 * 1000)
+  })
+
+  it("derives header seconds from the same storage value (M3)", () => {
+    const k = key(7)
+    expect(dynamicPosterTtlSec(k)).toBe(Math.round(dynamicPosterTtlMs(k) / 1000))
+    const sec = dynamicPosterTtlSec(k)
+    const headers = posterHeaders("\"etag\"", false, false, true, "jpeg", sec)
+    expect(headers["Cache-Control"]).toContain(`max-age=${sec}`)
+    expect(headers["CDN-Cache-Control"]).toContain(`max-age=${sec}`)
+    expect(headers["Surrogate-Control"]).toContain(`max-age=${sec}`)
+    const notModified = posterNotModifiedHeaders("\"etag\"", false, true, sec)
+    expect(notModified["Cache-Control"]).toContain(`max-age=${sec}`)
+  })
+
+  it("writeCachedPoster stores dynamic entries with the jittered TTL", () => {
+    cacheClear()
+    const seen: number[] = []
+    const spy = vi
+      .spyOn(cacheModule, "cacheSet")
+      .mockImplementation((k: string, v: unknown, tags?: string[], ttl?: number) => {
+        seen.push(ttl ?? -1)
+      })
+    try {
+      const k = key(42)
+      writeCachedPoster(k, { buffer: Buffer.from("x"), etag: "\"e\"" })
+      // Payload + headers, entrambi con lo stesso TTL jittered.
+      expect(seen).toHaveLength(2)
+      expect(seen[0]).toBe(dynamicPosterTtlMs(k))
+      expect(seen[1]).toBe(dynamicPosterTtlMs(k))
+    } finally {
+      spy.mockRestore()
+    }
   })
 })
