@@ -1,9 +1,6 @@
 import { combineAbortSignals } from "./abort-signal"
 import { cacheGetShared, cacheSet } from "./cache"
 import { createCircuitBreaker } from "@/lib/circuit-breaker"
-import { createLogger } from "@/lib/logger"
-
-const log = createLogger("awards")
 
 interface AwardRule {
   keywords: string[]

@@ -31,6 +31,10 @@ or auditing it for speed, preserve them. They were established in the
 | Auto-fit **fetch** (logo + candidates, I/O) | 5000 ms | `PICTORIUM_AUTO_FIT_FETCH_TIMEOUT_MS` | 1000–15000 |
 | Wikidata awards | 2500 ms | `WIKIDATA_TIMEOUT` | – |
 | Rating wait (TMDB+IMDb upgrade) | 1500 ms | `PICTORIUM_RATING_WAIT_MS` | 300–10000 |
+| MDBList aggregated rating (internal fetch) | 1500 ms | `PICTORIUM_MDBLIST_TIMEOUT_MS` | 300–10000 |
+| JustWatch GraphQL (rankings/titles/quality/offers) | 2500 ms | `PICTORIUM_JUSTWATCH_TIMEOUT_MS` | 500–10000 |
+| TVDB API (login/search/extended/episodes page) | 5000 ms | `PICTORIUM_TVDB_TIMEOUT_MS` | 1000–15000 |
+| TVDB episodes pagination (total budget) | 20000 ms | `PICTORIUM_TVDB_EPISODES_BUDGET_MS` | 5000–60000 |
 
 The auto-fit **scoring** cap is the CPU bound (metrics, not product). The
 auto-fit **fetch** cap is separate network I/O to TMDB: when both shared

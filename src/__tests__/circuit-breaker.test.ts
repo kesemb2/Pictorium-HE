@@ -57,6 +57,20 @@ describe("createCircuitBreaker (generic)", () => {
     expect(breaker.isOpen()).toBe(false) // next trial after 5s, not 30s
   })
 
+  it("trip opens immediately without waiting for the threshold", () => {
+    const breaker = createCircuitBreaker({ failureThreshold: 5, backoffMs: 60_000 })
+    breaker.recordFailure()
+    expect(breaker.isOpen()).toBe(false)
+
+    breaker.trip(300_000) // hard block (e.g. 403 anti-bot): open at once
+    expect(breaker.isOpen()).toBe(true)
+
+    vi.setSystemTime(Date.now() + 61_000)
+    expect(breaker.isOpen()).toBe(true) // custom 5min window still open
+    vi.setSystemTime(Date.now() + 301_000)
+    expect(breaker.isOpen()).toBe(false) // trial allowed after the custom window
+  })
+
   it("instances are independent", () => {
     const a = createCircuitBreaker({ failureThreshold: 1, backoffMs: 10_000 })
     const b = createCircuitBreaker({ failureThreshold: 5, backoffMs: 60_000 })

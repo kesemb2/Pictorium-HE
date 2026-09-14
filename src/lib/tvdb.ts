@@ -7,11 +7,64 @@
 
 import crypto from "node:crypto"
 import { createLogger } from "@/lib/logger"
+import { envWithFallback } from "@/lib/env-compat"
+import { createCircuitBreaker, parseRetryAfterMs } from "@/lib/circuit-breaker"
 
 const log = createLogger("tvdb")
 
 const TVDB_BASE = "https://api4.thetvdb.com/v4"
 const ARTWORKS_BASE = "https://artworks.thetvdb.com"
+
+// Phase 4 (Provider Resilience): per-fetch deadline 8000/10000 → 5000ms.
+const TVDB_TIMEOUT_MS = (() => {
+  const raw = envWithFallback("TVDB_TIMEOUT_MS")
+  const n = raw ? parseInt(raw, 10) : 5000
+  return Number.isFinite(n) && n >= 1000 && n <= 15000 ? n : 5000
+})()
+
+// Tetto totale del loop di paginazione episodi (50 pagine max): senza, una
+// serie long-running su upstream lento trattiene la route meta fino al
+// maxDuration. Scaduto il budget il loop si interrompe e i caller usano il
+// fallback (ordinamento standard).
+const TVDB_EPISODES_BUDGET_MS = (() => {
+  const raw = envWithFallback("TVDB_EPISODES_BUDGET_MS")
+  const n = raw ? parseInt(raw, 10) : 20000
+  return Number.isFinite(n) && n >= 5000 && n <= 60000 ? n : 20000
+})()
+
+// Fail-open breaker condiviso (stesso host per login/search/extended/
+// episodes): 5 fallimenti → 60s cooldown. Mentre è aperto ogni funzione
+// ritorna subito il suo fallback (null/[]) senza toccare la rete.
+const tvdbBreaker = createCircuitBreaker({ name: "tvdb", failureThreshold: 5, backoffMs: 60_000 })
+
+/** Solo per i test: azzera lo stato del breaker TVDB. */
+export function __resetTvdbBreaker(): void {
+  tvdbBreaker.reset()
+}
+
+/**
+ * Singolo fetch TVDB con breaker + timeout. Ritorna null su circuito aperto,
+ * throw/timeout, 429/5xx (con record) — i caller trattano null come il
+ * precedente ramo !ok (fallback standard). Altri 4xx: Response intatta, fail
+ * veloce senza scattare (stesso contratto dei breaker MDBList/JustWatch).
+ */
+async function tvdbFetch(url: string, init: RequestInit, timeoutMs: number): Promise<Response | null> {
+  if (tvdbBreaker.isOpen()) return null
+  try {
+    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) })
+    if (res.status === 429 || res.status >= 500) {
+      tvdbBreaker.recordFailure(parseRetryAfterMs((n) => res.headers.get(n)))
+      return null
+    }
+    if (!res.ok) return null
+    tvdbBreaker.recordSuccess()
+    return res
+  } catch (e) {
+    tvdbBreaker.recordFailure()
+    log.error("TVDB fetch failed", { url, error: e instanceof Error ? e.message : String(e) })
+    return null
+  }
+}
 
 // Token cache: JWT valido fino a 25 giorni (TVDB fornisce token da 30 giorni)
 const tokenCache = new Map<string, { token: string; expiry: number }>()
@@ -53,6 +106,7 @@ export function clearTvdbCache(): void {
   remoteIdCache.clear()
   episodesCache.clear()
   seasonTypesCache.clear()
+  tvdbBreaker.reset()
 }
 
 export interface TvdbSeasonType {
@@ -116,15 +170,18 @@ export async function getTvdbToken(apiKey: string): Promise<string | null> {
 
   const fetchPromise = (async () => {
     try {
-      const res = await fetch(`${TVDB_BASE}/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apikey: cleanKey }),
-        signal: AbortSignal.timeout(8000),
-      })
+      const res = await tvdbFetch(
+        `${TVDB_BASE}/login`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ apikey: cleanKey }),
+        },
+        TVDB_TIMEOUT_MS,
+      )
 
-      if (!res.ok) {
-        log.warn("TVDB login failed", { status: res.status })
+      if (!res || !res.ok) {
+        if (res) log.warn("TVDB login failed", { status: res.status })
         return null
       }
 
@@ -164,16 +221,19 @@ export async function getTvdbSeriesId(remoteId: string, apiKey: string): Promise
   if (!token) return null
 
   try {
-    const res = await fetch(`${TVDB_BASE}/search/remoteid/${encodeURIComponent(cleanRemoteId)}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
+    const res = await tvdbFetch(
+      `${TVDB_BASE}/search/remoteid/${encodeURIComponent(cleanRemoteId)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
       },
-      signal: AbortSignal.timeout(8000),
-    })
+      TVDB_TIMEOUT_MS,
+    )
 
-    if (!res.ok) {
-      log.warn("TVDB search by remoteid failed", { status: res.status, remoteId: cleanRemoteId })
+    if (!res || !res.ok) {
+      if (res) log.warn("TVDB search by remoteid failed", { status: res.status, remoteId: cleanRemoteId })
       return null
     }
 
@@ -212,12 +272,15 @@ export async function getTvdbSeasonTypes(tvdbSeriesId: number, apiKey: string): 
   if (!token) return []
 
   try {
-    const res = await fetch(`${TVDB_BASE}/series/${tvdbSeriesId}/extended`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-      signal: AbortSignal.timeout(8000),
-    })
-    if (!res.ok) {
-      log.warn("TVDB series extended failed", { status: res.status, tvdbSeriesId })
+    const res = await tvdbFetch(
+      `${TVDB_BASE}/series/${tvdbSeriesId}/extended`,
+      {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      },
+      TVDB_TIMEOUT_MS,
+    )
+    if (!res || !res.ok) {
+      if (res) log.warn("TVDB series extended failed", { status: res.status, tvdbSeriesId })
       return []
     }
     const json = await res.json()
@@ -302,22 +365,29 @@ export async function getTvdbEpisodes(tvdbSeriesId: number, language = "ita", ap
     const allEpisodes: TvdbEpisode[] = []
     let page = 0
     let hasMore = true
+    const budgetUntil = Date.now() + TVDB_EPISODES_BUDGET_MS
 
     // Fix M5: cap alzato da 10 a 50 pagine (100 ep/page → 5000 ep) per serie
     // long-running (es. One Piece >1000 ep). Il loop termina comunque su
     // total_pages quando disponibile, il cap è solo safety bound.
     while (hasMore && page < 50) {
+      // Budget totale: su upstream lento interrompe il loop invece di
+      // trattenere la route meta fino al maxDuration (fallback standard).
+      if (Date.now() >= budgetUntil) break
       const langSegment = language && language !== "default" ? `/${encodeURIComponent(language)}` : ""
       const url = `${TVDB_BASE}/series/${tvdbSeriesId}/episodes/${encodeURIComponent(normalizedType)}${langSegment}?page=${page}`
-      const res = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
+      const res = await tvdbFetch(
+        url,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
         },
-        signal: AbortSignal.timeout(10000),
-      })
+        TVDB_TIMEOUT_MS,
+      )
 
-      if (!res.ok) {
+      if (!res || !res.ok) {
         // Se la lingua specifica (es. ita) fallisce o non ha episodi, prova il default
         if (page === 0 && language !== "default") {
           return getTvdbEpisodes(tvdbSeriesId, "default", apiKey, normalizedType)

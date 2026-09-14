@@ -20,8 +20,27 @@ export interface CircuitBreaker {
    * Retry-After) without changing the configured default.
    */
   recordFailure(customBackoffMs?: number): void
+  /**
+   * Opens the breaker immediately, without waiting for the threshold —
+   * for hard blocks (e.g. HTTP 403 anti-bot) where retrying is pointless.
+   * Extends the window when already open.
+   */
+  trip(customBackoffMs?: number): void
   /** Test-only: reset all state. */
   reset(): void
+}
+
+/**
+ * Retry-After (seconds) → ms for a breaker's custom backoff. Cap 5min: the
+ * value is upstream-controlled and must never freeze a provider for hours.
+ * Returns undefined when absent/unparseable (use the default backoff).
+ */
+export function parseRetryAfterMs(getHeader: (name: string) => string | null): number | undefined {
+  const raw = getHeader("Retry-After")
+  if (!raw) return undefined
+  const s = parseInt(raw, 10)
+  if (!Number.isFinite(s) || s < 0) return undefined
+  return Math.min(s * 1000, 300_000)
 }
 
 /**
@@ -45,6 +64,13 @@ export function createCircuitBreaker(options: CircuitBreakerOptions): CircuitBre
   let failures = 0
   let openUntil = 0
   let halfOpen = false
+
+  function effectiveBackoff(customBackoffMs?: number): number {
+    return typeof customBackoffMs === "number"
+      && Number.isFinite(customBackoffMs) && customBackoffMs >= 0
+      ? customBackoffMs
+      : backoffMs
+  }
 
   return {
     isOpen(): boolean {
@@ -71,13 +97,18 @@ export function createCircuitBreaker(options: CircuitBreakerOptions): CircuitBre
       // reject nothing yet. A failed half-open trial (already at threshold)
       // imposes another wait before the next trial.
       if (failures >= threshold) {
-        const effectiveBackoff = typeof customBackoffMs === "number"
-          && Number.isFinite(customBackoffMs) && customBackoffMs >= 0
-          ? customBackoffMs
-          : backoffMs
-        openUntil = Date.now() + effectiveBackoff
-        log.warn(`Circuit breaker failure #${failures} — backoff ${effectiveBackoff}ms`)
+        const effective = effectiveBackoff(customBackoffMs)
+        openUntil = Date.now() + effective
+        log.warn(`Circuit breaker failure #${failures} — backoff ${effective}ms`)
       }
+    },
+
+    trip(customBackoffMs?: number): void {
+      failures = threshold
+      halfOpen = false
+      const effective = effectiveBackoff(customBackoffMs)
+      openUntil = Date.now() + effective
+      log.warn(`Circuit breaker tripped — backoff ${effective}ms`)
     },
 
     reset(): void {

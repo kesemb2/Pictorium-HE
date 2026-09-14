@@ -1,5 +1,7 @@
 import { hasDigitalOffer } from "./pre-release"
 import { combineAbortSignals } from "./abort-signal"
+import { envWithFallback } from "@/lib/env-compat"
+import { createCircuitBreaker } from "@/lib/circuit-breaker"
 
 // Sovrascrivibile via env: nei test E2E punta al mock server locale.
 const JW_API = process.env.JUSTWATCH_API_URL || "https://apis.justwatch.com/graphql"
@@ -230,42 +232,37 @@ function jwHeaders(): Record<string, string> {
   return headers
 }
 
-interface CircuitBreakerState {
-  consecutiveFailures: number
-  cooldownUntil: number
-}
-
-const circuitState: CircuitBreakerState = {
-  consecutiveFailures: 0,
-  cooldownUntil: 0,
-}
+// Phase 3 (Provider Resilience): internal deadline for all four GraphQL
+// queries (rankings, titles, quality, offers). Slow upstream used to hold a
+// render slot or the pipeline up to 8s (quality/offers: 4s).
+const JW_TIMEOUT_MS = (() => {
+  const raw = envWithFallback("JUSTWATCH_TIMEOUT_MS")
+  const n = raw ? parseInt(raw, 10) : 2500
+  return Number.isFinite(n) && n >= 500 && n <= 10000 ? n : 2500
+})()
 
 const CIRCUIT_FAILURE_THRESHOLD = 5
 const CIRCUIT_COOLDOWN_DEFAULT_MS = 60_000 // 60s per 5xx/timeout ripetuti
 const CIRCUIT_COOLDOWN_BLOCK_MS = 300_000 // 5 min su 403 (DataDome block)
 
+const justwatchBreaker = createCircuitBreaker({
+  name: "justwatch",
+  failureThreshold: CIRCUIT_FAILURE_THRESHOLD,
+  backoffMs: CIRCUIT_COOLDOWN_DEFAULT_MS,
+})
+
 function isCircuitOpen(): boolean {
-  if (circuitState.cooldownUntil === 0) return false
-  if (Date.now() >= circuitState.cooldownUntil) {
-    circuitState.cooldownUntil = 0
-    circuitState.consecutiveFailures = 0
-    return false
-  }
-  return true
+  return justwatchBreaker.isOpen()
 }
 
 function recordCircuitSuccess(): void {
-  circuitState.consecutiveFailures = 0
-  circuitState.cooldownUntil = 0
+  justwatchBreaker.recordSuccess()
 }
 
 function recordCircuitFailure(status?: number): void {
-  circuitState.consecutiveFailures++
-  if (status === 403) {
-    circuitState.cooldownUntil = Date.now() + CIRCUIT_COOLDOWN_BLOCK_MS
-  } else if (circuitState.consecutiveFailures >= CIRCUIT_FAILURE_THRESHOLD) {
-    circuitState.cooldownUntil = Date.now() + CIRCUIT_COOLDOWN_DEFAULT_MS
-  }
+  // 403 DataDome: hard block, apre subito per 5 min senza aspettare i 5 colpi.
+  if (status === 403) justwatchBreaker.trip(CIRCUIT_COOLDOWN_BLOCK_MS)
+  else justwatchBreaker.recordFailure()
 }
 
 function usablePayload(data: unknown): boolean {
@@ -311,7 +308,7 @@ export async function getJWRankings(
     res = await fetch(JW_API, {
       method: "POST",
       headers: jwHeaders(),
-      signal: combineAbortSignals(signal, 8000),
+      signal: combineAbortSignals(signal, JW_TIMEOUT_MS),
       body: JSON.stringify({
         operationName: "GetStreamingChartInfo",
         query: QUERY,
@@ -450,7 +447,7 @@ export async function getJWTitles(opts: JWTitleOptions): Promise<JWRankEntry[]> 
     res = await fetch(JW_API, {
       method: "POST",
       headers: jwHeaders(),
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(JW_TIMEOUT_MS),
       body: JSON.stringify({
         operationName: "GetPopularTitles",
         query: GET_POPULAR_TITLES_QUERY,
@@ -572,7 +569,7 @@ export async function getJWTitleQuality(
       filter.searchQuery = searchTitle
     }
 
-    const timeoutSignal = AbortSignal.timeout(4000)
+    const timeoutSignal = AbortSignal.timeout(JW_TIMEOUT_MS)
     let combinedSignal: AbortSignal = timeoutSignal
     if (signal) {
       if (typeof (AbortSignal as unknown as { any?: unknown }).any === "function") {
@@ -677,7 +674,7 @@ export async function hasJWOffers(
       filter.searchQuery = searchTitle
     }
 
-    const timeoutSignal = AbortSignal.timeout(4000)
+    const timeoutSignal = AbortSignal.timeout(JW_TIMEOUT_MS)
     let combinedSignal: AbortSignal = timeoutSignal
     if (signal) {
       if (typeof (AbortSignal as unknown as { any?: unknown }).any === "function") {
@@ -754,6 +751,5 @@ export function __resetJWRankingsCache(): void {
   qualityCache.clear()
   availabilityCache.clear()
   ddCookie = null
-  circuitState.consecutiveFailures = 0
-  circuitState.cooldownUntil = 0
+  justwatchBreaker.reset()
 }
