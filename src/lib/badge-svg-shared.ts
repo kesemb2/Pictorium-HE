@@ -445,13 +445,32 @@ export function buildGenreGlassSvg(genreName: string, voteStr: string, yearStr: 
   const renderH = rectH + Math.round(fs * 0.2)
   const r = Math.round(fs * 0.6)
   // iOS liquid glass — multi-stop gradient: bright top edge → frosted body → bottom depth
-  const stops = topLight
-    ? `<stop offset="0%" stop-color="rgba(255,255,255,0.92)"/><stop offset="12%" stop-color="rgba(255,255,255,0.55)"/><stop offset="50%" stop-color="rgba(255,255,255,0.32)"/><stop offset="100%" stop-color="rgba(0,0,0,0.08)"/>`
-    : `<stop offset="0%" stop-color="rgba(255,255,255,0.45)"/><stop offset="10%" stop-color="rgba(255,255,255,0.14)"/><stop offset="50%" stop-color="rgba(255,255,255,0.07)"/><stop offset="100%" stop-color="rgba(0,0,0,0.35)"/>`
+  const stops = glassStops(topLight)
   const borderColor = topLight ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.22)"
   const textParts = buildGenreTextFlow({ genreName, voteStr, yearStr, fs, centerX: renderW / 2 + textOffsetX, y: rectH / 2, parts })
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${renderH}"><defs><linearGradient id="gg" x1="0" y1="0" x2="0" y2="1">${stops}</linearGradient></defs><rect width="${renderW}" height="${rectH}" rx="${r}" fill="url(#gg)" stroke="${borderColor}" stroke-width="1.5"/><g fill="${textColor}">${textParts}</g></svg>`
   return { svg, w: renderW, h: renderH }
+}
+
+export function glassStops(topLight: boolean): string {
+  return topLight
+    ? `<stop offset="0%" stop-color="rgba(255,255,255,0.92)"/><stop offset="12%" stop-color="rgba(255,255,255,0.55)"/><stop offset="50%" stop-color="rgba(255,255,255,0.32)"/><stop offset="100%" stop-color="rgba(0,0,0,0.08)"/>`
+    : `<stop offset="0%" stop-color="rgba(255,255,255,0.45)"/><stop offset="10%" stop-color="rgba(255,255,255,0.14)"/><stop offset="50%" stop-color="rgba(255,255,255,0.07)"/><stop offset="100%" stop-color="rgba(0,0,0,0.35)"/>`
+}
+
+/**
+ * Gradiente satinato per i badge a convenzione "pill" (pill chiara + testo
+ * scuro su poster scuro, pill scura + testo chiaro su poster chiaro):
+ * ranking-default, nastro netflix, qualità.
+ *
+ * Polarità opposta a `glassStops` (disegnato per testo sempre chiaro):
+ * su poster scuro la pill resta chiara e luminosa (il rank deve emergere),
+ * su poster chiaro diventa grafite scura. Solo rgba traslucidi, mai opachi.
+ */
+export function satinPillStops(topLight: boolean): string {
+  return topLight
+    ? `<stop offset="0%" stop-color="rgba(52,64,86,0.85)"/><stop offset="35%" stop-color="rgba(23,32,48,0.83)"/><stop offset="70%" stop-color="rgba(12,18,30,0.84)"/><stop offset="100%" stop-color="rgba(0,0,0,0.88)"/>`
+    : `<stop offset="0%" stop-color="rgba(255,255,255,0.95)"/><stop offset="30%" stop-color="rgba(255,255,255,0.82)"/><stop offset="62%" stop-color="rgba(255,255,255,0.66)"/><stop offset="100%" stop-color="rgba(255,255,255,0.50)"/>`
 }
 
 export function buildRankingBarSvg(fullText: string, pw: number, fs: number, textColor: string, bg: string) {
@@ -469,7 +488,7 @@ export function buildRankingBarSvg(fullText: string, pw: number, fs: number, tex
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${svgH}">${defs}${inner}${textEl}</svg>`, w: pw, h: svgH }
 }
 
-export function buildRankingDefaultSvg(fullText: string, fs: number, textColor: string, bg: string) {
+export function buildRankingDefaultSvg(fullText: string, fs: number, textColor: string, _bg: string, topLight = false, flatBg?: string) {
   const px = Math.round(fs * 1.0)
   const pt = Math.round(fs * 0.5)
   const pb = pt
@@ -486,9 +505,10 @@ export function buildRankingDefaultSvg(fullText: string, fs: number, textColor: 
   const pathD = `M ${ox},${oy} L ${ox + totalW},${oy} L ${ox + totalW},${oy + svgH - r} A ${r},${r} 0 0,1 ${ox + totalW - r},${oy + svgH} L ${ox + r},${oy + svgH} A ${r},${r} 0 0,1 ${ox},${oy + svgH - r} Z`
   const centerX = ox + totalW / 2
   const centerY = oy + svgH / 2
-  const defs = `<defs><filter id="ds" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="rgba(0,0,0,0.6)"/><feDropShadow dx="0" dy="${shadowOff}" stdDeviation="${shadowBlur / 2}" flood-color="rgba(0,0,0,0.35)"/></filter></defs>`
+  const defs = `<defs><linearGradient id="rdg" x1="0" y1="0" x2="0" y2="1">${satinPillStops(topLight)}</linearGradient><filter id="ds" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="rgba(0,0,0,0.6)"/><feDropShadow dx="0" dy="${shadowOff}" stdDeviation="${shadowBlur / 2}" flood-color="rgba(0,0,0,0.35)"/></filter></defs>`
   const textEl = `<text x="${centerX}" y="${centerY}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(fullText)}" font-weight="${RANKING_FONT_WEIGHT}" font-size="${fs}" fill="${textColor}"${textFitAttrs(textW)}>${escSvg(rtlSafe(fullText))}</text>`
-  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${renderH}">${defs}<path d="${pathD}" fill="${bg}" stroke="rgba(255,255,255,0.15)" stroke-width="1" filter="url(#ds)"/>${textEl}</svg>`, w: renderW, h: renderH }
+  // colored: tinta accent piatta (contratto storico); default: gradiente satinato.
+  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${renderH}">${defs}<path d="${pathD}" fill="${flatBg ?? "url(#rdg)"}" stroke="rgba(255,255,255,0.15)" stroke-width="1" filter="url(#ds)"/>${textEl}</svg>`, w: renderW, h: renderH }
 }
 
 export function buildRankingPillSvg(fullText: string, fs: number, textColor: string, bg: string) {
@@ -518,9 +538,7 @@ export function buildRankingGlassSvg(fullText: string, fs: number, textColor: st
   const renderW = totalW
   const renderH = rectH + Math.round(fs * 0.2)
   // iOS liquid glass — multi-stop gradient
-  const stops = topLight
-    ? `<stop offset="0%" stop-color="rgba(255,255,255,0.92)"/><stop offset="12%" stop-color="rgba(255,255,255,0.55)"/><stop offset="50%" stop-color="rgba(255,255,255,0.32)"/><stop offset="100%" stop-color="rgba(0,0,0,0.08)"/>`
-    : `<stop offset="0%" stop-color="rgba(255,255,255,0.45)"/><stop offset="10%" stop-color="rgba(255,255,255,0.14)"/><stop offset="50%" stop-color="rgba(255,255,255,0.07)"/><stop offset="100%" stop-color="rgba(0,0,0,0.35)"/>`
+  const stops = glassStops(topLight)
   const borderColor = topLight ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.22)"
   const textEl = `<text x="${renderW / 2}" y="${rectH / 2}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(fullText)}" font-weight="700" font-size="${fs}" fill="${textColor}"${textFitAttrs(textW)}>${escSvg(rtlSafe(fullText))}</text>`
   const defs = `<defs><linearGradient id="rg" x1="0" y1="0" x2="0" y2="1">${stops}</linearGradient></defs>`
@@ -607,9 +625,7 @@ export function buildExtraGlassSvg(label: string, fs: number, textColor: string,
   const renderW = totalW
   const renderH = rectH + Math.round(fs * 0.2)
   // iOS liquid glass — multi-stop gradient
-  const stops = topLight
-    ? `<stop offset="0%" stop-color="rgba(255,255,255,0.92)"/><stop offset="12%" stop-color="rgba(255,255,255,0.55)"/><stop offset="50%" stop-color="rgba(255,255,255,0.32)"/><stop offset="100%" stop-color="rgba(0,0,0,0.08)"/>`
-    : `<stop offset="0%" stop-color="rgba(255,255,255,0.45)"/><stop offset="10%" stop-color="rgba(255,255,255,0.14)"/><stop offset="50%" stop-color="rgba(255,255,255,0.07)"/><stop offset="100%" stop-color="rgba(0,0,0,0.35)"/>`
+  const stops = glassStops(topLight)
   const borderColor = topLight ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.22)"
   const textEl = `<text x="${renderW / 2}" y="${rectH / 2}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(label)}" font-weight="700" font-size="${fs}" fill="${textColor}"${textFitAttrs(textW)}>${escSvg(rtlSafe(label))}</text>`
   const defs = `<defs><linearGradient id="eg" x1="0" y1="0" x2="0" y2="1">${stops}</linearGradient></defs>`
@@ -631,18 +647,19 @@ export function buildNetflixRankSvg(rank: number, pw: number) {
 }
 
 export function buildQualityBadgeSvg(quality: string, fs: number, _textColor: string, _bg: string, topLight: boolean = false) {
-  // Pill con funzionamento identico al badge grande: bianco→testo nero, nero→testo bianco
+  // Pill satinata traslucida a polarità pill (chiara su top scuro, grafite su
+  // top chiaro): geometria e testo invariati.
   const px = Math.round(fs * 0.75)
   const pt = Math.round(fs * 0.35)
   const textW = Math.max(estimateTextWidth(quality, fs), fs)
   const totalW = textW + px * 2
   const svgH = fs + pt * 2
   const r = Math.round(svgH / 2)
-  const bg = topLight ? "rgba(0,0,0,0.80)" : "rgba(255,255,255,0.80)"
-  const stroke = topLight ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.20)"
+  const stroke = topLight ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.22)"
   const fg = topLight ? "rgba(255,255,255,0.95)" : "rgba(0,0,0,0.88)"
   const textEl = `<text x="${totalW / 2}" y="${svgH / 2}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(quality)}" font-weight="700" font-size="${fs}" fill="${fg}"${textFitAttrs(textW)}>${escSvg(rtlSafe(quality))}</text>`
-  const bgEl = `<rect width="${totalW}" height="${svgH}" rx="${r}" fill="${bg}" stroke="${stroke}" stroke-width="1"/>`
-  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${svgH}">${bgEl}${textEl}</svg>`, w: totalW, h: svgH }
+  const defs = `<defs><linearGradient id="qg" x1="0" y1="0" x2="0" y2="1">${satinPillStops(topLight)}</linearGradient></defs>`
+  const bgEl = `<rect width="${totalW}" height="${svgH}" rx="${r}" fill="url(#qg)" stroke="${stroke}" stroke-width="1.5"/>`
+  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${svgH}">${defs}${bgEl}${textEl}</svg>`, w: totalW, h: svgH }
 }
 

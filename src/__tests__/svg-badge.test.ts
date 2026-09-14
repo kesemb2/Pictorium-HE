@@ -1,6 +1,6 @@
 import sharp from "sharp"
 import { describe, expect, it } from "vitest"
-import { buildGenrePillSvg, buildGenreTextSvg, buildRankingDefaultSvg, buildExtraDefaultSvg } from "@/lib/badge-svg-shared"
+import { buildGenrePillSvg, buildGenreTextSvg, buildRankingDefaultSvg, buildExtraDefaultSvg, buildQualityBadgeSvg, glassStops, satinPillStops } from "@/lib/badge-svg-shared"
 import { buildGenreBadgeSVG, buildRankingBadgeSVG, buildExtraBadgeSVG, buildNetflixRankBadgeSVG, renderComingSoonRibbon, comingSoonRibbonLayout } from "@/lib/svg-badge"
 
 async function alphaBounds(png: Buffer) {
@@ -244,16 +244,18 @@ describe("buildRankingBadgeSVG", () => {
     expect(badge!.w).toBeGreaterThan(0)
   })
 
-  it("uses light ribbon + dark text (tlBg/tlFg) when top is dark", () => {
+  it("uses satin gradient ribbon + adaptive text when top is dark", () => {
     const { svg } = buildNetflixRankBadgeSVG(4, 1000, false)
-    expect(svg).toContain('fill="rgba(255,255,255,0.80)"')
+    expect(svg).toContain('fill="url(#nrg)"')
+    expect(svg).toContain('stop-color="rgba(255,255,255,0.95)"')
     expect(svg).toContain('fill="rgba(0,0,0,0.80)"')
-    expect(svg).not.toContain("netflixRibbonGrad")
+    expect(svg).not.toContain('fill="rgba(255,255,255,0.80)"')
   })
 
-  it("uses dark ribbon + light text (tlBg/tlFg) when top is light", () => {
+  it("uses dark satin ribbon + light text when top is light", () => {
     const { svg } = buildNetflixRankBadgeSVG(4, 1000, true)
-    expect(svg).toContain('fill="rgba(0,0,0,0.80)"')
+    expect(svg).toContain('fill="url(#nrg)"')
+    expect(svg).toContain('stop-color="rgba(0,0,0,0.88)"')
     expect(svg).toContain('fill="rgba(255,255,255,0.80)"')
   })
 
@@ -367,6 +369,39 @@ describe("buildRankingDefaultSvg", () => {
   it("locks text to the measured badge width", () => {
     const { svg } = buildRankingDefaultSvg("#1 Oggi", 60, "rgba(255,255,255,0.80)", "rgba(0,0,0,0.80)")
     expect(svg).toContain('lengthAdjust="spacingAndGlyphs"')
+  })
+
+  it("shares the vetro satin stops (no opaque silver)", () => {
+    expect(glassStops(false)).toContain('stop-color="rgba(255,255,255,0.45)"')
+    expect(glassStops(false)).toContain('stop-color="rgba(0,0,0,0.35)"')
+    expect(glassStops(true)).toContain('stop-color="rgba(255,255,255,0.92)"')
+    expect(glassStops(true)).not.toContain("#FFFFFF")
+    expect(glassStops(true)).not.toContain("#E2E8F0")
+  })
+
+  it("renders ranking-default with satin gradient (dark top → light pill)", () => {
+    const { svg } = buildRankingDefaultSvg("#1 Oggi", 60, "rgba(0,0,0,0.80)", "rgba(255,255,255,0.80)", false)
+    expect(svg).toContain('fill="url(#rdg)"')
+    expect(svg).toContain('stop-color="rgba(255,255,255,0.95)"')
+  })
+
+  it("keeps the accent flat fill for rs=colored (no satin override)", () => {
+    const { svg } = buildRankingDefaultSvg("#2 Film", 60, "#ffffff", "#ff6430", false, "#ff6430")
+    expect(svg).toContain('fill="#ff6430"')
+    expect(svg).not.toContain('fill="url(#rdg)"')
+  })
+
+  it("renders quality badge with satin gradient (geometry unchanged)", () => {
+    const dark = buildQualityBadgeSvg("4K", 20, "", "", false)
+    expect(dark.svg).toContain('fill="url(#qg)"')
+    expect(dark.svg).toContain('stop-color="rgba(255,255,255,0.95)"')
+    const light = buildQualityBadgeSvg("4K", 20, "", "", true)
+    expect(light.svg).toContain('stop-color="rgba(0,0,0,0.88)"')
+  })
+
+  it("keeps pill-polarity stops bright on dark tops (rank must pop)", () => {
+    expect(satinPillStops(false)).toContain('stop-color="rgba(255,255,255,0.95)"')
+    expect(satinPillStops(true)).toContain('stop-color="rgba(0,0,0,0.88)"')
   })
 })
 

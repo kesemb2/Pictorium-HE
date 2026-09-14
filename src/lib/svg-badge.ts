@@ -1,7 +1,7 @@
 import fs from "fs"
 import { textColorForBg } from "./accent-color"
 import { FONT_FILES, FONT_INTER_REGULAR, FONT_INTER_BOLD, FONT_INTER_BLACK, FONT_SYMBOLS } from "./fonts"
-import { buildTitleTextSvg, textShadowBox, type TextStyle, estimateTextWidth, fontFamilyFor, genreBadgeSafePad, genreBadgeSvgDims, genrePillMaxW, buildGenreBarSvg, buildGenrePillSvg, buildGenreTextSvg, buildGenreBorderedSvg, buildGenreGlassSvg, buildRankingBarSvg, buildRankingDefaultSvg, buildRankingPillSvg, buildExtraBarSvg, buildExtraDefaultSvg, buildExtraPillSvg, buildExtraGlassSvg, buildQualityBadgeSvg, escSvg } from "./badge-svg-shared"
+import { buildTitleTextSvg, textShadowBox, type TextStyle, estimateTextWidth, fontFamilyFor, genreBadgeSafePad, genreBadgeSvgDims, genrePillMaxW, buildGenreBarSvg, buildGenrePillSvg, buildGenreTextSvg, buildGenreBorderedSvg, buildGenreGlassSvg, buildRankingBarSvg, buildRankingDefaultSvg, buildRankingPillSvg, buildExtraBarSvg, buildExtraDefaultSvg, buildExtraPillSvg, buildExtraGlassSvg, buildQualityBadgeSvg, escSvg, satinPillStops } from "./badge-svg-shared"
 import type { GenreParts } from "./badge-svg-shared"
 import type { BadgeStyle, RankingBadgeStyle, ExtraBadgeStyle } from "./badge-styles"
 
@@ -308,10 +308,10 @@ export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boo
     ? Math.round((rankY + Math.round(rankFs / 2) + ribbonVNotchY) / 2)
     : 0
 
-  // Stessa logica adattiva degli altri badge ranking (tlBg/tlFg):
-  // top chiaro → nastro scuro con testo chiaro; top scuro → nastro chiaro con testo nero.
-  const fill = topLight ? "rgba(0,0,0,0.80)" : "rgba(255,255,255,0.80)"
+  // Nastro satinato traslucido a convenzione "pill" (chiaro su top scuro,
+  // grafite su top chiaro) — testo, ombra singola, highlight e letter-spacing invariati.
   const textColor = topLight ? "rgba(255,255,255,0.80)" : "rgba(0,0,0,0.80)"
+  const ribbonStroke = topLight ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.12)"
 
   // Nastro top-left (side="left", default): ancorato al bordo sinistro del poster,
   // lato sinistro dritto e destro inclinato. Modalità Stremio (side="right"): nastro
@@ -332,6 +332,7 @@ export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boo
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${totalH}" viewBox="0 0 ${totalW} ${totalH}">
     <defs>
+      <linearGradient id="nrg" x1="0" y1="0" x2="0" y2="1">${satinPillStops(topLight)}</linearGradient>
       <filter id="shadow3D" x="-20%" y="-20%" width="180%" height="180%">
         <feDropShadow dx="${shadowDx}" dy="3" stdDeviation="3.5" flood-color="#000000" flood-opacity="0.65"/>
       </filter>
@@ -339,7 +340,7 @@ export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boo
         <feDropShadow dx="${shadowDx > 0 ? 0 : -1.5}" dy="1.5" stdDeviation="1" flood-color="#000000" flood-opacity="0.65"/>
       </filter>
     </defs>
-    <path d="${pathD}" fill="${fill}" filter="url(#shadow3D)"/>
+    <path d="${pathD}" fill="url(#nrg)" stroke="${ribbonStroke}" stroke-width="1" filter="url(#shadow3D)"/>
     <line x1="${highlightX1}" y1="1" x2="${highlightX2}" y2="1" stroke="rgba(255,255,255,0.4)" stroke-width="1.2"/>
     <text x="${textX}" y="${topY}" fill="${textColor}" font-family="Inter" font-weight="800" font-size="${topFs}" text-anchor="middle" dominant-baseline="central" letter-spacing="1" filter="url(#textShadow)">TOP</text>
     <text x="${textX}" y="${rankY}" fill="${textColor}" font-family="Inter" font-weight="900" font-size="${rankFs}" text-anchor="middle" dominant-baseline="central" letter-spacing="${rankLetterSpacing}" filter="url(#textShadow)">${rank}</text>
@@ -391,7 +392,8 @@ export async function buildRankingBadgeSVG(
   } else if (s === "pill") {
     result = buildRankingPillSvg(fullText, fs, fg, bg)
   } else {
-    result = buildRankingDefaultSvg(fullText, fs, fg, bg)
+    // colored: passa la tinta accent come flatBg (resta piatta); default: gradiente.
+    result = buildRankingDefaultSvg(fullText, fs, fg, bg, !!topLight, isColored ? bg : undefined)
   }
   const png = await renderSVG(wrapSvg(result.svg), result.w)
   return { png, w: result.w, h: result.h }

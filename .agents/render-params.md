@@ -42,14 +42,15 @@ When you modify a visual render parameter in one file, update its server counter
 | Padding Y (default) | `pt = pb = round(displayFs * 0.5)` |
 | Border radius | `r = round(finalFontSize * 0.7)` |
 | Ombra | `shadowBlur = round(fs * 0.6)`, `shadowOff = round(fs * 0.2)` |
-| Sfondo | `topLight ? "rgba(0,0,0,0.80)" : "rgba(255,255,255,0.80)"` |
-| Testo | `topLight ? "rgba(255,255,255,0.80)" : "rgba(0,0,0,0.80)"` |
+| Sfondo | `default`/`netflix` — gradiente satinato traslucido a polarità pill (`satinPillStops(topLight)`: pill chiara su top scuro, grafite su top chiaro); `pill`/`bar`/`colored` — flat `topLight ? "rgba(0,0,0,0.80)" : "rgba(255,255,255,0.80)"` |
+| Testo | `topLight ? "rgba(255,255,255,0.80)" : "rgba(0,0,0,0.80)"` (invariato) |
 | Stabilizzazione testo | `textLength` + `lengthAdjust="spacingAndGlyphs"` sul `<text>` per evitare differenze metriche tra Windows/local e Linux/HF |
 | Overflow protection | Stessa formula con `pw - 20`, fattori `3.55` (ranking, include shadow) e `3.2` (extra); extra compatti cappati al 65% di `pw` (solo label oltre il cap si rimpiccioliscono) |
 | Posizione | Composito a `top: 0, left: round((pw - w) / 2)` (default/bar/pill/colored); nastro Netflix a `left: 0` (Nuvio) o `left: STD_W - w` specchiato (Stremio, `side=right`); logo network segue a destra del nastro (`w + 10`) o a sinistra (`STD_W - w - 10 - logoW`) |
 | Scala badge superiore (`topBadgeScale`) | Resize bitmap dopo il render (nastro incluso; la **barra** scala nativa via font per restare full-width), prima di `fitBadgeToCanvas`; `%` 10..200, default 100; entra nella `rankBadgeKey` |
 | Offset badge superiore (`topBadgeOffsetX/Y`) | Solo stili centrati: `left = center + tox`, `top = 0 + toy` (px, default 0); nastro/barra restano ancorati; la matematica overlap usa `finalRankTop + h` |
 | Posizione badge qualità | Angolo in alto a destra (`left = pw - w - padX`, `top = padY`); con nastro Netflix a destra (Stremio) va a **sinistra** (`left = padX`) per non restargli accanto, impilato sotto il logo network se occupa il top-left (`top = netBottom + gap`) |
+| Sfondo badge qualità | Gradiente satinato traslucido a polarità pill (`satinPillStops(topLight)`); bordo `topLight ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.22)"` 1.5px; testo invariato (`topLight ? "rgba(255,255,255,0.95)" : "rgba(0,0,0,0.88)"`) |
 
 ## Pill Network Logo
 
