@@ -61,7 +61,7 @@ export function MyPostersView() {
 
   // Tendina di conferma sotto il cestino della tile (fixed + clampato come il
   // menu collezioni): niente modale a tutto schermo per la delete singola.
-  const openRemoveConfirm = (e: React.MouseEvent, m: Mapping) => {
+  const openRemoveConfirm = useCallback((e: React.MouseEvent, m: Mapping) => {
     e.stopPropagation()
     const btn = e.currentTarget as HTMLElement
     const r = btn.getBoundingClientRect()
@@ -72,7 +72,7 @@ export function MyPostersView() {
     const top = below + 190 > window.innerHeight ? Math.max(12, r.top - 190) : below
     setConfirmAnchor({ top, left })
     setConfirmRemove(m)
-  }
+  }, [])
   const closeRemoveConfirm = () => {
     setConfirmRemove(null)
     setConfirmAnchor(null)

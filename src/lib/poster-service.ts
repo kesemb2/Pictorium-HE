@@ -32,7 +32,7 @@ import { renderFirstMatchingNetworkLogoBadge, renderFirstMatchingNetworkRawBadge
 import { computeLogoLayout } from "./logo-layout"
 import fs from "fs"
 import path from "path"
-import { estimateTextWidth, fitTitleText, fontFamilyFor, titleStripHeight, titleTextFontSize, titleTextMaxW } from "./badge-svg-shared"
+import { estimateTextWidth, fitTitleText, fontFamilyFor, titleStripHeight, titleTextFontSize, titleTextMaxW, escSvg } from "./badge-svg-shared"
 import { computeTopBadge, isNetworkStudio, type BadgeInput } from "./poster-badge"
 import { PRE_RELEASE_DIM_ALPHA, PRE_RELEASE_BLUR_SIGMA } from "./pre-release"
 import type { Mapping } from "./types"
@@ -222,29 +222,42 @@ export interface GenerationInput {
   preRelease?: boolean
 }
 
-// ---- Vignette SVG cache (constant, render once) ----
-let _vignettePromise: Promise<Buffer> | null = null
-async function getVignette(): Promise<Buffer> {
-  if (!_vignettePromise) {
-    _vignettePromise = sharp(Buffer.from(cinematicVignetteSVG(STD_W, STD_H))).png().toBuffer()
+// ---- Vignette SVG cache (una entry per dimensioni canvas) ----
+const _vignetteCache = new Map<string, Promise<Buffer>>()
+async function getVignette(canvasW: number = STD_W, canvasH: number = STD_H): Promise<Buffer> {
+  const key = `${canvasW}x${canvasH}`
+  let p = _vignetteCache.get(key)
+  if (!p) {
+    const fresh = sharp(Buffer.from(cinematicVignetteSVG(canvasW, canvasH))).png().toBuffer()
+    // Reset su reject: una Promise respinta resterebbe cachata e avvelenerebbe
+    // tutti i render futuri (stesso pattern di loadResvg in svg-badge.ts).
+    fresh.catch(() => { if (_vignetteCache.get(key) === fresh) _vignetteCache.delete(key) })
+    _vignetteCache.set(key, fresh)
+    p = fresh
   }
-  return _vignettePromise
+  return p
 }
 
-// ---- Pre-release dim overlay (constant black veil, render once) ----
-let _preReleaseDimPromise: Promise<Buffer> | null = null
-async function getPreReleaseDim(): Promise<Buffer> {
-  if (!_preReleaseDimPromise) {
-    _preReleaseDimPromise = sharp({
+// ---- Pre-release dim overlay (uno per dimensioni canvas) ----
+const _preReleaseDimCache = new Map<string, Promise<Buffer>>()
+async function getPreReleaseDim(canvasW: number = STD_W, canvasH: number = STD_H): Promise<Buffer> {
+  const key = `${canvasW}x${canvasH}`
+  let p = _preReleaseDimCache.get(key)
+  if (!p) {
+    const fresh = sharp({
       create: {
-        width: STD_W,
-        height: STD_H,
+        width: canvasW,
+        height: canvasH,
         channels: 4,
         background: { r: 0, g: 0, b: 0, alpha: PRE_RELEASE_DIM_ALPHA },
       },
     }).png().toBuffer()
+    // Reset su reject: vedi getVignette sopra.
+    fresh.catch(() => { if (_preReleaseDimCache.get(key) === fresh) _preReleaseDimCache.delete(key) })
+    _preReleaseDimCache.set(key, fresh)
+    p = fresh
   }
-  return _preReleaseDimPromise
+  return p
 }
 
 // ---------------------------------------------------------------------------
@@ -406,7 +419,7 @@ export async function renderCombinedRankNetworkPill(rank: number, label: string,
   const textY = pt + fs / 2
   const logoY = pt + fs + gap + netLogo.h / 2
   const logoX = Math.round((pillW - netLogo.w) / 2)
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pillW}" height="${pillH}"><rect width="${pillW}" height="${pillH}" rx="${r}" fill="${bg}" stroke="${topLight ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.20)"}" stroke-width="1"/><text x="${pillW / 2}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(text)}" font-weight="700" font-size="${fs}" fill="${fg}">${text.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text><image href="data:image/png;base64,${netLogo.png.toString("base64")}" x="${logoX}" y="${Math.round(logoY - netLogo.h / 2)}" width="${netLogo.w}" height="${netLogo.h}"/></svg>`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pillW}" height="${pillH}"><rect width="${pillW}" height="${pillH}" rx="${r}" fill="${bg}" stroke="${topLight ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.20)"}" stroke-width="1"/><text x="${pillW / 2}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(text)}" font-weight="700" font-size="${fs}" fill="${fg}">${escSvg(text)}</text><image href="data:image/png;base64,${netLogo.png.toString("base64")}" x="${logoX}" y="${Math.round(logoY - netLogo.h / 2)}" width="${netLogo.w}" height="${netLogo.h}"/></svg>`
   // Render via resvg (stesso path degli altri badge — renderSVG hoisted)
   const png = await renderSVG(svg, pillW)
   return { png, w: pillW, h: pillH }
@@ -447,7 +460,7 @@ export async function renderCombinedExtraNetworkPill(label: string, networkKey: 
   const textY = pt + fs / 2
   const logoX = Math.round((pillW - netLogo.w) / 2)
   const logoY = pt + fs + gap + netLogo.h / 2
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pillW}" height="${pillH}"><rect width="${pillW}" height="${pillH}" rx="${r}" fill="${bg}" stroke="${topLight ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.20)"}" stroke-width="1"/><text x="${pillW / 2}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(label)}" font-weight="700" font-size="${fs}" fill="${fg}">${label.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</text><image href="data:image/png;base64,${netLogo.png.toString("base64")}" x="${logoX}" y="${Math.round(logoY - netLogo.h / 2)}" width="${netLogo.w}" height="${netLogo.h}"/></svg>`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pillW}" height="${pillH}"><rect width="${pillW}" height="${pillH}" rx="${r}" fill="${bg}" stroke="${topLight ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.20)"}" stroke-width="1"/><text x="${pillW / 2}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(label)}" font-weight="700" font-size="${fs}" fill="${fg}">${escSvg(label)}</text><image href="data:image/png;base64,${netLogo.png.toString("base64")}" x="${logoX}" y="${Math.round(logoY - netLogo.h / 2)}" width="${netLogo.w}" height="${netLogo.h}"/></svg>`
   const png = await renderSVG(svg, pillW)
   return { png, w: pillW, h: pillH }
 }

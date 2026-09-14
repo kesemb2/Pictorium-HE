@@ -9,6 +9,7 @@ import crypto from "node:crypto"
 import { z } from "zod"
 // Batch B: clamp condiviso da image-utils.ts (semantica standard, senza round)
 import { clamp } from "@/lib/image-utils"
+import { envWithFallback } from "@/lib/env-compat"
 import { BADGE_STYLES, RANKING_BADGE_STYLES } from "@/lib/badge-styles"
 
 // ---- Zod schema (Batch C: sostituisce validazione manuale) ----
@@ -96,7 +97,7 @@ export type PictoriumUserConfig = z.infer<typeof configTokenSchema>
 
 // ---- HMAC setup ----
 
-const HMAC_SECRET = process.env.ENCRYPTION_KEY_SECRET || process.env.CONFIG_HMAC_SECRET || ""
+const HMAC_SECRET = envWithFallback("CONFIG_HMAC_SECRET") || envWithFallback("ENCRYPTION_KEY_SECRET") || process.env.ENCRYPTION_KEY_SECRET || process.env.CONFIG_HMAC_SECRET || ""
 
 // In produzione senza secret: encodeConfig lancia e decodeConfig rifiuta i
 // token unsigned (fail-closed, Batch A step 2 + Batch E). Il warning aiuta a

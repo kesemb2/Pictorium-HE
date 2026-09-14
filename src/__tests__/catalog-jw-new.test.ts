@@ -147,4 +147,42 @@ describe("New JustWatch Catalogs & Genre Filtering", () => {
     expect(data.platformName).toBe("Crunchyroll")
     expect(data.movies[0]?.title).toBe("Demon Slayer")
   })
+
+  it("does not double-slice platform catalogs on page 2 (skip=10)", async () => {
+    // Il ramo platform pagina già via slice(sliceOffset, sliceOffset + 10):
+    // il guard finale non deve riaffettare, altrimenti pagina 2 → [].
+    const rows = Array.from({ length: 20 }, (_, i) => ({
+      tmdbId: 1000 + i,
+      title: `Crunchy Show ${i + 1}`,
+      imdbId: `tt${1000 + i}`,
+    }))
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const urlStr = String(url)
+      if (urlStr.includes("graphql") || urlStr.includes("justwatch")) {
+        return Response.json({
+          data: {
+            streamingCharts: {
+              edges: rows.map((r, idx) => ({
+                streamingChartInfo: { rank: idx + 1 },
+                node: { content: { title: r.title, externalIds: { tmdbId: r.tmdbId, imdbId: r.imdbId } } },
+              })),
+            },
+          },
+        })
+      }
+      const m = urlStr.match(/\/(movie|tv)\/(\d+)/)
+      const id = m ? Number(m[2]) : 0
+      const row = rows.find((r) => r.tmdbId === id)
+      return tmdbDetailsResponse(id, row?.title ?? `Title ${id}`)
+    })
+
+    const req = new NextRequest("http://localhost:3000/catalog/series/pictorium-crunchyroll-series.json?skip=10&api_key=test-api-key")
+    const res = await GET(req, { params: Promise.resolve({ type: "series", id: "pictorium-crunchyroll-series.json" }) })
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.metas).toHaveLength(10)
+    expect(body.metas[0].name).toBe("Crunchy Show 11")
+    expect(body.metas[9].name).toBe("Crunchy Show 20")
+  })
 })

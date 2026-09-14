@@ -173,13 +173,16 @@ export function rateLimitKey(request: Request): string {
   // 2) cf-connecting-ip — Cloudflare
   const cfIp = request.headers.get("cf-connecting-ip")
   if (cfIp) return cfIp.trim()
-  // 3) x-forwarded-for — solo se trusted, altrimenti spoofabile (H2)
+  // 3) x-forwarded-for — solo se trusted, altrimenti spoofabile (H2).
+  // Catena "client, proxy1, proxy2": il client è il PRIMO elemento.
+  // Prendere l'ultimo raggrupperebbe tutti gli utenti dietro lo stesso
+  // proxy/gateway nello stesso bucket (falsi 429).
   if (trusted) {
     const forwarded = request.headers.get("x-forwarded-for")
     if (forwarded) {
       const parts = forwarded.split(",").map((p) => p.trim()).filter(Boolean)
       if (parts.length > 0) {
-        const ip = parts[parts.length - 1]
+        const ip = parts[0]
         if (ip) return ip
       }
     }

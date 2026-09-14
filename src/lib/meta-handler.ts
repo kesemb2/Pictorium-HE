@@ -321,7 +321,7 @@ export async function pictoriumMeta(
       // Default: stagioni standard TMDB. Si usa un Episode Group solo se
       // l'utente ha salvato esplicitamente un episodeGroupId diverso da "standard", "tvdb:*" e "anizip".
       if (videos.length === 0 && isGroupSentinel) {
-        groupDetails = await getTVEpisodeGroup(sentinel!, "it-IT", apiKey)
+        groupDetails = await getTVEpisodeGroup(sentinel!, tmdbLang, apiKey)
       }
 
       if (groupDetails?.groups && groupDetails.groups.length > 0) {

@@ -29,18 +29,21 @@ describe("rateLimitKey con POSTERIUM_TRUST_PROXY=1 (deploy dietro proxy fidato)"
     expect(rateLimitKey(req)).toBe("1.2.3.4")
   })
 
-  it("uses the LAST hop of x-forwarded-for when the trusted headers are absent", () => {
+  it("uses the FIRST hop of x-forwarded-for when the trusted headers are absent", () => {
+    // Catena "client, proxy1, proxy2": il client è il primo elemento.
+    // Prendere l'ultimo raggruppava tutti gli utenti dietro lo stesso
+    // proxy/gateway nello stesso bucket (falsi 429).
     const req = new NextRequest("http://localhost:3000/", {
       headers: { "x-forwarded-for": "9.9.9.9, 10.10.10.10" },
     })
-    expect(rateLimitKey(req)).toBe("10.10.10.10")
+    expect(rateLimitKey(req)).toBe("9.9.9.9")
   })
 
   it("trims values and defaults to 'local' with no IP headers", () => {
     const req = new NextRequest("http://localhost:3000/", {
       headers: { "x-forwarded-for": "9.9.9.9,   10.10.10.10 " },
     })
-    expect(rateLimitKey(req)).toBe("10.10.10.10")
+    expect(rateLimitKey(req)).toBe("9.9.9.9")
     expect(rateLimitKey(new NextRequest("http://localhost:3000/"))).toBe("local")
   })
 })

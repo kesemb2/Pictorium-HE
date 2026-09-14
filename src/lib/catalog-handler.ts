@@ -898,7 +898,10 @@ export async function pictoriumCatalog(
       })
     }
 
-    const isPlatformOrJw = catalogId.startsWith("pictorium-jw") || catalogId.includes("netflix") || catalogId.includes("prime") || catalogId.includes("disney") || catalogId.includes("-now-") || catalogId.includes("apple") || catalogId.includes("hbo") || catalogId.includes("paramount")
+    // Match ancorato come nel ramo platform sopra (riga ~785): un includes()
+    // generico su "now" darebbe falsi positivi su id custom ("unknown",
+    // "snow-white"). PLATFORM_JW_PACKAGES ha le stesse chiavi di PLATFORM_SLUGS.
+    const isPlatformOrJw = catalogId.startsWith("pictorium-jw") || Object.keys(PLATFORM_JW_PACKAGES).some((k) => catalogId === `pictorium-${k}-movies` || catalogId === `pictorium-${k}-series`)
     if (typeof extra.skip === "number" && extra.skip > 0 && (!catalogId.startsWith("pictorium-custom-") || isCustomGenreFiltered) && !isPlatformOrJw) {
       metas = metas.slice(extra.skip)
     }
