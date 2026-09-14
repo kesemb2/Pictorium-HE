@@ -27,7 +27,7 @@ When you modify a visual render parameter in one file, update its server counter
 | Overflow protection | `totalW + safePad*2 > min(pw - 20, round(pw * 0.84))`, usa `genreBadgeDims()`. Per pill usa `min(width - 20, round(width * 0.78))` su `textContentW + pillPad*3 + safePad*2` |
 | Misura testo | `estimateTextWidth()` per-glyph in `badge-svg-shared.ts`; SVG vincolato con `textLength` + `lengthAdjust="spacingAndGlyphs"` |
 | Allineamento verticale | Un solo `<text>` con `text-anchor="middle" x="adjustedX"` (compensa dx) e `<tspan dx=...>`; `dominant-baseline="central"` e stella con `Noto Sans Symbols 2` |
-| Stili badge (`badgeStyle`) | `shadow` — textShadow; `pill` — bg fissa `rgba(255,255,255,0.80)` + testo `rgba(0,0,0,0.80)` + stroke 1px `rgba(255,255,255,0.18)`; `bar` — bg fissa `rgba(255,255,255,0.80)` full-width + testo `rgba(0,0,0,0.80)` + bordo superiore 1px `rgba(0,0,0,0.10)`; `colored` — bg `accentColor` + testo adattivo; `bordo` — rect arrotondato con bordo 2px + bg trasparente; `vetro` — vetro liquido iOS (gradiente multi-stop + bordo 1.5px) |
+| Stili badge (`badgeStyle`) | `shadow` — textShadow; `minimal` — separatore pipe `|` + textShadow discreto (1px); `pill` — bg fissa `rgba(255,255,255,0.80)` + testo `rgba(0,0,0,0.80)` + stroke 1px `rgba(255,255,255,0.18)`; `bar` — bg fissa `rgba(255,255,255,0.80)` full-width + testo `rgba(0,0,0,0.80)` + bordo superiore 1px `rgba(0,0,0,0.10)`; `colored` — bg tinta di scena same-hue (bottom per genere, top per ranking; `ac=` vince) + testo adattivo; `bordo` — rect arrotondato con bordo 2px + bg trasparente; `vetro` — vetro liquido iOS (gradiente multi-stop + bordo 1.5px) |
 | Sfondo pill/bar | Colori FISSI (non dipendono da `topLight`): pill = `rgba(255,255,255,0.80)`, bar (`buildGenreBarSvg`) = path `rgba(255,255,255,0.80)` |
 | Testo pill/bar | Colori FISSI: pill = `rgba(0,0,0,0.80)`, bar = `rgba(0,0,0,0.80)` (argomento textColor esplicito in `svg-badge.ts:191`) |
 | Bordo bar | `line` 1px in alto `rgba(0,0,0,0.10)` (fisso); `topLight` non usato in `buildGenreBarSvg` |
@@ -101,7 +101,9 @@ Solo quando il provider è abilitato server-side (`PICTORIUM_CUSTOM_RATING_*`) e
 | `by` | `badgeYear === false ? "0" : null` | `qBy !== null ? qBy !== "0"` — nasconde l'ANNO nel badge genere/rating |
 | `br` | `badgeRating === false ? "0" : null` | `qBr !== null ? qBr !== "0"` — nasconde il VOTO nel badge genere/rating |
 | `cr` | sempre esplicito in preview (`cr=0/1`, WYSIWYG); solo-OFF in pattern/Stremio | `qCr` — display riga rating custom: `query > mapping.customRatings > config > defaults > true`, AND con env `PICTORIUM_CUSTOM_RATING_ENABLED` |
-| `gradHeight` | `gradientHeight` | `qGradHeight` — alimenta l'altezza del gradiente/sfocatura (blurHeight) |
+| `gradHeight` | `gradientHeight` | `qGradHeight` — alimenta l'altezza del gradiente/sfocatura (blurHeight; default 30) |
+| `bf` | `blurFade` (slider editor 0..100 + double-click reset 50) | punto di attacco transizione 0..100 (default 50): query > mapping > config token > server defaults > default di formato. Emessa sempre esplicita in preview e Stremio |
+| `tint` | `tintStrength` (slider editor 0..100 + default globale, double-click reset 20) | `qTint` — intensità tinta di scena 0..100 (default 20): query > mapping (`tintStrength`) > config token > server defaults (`PICTORIUM_TINT_STRENGTH`) > 20. Emessa sempre esplicita in preview e Stremio. |
 | `tl` | `topLight ? "1" : "0"` (sempre, anche per genre badges) | `qTopLight` — override se presente |
 | `pre` | `preRelease ? "1" : null` (solo se ON, default OFF) | `qPre` — effetto pre-digitale: velo scuro (sotto logo e badge, che restano luminosi) + nastro angolare rosso "coming soon!" in alto (a sinistra; a destra con side="right") sui film senza disponibilità digitale/streaming (JW offerte non-CINEMA > TMDB type 4). Catena: query > config token > server defaults (`PICTORIUM_PRE_RELEASE`) > false |
 | `rd`/`fad` | date complete `release_date`/`first_air_date` (solo se valide `YYYY-MM-DD`) | ramo query: date a piena precisione per rilevamento pre-digitale (fallback `year` → `${y}-01-01`) |
@@ -112,7 +114,7 @@ Solo quando il provider è abilitato server-side (`PICTORIUM_CUSTOM_RATING_*`) e
 | `animerank` | rank anime del titolo selezionato (da `mdblistAnimeList`, solo preview WYSIWYG) | `qAnimeRank` — override del rank anime (`media_type=tv`); senza, il server lo calcola da `fetchMDBList` con la chiave della richiesta o il fallback d'istanza (`PICTORIUM_MDBLIST_KEY`) |
 | `label` | `badge.rankLabel \|\| badge.label` | `qLabel` — override label ranking |
 | `extra` | `badge.label` (se extra) o `customBadge` | `queryExtra` — forza badge extra |
-| `bs` | `badgeStyle` | `qBs` — "shadow"/"pill"/"bar"/"colored"/"bordo"/"vetro" |
+| `bs` | `badgeStyle` | `qBs` — "shadow"/"pill"/"bar"/"colored"/"bordo"/"vetro"/"minimal" |
 | `rs` | `rankingBadgeStyle` | `qRs` — "default"/"bar"/"colored"/"pill"/"netflix" |
 | `tscale`/`tox`/`toy` | `topBadgeScale`/`topBadgeOffsetX`/`topBadgeOffsetY` (badge superiore) | scala `%` 10..200 (default 100, tutti gli stili) + offset px (default 0, solo centrati) |
 | `gscale` | `genreBadgeScale` (badge genere/rating in basso) | scala `%` 10..200 (default 100 su base 120% nativa; la **barra** scala nativa via font per restare full-width) |

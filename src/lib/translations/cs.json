@@ -637,5 +637,7 @@
   "ui.ratingStar": "Hvězdička hodnocení",
   "ui.badgeTopOffset": "Pozice horního odznaku",
   "ui.badgeBottomOffset": "Pozice spodního řádku",
-  "ui.logoBottomOffset": "Výška loga"
+  "ui.logoBottomOffset": "Výška loga",
+  "ui.minimal": "Minimální",
+  "ui.tintStrength": "Síla odstínu"
 }

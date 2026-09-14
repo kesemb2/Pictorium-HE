@@ -637,5 +637,7 @@
   "ui.ratingStar": "כוכב הדירוג",
   "ui.badgeTopOffset": "מיקום תג עליון",
   "ui.badgeBottomOffset": "מיקום שורה תחתונה",
-  "ui.logoBottomOffset": "גובה הלוגו"
+  "ui.logoBottomOffset": "גובה הלוגו",
+  "ui.minimal": "מינימלי",
+  "ui.tintStrength": "עוצמת הגוון"
 }

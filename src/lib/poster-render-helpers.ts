@@ -2,7 +2,7 @@ import crypto from "node:crypto"
 import sharp from "sharp"
 import { FANART_ASSET_PREFIX } from "./fanart"
 import { combineAbortSignals } from "./abort-signal"
-import { findAccentColor, type AccentHueMode } from "@/lib/accent-color"
+import { findAccentColor, findSceneTint, type AccentHueMode } from "@/lib/accent-color"
 import { GENRE_FALLBACK } from "@/lib/badges"
 // Batch B: STD_W/STD_H ora provengono da image-utils.ts (single source of truth)
 import { STD_W, STD_H, computeRegionStats } from "@/lib/image-utils"
@@ -227,4 +227,35 @@ export async function extractBadgeColor(
   }
 
   return posterColor || logoColor || (fallbackGenre ? (GENRE_FALLBACK[fallbackGenre] || "#555555") : "#555555")
+}
+
+/**
+ * Estrae la tinta tonale di scena (same-hue) dal poster.
+ *
+ * Analizza l'INTERO thumb (niente crop): il crop bottom-40% falliva sui
+ * portrait con facce in basso (es. Silo: pelle/tuta arancione nel fondo
+ * votavano marrone #86642d invece dello smeraldo della scena, che vive
+ * nella parte alta). La famiglia dominante per area vince per costruzione.
+ *
+ * Total fail-safe: non lancia mai eccezioni, in caso di errore o buffer corrotto
+ * restituisce l'hex di fallback del genere o #555555.
+ * Riusa `posterThumb(posterBuf)` condividendo la memo WeakMap con `extractBadgeColor`.
+ * Non analizza loghi (evita inquinamento cromatico da marchi bianchi/luminosi).
+ */
+export async function extractSceneTint(
+  posterBuf: Buffer,
+  fallbackGenre?: string | null,
+): Promise<string> {
+  const defaultFallback = fallbackGenre ? (GENRE_FALLBACK[fallbackGenre] || "#555555") : "#555555"
+  try {
+    const thumbBuf = await posterThumb(posterBuf)
+    const posterW = 200
+    const posterH = 300
+
+    const pixels = await sharp(thumbBuf).ensureAlpha().raw().toBuffer()
+    const tint = findSceneTint(pixels, posterW, posterH, fallbackGenre || "")
+    return `#${tint.r.toString(16).padStart(2, "0")}${tint.g.toString(16).padStart(2, "0")}${tint.b.toString(16).padStart(2, "0")}`
+  } catch {
+    return defaultFallback
+  }
 }

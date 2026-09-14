@@ -56,9 +56,10 @@ describe("resolvePosterRenderConfig", () => {
     expect(r.rankingBadgeStyle).toBe("default")
     expect(r.blurEnabled).toBe(true)
     expect(r.blurHeight).toBe(30)
-    expect(r.blurIntensity).toBe(5)
-    expect(r.blurFade).toBe(60)
-    expect(r.blurDarkness).toBe(40)
+    expect(r.blurIntensity).toBe(20)
+    expect(r.blurFade).toBe(50)
+    expect(r.blurDarkness).toBe(30)
+    expect(r.tintStrength).toBe(20)
     expect(r.badgesEnabled).toBe(true)
     expect(r.rankingEnabled).toBe(true)
     expect(r.ribbonSide).toBe("left")
@@ -247,6 +248,16 @@ describe("resolvePosterRenderConfig", () => {
     expect(resolvePosterRenderConfig(baseInput({ configOverride: config({ logoBottomOffset: 40 }) })).logoBottomOffset).toBe(40)
     expect(resolvePosterRenderConfig(baseInput({ sd: { logoBottomOffset: -30 } })).logoBottomOffset).toBe(-30)
     expect(resolvePosterRenderConfig(baseInput()).logoBottomOffset).toBe(0)
+  })
+
+  it("tintStrength: query wins, then mapping, then config token, then sd, then 20 (clamped 0..100)", () => {
+    expect(resolvePosterRenderConfig(baseInput()).tintStrength).toBe(20)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ tint: "60" }) })).tintStrength).toBe(60)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ tint: "999" }) })).tintStrength).toBe(100)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ tint: "abc" }) })).tintStrength).toBe(20)
+    expect(resolvePosterRenderConfig(baseInput({ mapping: mapping({ tintStrength: 40 }) })).tintStrength).toBe(40)
+    expect(resolvePosterRenderConfig(baseInput({ configOverride: config({ tintStrength: 70 }) })).tintStrength).toBe(70)
+    expect(resolvePosterRenderConfig(baseInput({ sd: { tintStrength: 35 } })).tintStrength).toBe(35)
   })
 
   it("queryExtra picks up extra param or config customBadge", () => {

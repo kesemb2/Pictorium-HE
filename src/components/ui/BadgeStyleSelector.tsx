@@ -16,6 +16,8 @@ function BadgePreview({ style, accentColor }: { style: string; accentColor?: str
       return <span className={`${base} text-white`} style={{ border: "1px solid rgba(255,255,255,0.5)", borderRadius: 3, background: "transparent" }}>Aa</span>
     case "vetro":
       return <span className={`${base} text-white`} style={{ background: "rgba(255,255,255,0.08)", backdropFilter: "blur(4px)", border: "1px solid rgba(255,255,255,0.15)" }}>Aa</span>
+    case "minimal":
+      return <span className={`${base} bg-transparent text-white font-medium`} style={{ textShadow: "0 1px 2px rgba(0,0,0,0.8)" }}>A|a</span>
     case "netflix":
       return <span className={`${base} text-white font-black`} style={{ background: "rgba(255,255,255,0.25)", borderRadius: "2px 2px 0 0" }}>TOP</span>
     case "default":
@@ -40,7 +42,7 @@ export function BadgeStyleSelector<S extends string>({
   accentColor?: string | null
   disabled?: readonly S[]
 }) {
-  const gridCols = options.length <= 3 ? "grid-cols-3" : "grid-cols-3 sm:grid-cols-6"
+  const gridCols = options.length <= 3 ? "grid-cols-3" : options.length <= 6 ? "grid-cols-3 sm:grid-cols-6" : "grid-cols-3 sm:grid-cols-4 md:grid-cols-7"
   return (
     <div className={`grid ${gridCols} gap-1.5 w-full`}>
       {options.map((s) => {
@@ -61,7 +63,7 @@ export function BadgeStyleSelector<S extends string>({
           >
             <BadgePreview style={s} accentColor={accentColor} />
             <span className="text-[10px] font-semibold leading-tight truncate max-w-full">
-              {s === "shadow" ? t("ui.shadow") : s === "pill" ? t("ui.pill") : s === "bar" ? t("ui.bar") : s === "default" ? t("ui.bsDefault") : s === "colored" ? t("ui.colored") : s === "bordo" ? t("ui.bordo") : s === "vetro" ? t("ui.vetro") : s === "netflix" ? t("ui.netflix") : s}
+              {s === "shadow" ? t("ui.shadow") : s === "pill" ? t("ui.pill") : s === "bar" ? t("ui.bar") : s === "default" ? t("ui.bsDefault") : s === "colored" ? t("ui.colored") : s === "bordo" ? t("ui.bordo") : s === "vetro" ? t("ui.vetro") : s === "minimal" ? t("ui.minimal") : s === "netflix" ? t("ui.netflix") : s}
             </span>
           </button>
         )

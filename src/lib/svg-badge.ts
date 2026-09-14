@@ -178,14 +178,15 @@ export async function buildGenreBadgeSVG(
   // Barra full-width: vedi nota in buildExtraBadgeSVG.
   if (s === "bar") finalFs = (finalFs * scale) / 100
   const aestheticMaxW = Math.round(pw * 0.86) // 86% per margine estetico
-  let dims = genreBadgeSvgDims(finalFs, genreName, voteStr, yearStr, parts)
+  const isMinimal = s === "minimal"
+  let dims = genreBadgeSvgDims(finalFs, genreName, voteStr, yearStr, parts, s)
   let safePad = genreBadgeSafePad(finalFs)
-  // Per shadow, buildGenreTextSvg aggiunge shadowPad*2 al renderW finale
-  const extraShadowPad = style === "shadow" ? textShadowBox(textStyle).pad : 0
+  // Per shadow e minimal, buildGenreTextSvg aggiunge shadowPad*2 al renderW finale
+  const extraShadowPad = s === "shadow" ? textShadowBox(textStyle).pad : (isMinimal ? 2 : 0)
   const estimatedRenderW = dims.totalW + safePad * 2 + extraShadowPad * 2
   if (estimatedRenderW > aestheticMaxW) {
     finalFs = Math.max(aestheticMaxW / estimatedRenderW * finalFs, 10)
-    dims = genreBadgeSvgDims(finalFs, genreName, voteStr, yearStr, parts)
+    dims = genreBadgeSvgDims(finalFs, genreName, voteStr, yearStr, parts, s)
     safePad = genreBadgeSafePad(finalFs)
   }
 

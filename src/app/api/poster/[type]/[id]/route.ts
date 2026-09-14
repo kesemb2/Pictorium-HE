@@ -1171,7 +1171,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     })
     const {
       badgeStyle, rankingBadgeStyle,
-      blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness,
+      blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness, tintStrength,
       badgesEnabled, rankingEnabled,
       badgeGenre, badgeYear, badgeRating, badgeQuality,
       logoScale, logoOffsetX, logoOffsetY,
@@ -1338,7 +1338,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       ratings: customRatingConfig.enabled ? [...new Map([...ratings, ...customRatings].map(item => [item.id, item])).values()] : undefined,
       posterBuf, logoFetch, backdropFetch,
       backdropScale, backdropOffsetX, backdropOffsetY,
-      blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness,
+      blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness, tintStrength,
       badgesEnabled, rankingEnabled, genreName, voteAverage, badgeStyle,
       rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality,
       quality: finalQuality,

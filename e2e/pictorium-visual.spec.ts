@@ -263,6 +263,14 @@ test.describe("poster API — functional", () => {
     expect(buffer.length).toBeGreaterThan(1000)
   })
 
+  test("badge style: minimal — valid image", async ({ request }) => {
+    const url = posterUrl({ genreName: "Action", voteAverage: "7.8", bs: "minimal", badges: "1", ranking: "0" })
+    const res = await request.get(url)
+    expect(res.ok()).toBeTruthy()
+    const buffer = await res.body()
+    expect(buffer.length).toBeGreaterThan(1000)
+  })
+
   test("ranking style: pill — valid image", async ({ request }) => {
     const url = posterUrl({ genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "1", rank: "2", label: "Top 2", rs: "pill" })
     const res = await request.get(url)
@@ -381,6 +389,12 @@ test.describe("poster API — visual regression", () => {
     const url = posterUrl({ genreName: "Action", voteAverage: "7.8", bs: "vetro", badges: "1", ranking: "0" })
     const poster = await renderPoster(page, url)
     await expect(poster).toHaveScreenshot("poster-vetro.png", { maxDiffPixelRatio: 0.10 })
+  })
+
+  test("minimal badge — screenshot", async ({ page }) => {
+    const url = posterUrl({ genreName: "Action", voteAverage: "7.8", bs: "minimal", badges: "1", ranking: "0" })
+    const poster = await renderPoster(page, url)
+    await expect(poster).toHaveScreenshot("poster-minimal.png", { maxDiffPixelRatio: 0.10 })
   })
 
   test("ranking pill — screenshot", async ({ page }) => {

@@ -106,22 +106,23 @@ function hslToRgb(H: number, S: number, L: number): AccentResult {
   }
 }
 
-/**
- * Rotazione di tinta applicata al colore estratto.
- *
- * `complement` (+150°) è il comportamento storico: un colore che "stacca"
- * dall'artwork. `dominant` (0°) tiene la tinta del poster, che è ciò che
- * serve quando lo stesso colore tinge anche la fascia sfocata in basso —
- * una fascia complementare al poster su cui poggia sembrerebbe un errore.
- */
-export type AccentHueMode = "complement" | "dominant"
-
-const ACCENT_HUE_ROTATION: Record<AccentHueMode, number> = {
-  complement: 150,
-  dominant: 0,
+export interface BucketAnalysis {
+  readonly hue: number
+  readonly avgSat: number
+  readonly vibrantWeight: number
+  readonly bgRelLum: number
+  readonly avgR: number
+  readonly avgG: number
+  readonly avgB: number
+  readonly countLuma: number
 }
 
-export function findAccentColor(pixels: Uint8ClampedArray | Buffer, width: number, height: number, genre: string, hueMode: AccentHueMode = "complement"): AccentResult {
+export function analyzeBuckets(
+  pixels: Uint8ClampedArray | Buffer,
+  width: number,
+  height: number,
+  tintMode: "badge" | "scene" = "badge",
+): BucketAnalysis {
   const step = 2
   let sumR = 0, sumG = 0, sumB = 0, countLuma = 0
 
@@ -136,6 +137,14 @@ export function findAccentColor(pixels: Uint8ClampedArray | Buffer, width: numbe
 
   for (let y = 0; y < height; y += step) {
     for (let x = 0; x < width; x += step) {
+      // Modalità scena: campiona SOLO la cornice esterna (stile Ambilight).
+      // Facce/loghi/titoli stanno al centro e hijackerebbero il voto (pelle
+      // arancione su Silo); i bordi vedono quasi sempre lo sfondo/atmosfera.
+      if (tintMode === "scene") {
+        const bx = Math.max(8, Math.floor(width * 0.15))
+        const by = Math.max(8, Math.floor(height * 0.15))
+        if (x >= bx && x < width - bx && y >= by && y < height - by) continue
+      }
       const i = (y * width + x) * 4
       const pr = pixels[i], pg = pixels[i + 1], pb = pixels[i + 2]
       const alpha = pixels[i + 3]
@@ -153,7 +162,12 @@ export function findAccentColor(pixels: Uint8ClampedArray | Buffer, width: numbe
       const hue = fastHue(r, g, b, d, max)
       const bucketIdx = Math.floor(hue / 30) % 12
       const bkt = buckets[bucketIdx]
-      const weight = Math.pow(s, 1.5) * (1 - Math.abs(l - 0.5) * 1.5)
+      // Badge: penalità per scuro/chiaro (serve contrasto per il testo).
+      // Scena: vince l'area satura e SCURA (lo scrim vive nel fondo scuro;
+      // pelli e cieli chiari non devono hijackare la tinta).
+      const weight = tintMode === "scene"
+        ? Math.pow(s, 1.5) * (1 - l)
+        : Math.pow(s, 1.5) * (1 - Math.abs(l - 0.5) * 1.5)
       bkt.count += weight
       bkt.totalSat += s * weight
       bkt.hueSin += Math.sin(hue * Math.PI / 180) * weight
@@ -168,14 +182,17 @@ export function findAccentColor(pixels: Uint8ClampedArray | Buffer, width: numbe
   const avgB = countLuma > 0 ? sumB / countLuma : 128
   const bgRelLum = relativeLuminance(avgR, avgG, avgB)
 
-  // Fallback for monochrome/flat posters → genre palette color, contrast-adjusted
   if (totalVibrantWeight < 1) {
-    const fb = GENRE_FALLBACK[genre] || '#C0C0C0'
-    const cr = parseInt(fb.slice(1, 3), 16)
-    const cg = parseInt(fb.slice(3, 5), 16)
-    const cb = parseInt(fb.slice(5, 7), 16)
-    const avgRawLum = countLuma > 0 ? (0.2126 * avgR + 0.7152 * avgG + 0.0722 * avgB) / 255 : 0.5
-    return pushContrast({ r: cr, g: cg, b: cb }, avgRawLum)
+    return {
+      hue: 0,
+      avgSat: 0,
+      vibrantWeight: totalVibrantWeight,
+      bgRelLum,
+      avgR,
+      avgG,
+      avgB,
+      countLuma,
+    }
   }
 
   // Find most vibrant hue bucket
@@ -186,6 +203,50 @@ export function findAccentColor(pixels: Uint8ClampedArray | Buffer, width: numbe
 
   // Dominant hue of the poster
   const posterHue = ((Math.atan2(bestBucket.hueSin, bestBucket.hueCos) * 180 / Math.PI) % 360 + 360) % 360
+  const avgSat = bestBucket.count > 0 ? bestBucket.totalSat / bestBucket.count : 0
+
+  return {
+    hue: posterHue,
+    avgSat,
+    vibrantWeight: totalVibrantWeight,
+    bgRelLum,
+    avgR,
+    avgG,
+    avgB,
+    countLuma,
+  }
+}
+
+/**
+ * Rotazione di tinta applicata al colore estratto.
+ *
+ * `complement` (+150°) è il comportamento storico: un colore che "stacca"
+ * dall'artwork. `dominant` (0°) tiene la tinta del poster ed è quello che
+ * l'interruttore "Poster colour accent" seleziona.
+ */
+export type AccentHueMode = "complement" | "dominant"
+
+const ACCENT_HUE_ROTATION: Record<AccentHueMode, number> = {
+  complement: 150,
+  dominant: 0,
+}
+
+export function findAccentColor(pixels: Uint8ClampedArray | Buffer, width: number, height: number, genre: string, hueMode: AccentHueMode = "complement"): AccentResult {
+  const analysis = analyzeBuckets(pixels, width, height)
+
+  // Fallback for monochrome/flat posters → genre palette color, contrast-adjusted
+  if (analysis.vibrantWeight < 1) {
+    const fb = GENRE_FALLBACK[genre] || '#C0C0C0'
+    const cr = parseInt(fb.slice(1, 3), 16)
+    const cg = parseInt(fb.slice(3, 5), 16)
+    const cb = parseInt(fb.slice(5, 7), 16)
+    const avgRawLum = analysis.countLuma > 0
+      ? (0.2126 * analysis.avgR + 0.7152 * analysis.avgG + 0.0722 * analysis.avgB) / 255
+      : 0.5
+    return pushContrast({ r: cr, g: cg, b: cb }, avgRawLum)
+  }
+
+  const { hue: posterHue, avgSat, bgRelLum } = analysis
 
   // --- Split-Complementary Harmony (+150°) ---
   // Rotating by 150° gives a badge color that is:
@@ -199,10 +260,8 @@ export function findAccentColor(pixels: Uint8ClampedArray | Buffer, width: numbe
   //   Cyan (180°)        → 180+150 = 330° → pink-rose   🌸
   const badgeHue = (posterHue + ACCENT_HUE_ROTATION[hueMode]) % 360
 
-  // Saturazione alta: in modalità complement il colore deve "poppare"
-  // sull'artwork, in modalità dominant deve restare riconoscibile una volta
-  // diluito al 22% nella fascia sfocata.
-  const badgeSat = Math.min(0.82, Math.max(0.55, bestBucket.totalSat / bestBucket.count))
+  // Higher saturation since we're using a contrasting hue (not blending, but popping)
+  const badgeSat = Math.min(0.82, Math.max(0.55, avgSat))
 
   // Lightness strategy:
   //   Dark poster  (bgRelLum < 0.18)  → very light badge (L=0.88) → cream/pastel tones
@@ -217,6 +276,41 @@ export function findAccentColor(pixels: Uint8ClampedArray | Buffer, width: numbe
   result.g = Math.max(0, Math.min(255, result.g))
   result.b = Math.max(0, Math.min(255, result.b))
   return result
+}
+
+/**
+ * Calcola la tinta di scena naturale (same-hue) per la sfocatura di fondo.
+ *
+ * A differenza di findAccentColor:
+ * - NESSUNA rotazione a +150°: preserva la famiglia cromatica della scena.
+ * - Saturazione controllata in [0.30, 0.50]: tinta presente ma non accesa.
+ * - Luminosità L = 0.20: tinta già profonda come gli scrim di riferimento.
+ * - NESSUNA ricerca dicotomica di contrasto: deve fondersi armoniosamente con l'immagine.
+ * - Fallback monocromatico: GENRE_FALLBACK puro senza pushContrast.
+ */
+export function findSceneTint(
+  pixels: Uint8ClampedArray | Buffer,
+  width: number,
+  height: number,
+  genre: string,
+): AccentResult {
+  const analysis = analyzeBuckets(pixels, width, height, "scene")
+  if (analysis.vibrantWeight < 1) {
+    const fb = GENRE_FALLBACK[genre] || "#555555"
+    const [r, g, b] = parseColor(fb)
+    return { r, g, b }
+  }
+
+  // Same-hue: estrazione diretta della famiglia cromatica nativa della scena.
+  // L scuro (0.20): la tinta di scrim/badge nasce già profonda (riferimento
+  // RPDB ~#184236 per Silo); lo shade del blur la porta poi a fondo campo.
+  const sat = Math.min(0.50, Math.max(0.30, analysis.avgSat))
+  const res = hslToRgb(analysis.hue, sat, 0.20)
+  return {
+    r: Math.max(0, Math.min(255, res.r)),
+    g: Math.max(0, Math.min(255, res.g)),
+    b: Math.max(0, Math.min(255, res.b)),
+  }
 }
 
 /**

@@ -43,9 +43,10 @@ describe("buildStremioPosterSearchParams", () => {
     expect(params.has("ranking")).toBe(false)
     expect(params.has("be")).toBe(false)
     expect(params.get("gradHeight")).toBe("30")
-    expect(params.get("blur")).toBe("5")
-    expect(params.get("bf")).toBe("60")
-    expect(params.get("bd")).toBe("40")
+    expect(params.get("blur")).toBe("20")
+    expect(params.get("bf")).toBe("50")
+    expect(params.get("bd")).toBe("30")
+    expect(params.get("tint")).toBe("20")
     expect(params.get("bs")).toBe("shadow")
     expect(params.get("rs")).toBe("default")
   })
@@ -54,6 +55,11 @@ describe("buildStremioPosterSearchParams", () => {
     expect(buildStremioPosterSearchParams({}).has("cr")).toBe(false)
     expect(buildStremioPosterSearchParams({ customRatings: true }).has("cr")).toBe(false)
     expect(buildStremioPosterSearchParams({ customRatings: false }).get("cr")).toBe("0")
+  })
+
+  it("always emits explicit tint (default 20)", () => {
+    expect(buildStremioPosterSearchParams({}).get("tint")).toBe("20")
+    expect(buildStremioPosterSearchParams({ tintStrength: 60 }).get("tint")).toBe("60")
   })
 
   it("serializes ribbonSide left and right explicitly", () => {

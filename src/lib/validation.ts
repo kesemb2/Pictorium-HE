@@ -61,6 +61,7 @@ export const mappingSchema = z.object({
   blurIntensity: z.number().nullable().optional(),
   blurFade: z.number().nullable().optional(),
   blurDarkness: z.number().nullable().optional(),
+  tintStrength: z.number().nullable().optional(),
   gradientHeight: z.number().nullable().optional(),
   badgeStyle: z.enum(BADGE_STYLES).nullable().optional(),
   rankingBadgeStyle: z.enum(RANKING_BADGE_STYLES).nullable().optional(),

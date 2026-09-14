@@ -10,6 +10,7 @@ import {
   clampAccentRegionFraction,
   DEFAULT_ACCENT_REGION_FRACTION,
   extractBadgeColor,
+  extractSceneTint,
   fitBadgeToCanvas,
   fitCompositeToCanvas,
   isValidHex,
@@ -83,6 +84,8 @@ export interface GenerationInput {
   blurIntensity: number
   blurFade: number
   blurDarkness: number
+  /** Intensità tinta di scena 0-100 (default 20, convertita in frazione per applyBlur). */
+  tintStrength?: number
 
   // Badge flags
   badgesEnabled: boolean
@@ -555,6 +558,8 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     posterBuf, logoFetch, backdropFetch,
     backdropScale, backdropOffsetX, backdropOffsetY,
     blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness,
+    // Default 20 quando il chiamante non lo passa (test diretti, vecchi adapter).
+    tintStrength = 20,
     badgesEnabled, rankingEnabled, genreName, voteAverage, badgeStyle,
     rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality, quality,
     topLight, targetCenter, ribbonSide,
@@ -658,10 +663,29 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
         ? accentOverride
         : await resolveBadgeColors(posterBuf, logoFetch, genreName, posterSrc, logoSrc, accentHueMode, accentBottomFraction))
     : undefined
-  const tintColor = accentTintEnabled ? badgeColors?.genreColor ?? null : null
+  // La fascia NON prende il colore del badge. L'accento viene schiarito di
+  // proposito (fino a L=0.88 sui poster scuri) perché il testo resti
+  // leggibile, e riusarlo per la fascia schiariva il fondo sopra l'artwork.
+  // La tinta di scena nasce dalla cornice esterna del poster, preferisce le
+  // aree sature e SCURE e chiude a L=0.20: stessa famiglia cromatica, profonda.
+  // Un accento manuale (`ac=`) resta prioritario, è una scelta esplicita.
+  const tintColor = accentTintEnabled && blurEnabled
+    ? (accentOverride?.genreColor ?? await extractSceneTint(posterBuf, genreName))
+    : null
+  const accentColorGenre = badgeColors?.genreColor || (GENRE_FALLBACK[genreName || ""] || "#555555")
+  const accentColorRank = badgeColors?.rankColor || "#555555"
 
   const [blurOverlay, logoResult] = await Promise.all([
-    applyBlur({ posterBuf, blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness, tintColor }),
+    applyBlur({
+      posterBuf,
+      blurEnabled,
+      blurHeight,
+      blurIntensity,
+      blurFade,
+      blurDarkness,
+      accentColor: tintColor ?? undefined,
+      tintStrength: tintStrength / 100,
+    }),
     logoFetch
       ? (async () => {
           const lMeta = await sharp(logoFetch).metadata()
@@ -739,8 +763,6 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // -----------------------------------------------------------------------
   // 4. Badge computation
   // -----------------------------------------------------------------------
-  const accentColorGenre = badgeColors?.genreColor || (GENRE_FALLBACK[genreName || ""] || "#555555")
-  const accentColorRank = badgeColors?.rankColor || "#555555"
 
   const badgeInput: BadgeInput = {
     mediaType,

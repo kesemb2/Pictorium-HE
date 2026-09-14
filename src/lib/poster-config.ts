@@ -48,6 +48,8 @@ export interface PosterRenderConfig {
   blurIntensity: number
   blurFade: number
   blurDarkness: number
+  /** Intensità tinta di scena 0-100 (default 20). */
+  tintStrength: number
   badgesEnabled: boolean
   rankingEnabled: boolean
   /** Quali componenti del badge genere/rating mostrare (default tutti ON). */
@@ -143,19 +145,32 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
     ? clamp(rawBlur, 1, 100)
     : (mapping?.blurIntensity != null && Number.isFinite(mapping.blurIntensity)
         ? clamp(mapping.blurIntensity, 1, 100)
-        : (configOverride !== null ? clamp(configOverride.blurIntensity, 1, 100) : 5))
+        : (configOverride !== null ? clamp(configOverride.blurIntensity, 1, 100) : 20))
   const rawBf = q.get("bf") ? Number(q.get("bf")) : NaN
   const blurFade = Number.isFinite(rawBf)
     ? clamp(rawBf, 0, 100)
     : (mapping?.blurFade != null && Number.isFinite(mapping.blurFade)
         ? clamp(mapping.blurFade, 0, 100)
-        : (configOverride !== null ? clamp(configOverride.blurFade, 0, 100) : 60))
+        : (configOverride !== null ? clamp(configOverride.blurFade, 0, 100) : 50))
   const rawBd = q.get("bd") ? Number(q.get("bd")) : NaN
   const blurDarkness = Number.isFinite(rawBd)
     ? clamp(rawBd, 0, 100)
     : (mapping?.blurDarkness != null && Number.isFinite(mapping.blurDarkness)
         ? clamp(mapping.blurDarkness, 0, 100)
-        : (configOverride !== null ? clamp(configOverride.blurDarkness, 0, 100) : 40))
+        : (configOverride !== null ? clamp(configOverride.blurDarkness, 0, 100) : 30))
+
+  // Intensità tinta 0-100 — stessa catena (query > mapping > config >
+  // server defaults > 20).
+  const rawTint = q.get("tint") ? Number(q.get("tint")) : NaN
+  const tintStrength = q.get("tint") !== null
+    ? (Number.isFinite(rawTint) ? clamp(Math.round(rawTint), 0, 100) : 20)
+    : (mapping?.tintStrength != null && Number.isFinite(mapping.tintStrength)
+        ? clamp(Math.round(mapping.tintStrength), 0, 100)
+        : (configOverride?.tintStrength != null && Number.isFinite(configOverride.tintStrength)
+            ? clamp(Math.round(configOverride.tintStrength), 0, 100)
+            : (sd.tintStrength != null && Number.isFinite(sd.tintStrength)
+                ? clamp(Math.round(sd.tintStrength), 0, 100)
+                : 20)))
 
   const qBadges = q.get("badges")
   const qRanking = q.get("ranking")
@@ -378,6 +393,7 @@ const qSide = q.get("side")
     blurIntensity,
     blurFade,
     blurDarkness,
+    tintStrength,
     badgesEnabled,
     rankingEnabled,
     badgeGenre,

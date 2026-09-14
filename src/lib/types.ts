@@ -116,6 +116,8 @@ export interface Mapping {
   blurIntensity?: number | null
   blurFade?: number | null
   blurDarkness?: number | null
+  /** Intensità tinta di scena 0-100 (default 20). Solo flat: vale per entrambi i canvas. */
+  tintStrength?: number | null
   gradientHeight?: number | null
   cleanPosters?: string[] | null
   cleanPosterIndex?: number | null

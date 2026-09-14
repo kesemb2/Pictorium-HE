@@ -645,7 +645,7 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
           </label>
           <BadgeStyleSelector
             value={ed.defaultBadgeStyle}
-            options={["shadow", "pill", "bar", "colored", "bordo", "vetro"]}
+            options={["shadow", "pill", "bar", "colored", "bordo", "vetro", "minimal"]}
             onChange={(v) => {
               ed.setDefaultBadgeStyle(v)
             }}
@@ -1022,9 +1022,10 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
           <button type="button" aria-label={t("ui.reset")}
                   onClick={() => {
                     ed.setDefaultGradientHeight(30)
-                    ed.setDefaultBlurIntensity(5)
-                    ed.setDefaultBlurFade(60)
-                    ed.setDefaultBlurDarkness(40)
+                    ed.setDefaultBlurIntensity(20)
+                    ed.setDefaultBlurFade(50)
+                    ed.setDefaultBlurDarkness(30)
+                    ed.setDefaultTintStrength(20)
                   }}
                   className="text-xs text-muted hover:text-accent transition-colors px-2 py-0.5 rounded-md border border-border/50 hover:border-accent/30">
             {t("ui.reset")}
@@ -1058,14 +1059,14 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
               label={t("ui.intensity")}
               value={ed.defaultBlurIntensity}
               min={1}
-              max={50}
+              max={100}
               boundsMin={1}
-              boundsMax={50}
+              boundsMax={100}
               onChange={(v) => {
                 ed.setDefaultBlurIntensity(v)
               }}
               onDoubleClick={() => {
-                ed.setDefaultBlurIntensity(5)
+                ed.setDefaultBlurIntensity(20)
               }}
               editingValue={editVal}
               editText={editTxt}
@@ -1086,7 +1087,7 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
                 ed.setDefaultBlurFade(v)
               }}
               onDoubleClick={() => {
-                ed.setDefaultBlurFade(60)
+                ed.setDefaultBlurFade(50)
               }}
               editingValue={editVal}
               editText={editTxt}
@@ -1107,7 +1108,7 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
                 ed.setDefaultBlurDarkness(v)
               }}
               onDoubleClick={() => {
-                ed.setDefaultBlurDarkness(40)
+                ed.setDefaultBlurDarkness(30)
               }}
               editingValue={editVal}
               editText={editTxt}
@@ -1183,6 +1184,27 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
               setEditText={setEditTxt}
               editingKey="gdbadgeBottomOffset"
               suffix="px"
+            />
+            <SliderRow
+              icon={<Cloud className="w-3.5 h-3.5" />}
+              label={t("ui.tintStrength")}
+              value={ed.defaultTintStrength}
+              min={0}
+              max={100}
+              boundsMin={0}
+              boundsMax={100}
+              onChange={(v) => {
+                ed.setDefaultTintStrength(v)
+              }}
+              onDoubleClick={() => {
+                ed.setDefaultTintStrength(20)
+              }}
+              editingValue={editVal}
+              editText={editTxt}
+              setEditingValue={setEditVal}
+              setEditText={setEditTxt}
+              editingKey="tint"
+              suffix="%"
             />
             <SliderRow
               icon={<Ruler className="w-3.5 h-3.5 text-accent-orange" />}

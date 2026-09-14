@@ -6,7 +6,7 @@
 // impossibile un drift tra lista client, lista server e validazione.
 // ---------------------------------------------------------------------------
 
-export const BADGE_STYLES = ["shadow", "pill", "bar", "colored", "bordo", "vetro"] as const
+export const BADGE_STYLES = ["shadow", "pill", "bar", "colored", "bordo", "vetro", "minimal"] as const
 export type BadgeStyle = (typeof BADGE_STYLES)[number]
 
 export const RANKING_BADGE_STYLES = ["default", "bar", "colored", "pill", "netflix"] as const

@@ -27,6 +27,8 @@ export interface StremioPosterParamsInput {
   readonly blurFade?: number
   readonly blurDarkness?: number
   readonly blurEnabled?: boolean
+  /** Intensità tinta di scena 0-100 (default 20). Emessa sempre esplicita. */
+  readonly tintStrength?: number
   readonly networkLogo?: boolean
   readonly accentDominant?: boolean
   readonly badgeTopScale?: number
@@ -78,9 +80,10 @@ const DEFAULT_STREMIO_POSTER_PARAMS = {
   badgeStyle: "shadow",
   rankingBadgeStyle: "default",
   gradientHeight: 30,
-  blurIntensity: 5,
-  blurFade: 60,
-  blurDarkness: 40,
+  blurIntensity: 20,
+  blurFade: 50,
+  blurDarkness: 30,
+  tintStrength: 20,
   blurEnabled: true,
   networkLogo: true,
   accentDominant: true,
@@ -150,6 +153,7 @@ export function buildStremioPosterSearchParams(input: StremioPosterParamsInput):
   if (!blurEnabled) params.set("be", "0")
   params.set("gradHeight", String(input.gradientHeight ?? DEFAULT_STREMIO_POSTER_PARAMS.gradientHeight))
   params.set("blur", String(input.blurIntensity ?? DEFAULT_STREMIO_POSTER_PARAMS.blurIntensity))
+  params.set("tint", String(input.tintStrength ?? DEFAULT_STREMIO_POSTER_PARAMS.tintStrength))
   params.set("bf", String(input.blurFade ?? DEFAULT_STREMIO_POSTER_PARAMS.blurFade))
   params.set("bd", String(input.blurDarkness ?? DEFAULT_STREMIO_POSTER_PARAMS.blurDarkness))
   params.set("bs", input.badgeStyle || DEFAULT_STREMIO_POSTER_PARAMS.badgeStyle)

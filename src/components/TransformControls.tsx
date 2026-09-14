@@ -323,7 +323,7 @@ export function TransformControls() {
             {t("ui.blurSection")}
           </span>
           <button type="button" aria-label={t("ui.reset")}
-                  onClick={() => { ed.setGradientHeight(defaultGradientHeightForPoster(previewPoster, ed.defaultGradientHeight)); ed.setBlurIntensity(5); ed.setBlurFade(60); ed.setBlurDarkness(40) }}
+                  onClick={() => { ed.setGradientHeight(defaultGradientHeightForPoster(previewPoster, ed.defaultGradientHeight)); ed.setBlurIntensity(20); ed.setBlurFade(50); ed.setBlurDarkness(30); ed.setTintStrength(20) }}
                   className="text-xs text-muted hover:text-accent transition-colors px-2 py-0.5 rounded-md border border-border/50 hover:border-accent/30">
             {t("ui.reset")}
           </button>
@@ -352,11 +352,11 @@ export function TransformControls() {
               label={t("ui.intensity")}
               value={ed.blurIntensity}
               min={1}
-              max={50}
+              max={100}
               boundsMin={1}
-              boundsMax={50}
+              boundsMax={100}
               onChange={(v) => ed.setBlurIntensity(v)}
-              onDoubleClick={() => ed.setBlurIntensity(5)}
+              onDoubleClick={() => ed.setBlurIntensity(20)}
               editingValue={editingValue}
               editText={editText}
               setEditingValue={setEditingValue}
@@ -373,7 +373,7 @@ export function TransformControls() {
               boundsMin={0}
               boundsMax={100}
               onChange={(v) => ed.setBlurFade(v)}
-              onDoubleClick={() => ed.setBlurFade(60)}
+              onDoubleClick={() => ed.setBlurFade(50)}
               editingValue={editingValue}
               editText={editText}
               setEditingValue={setEditingValue}
@@ -390,12 +390,29 @@ export function TransformControls() {
               boundsMin={0}
               boundsMax={100}
               onChange={(v) => ed.setBlurDarkness(v)}
-              onDoubleClick={() => ed.setBlurDarkness(40)}
+              onDoubleClick={() => ed.setBlurDarkness(30)}
               editingValue={editingValue}
               editText={editText}
               setEditingValue={setEditingValue}
               setEditText={setEditText}
               editingKey="blurDarkness"
+              suffix="%"
+            />
+            <SliderRow
+              icon={<Cloud className="w-3.5 h-3.5" />}
+              label={t("ui.tintStrength")}
+              value={ed.tintStrength}
+              min={0}
+              max={100}
+              boundsMin={0}
+              boundsMax={100}
+              onChange={(v) => ed.setTintStrength(v)}
+              onDoubleClick={() => ed.setTintStrength(20)}
+              editingValue={editingValue}
+              editText={editText}
+              setEditingValue={setEditingValue}
+              setEditText={setEditText}
+              editingKey="tintStrength"
               suffix="%"
             />
           </div>

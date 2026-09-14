@@ -637,5 +637,7 @@
   "ui.ratingStar": "Estrela da nota",
   "ui.badgeTopOffset": "Posição do selo superior",
   "ui.badgeBottomOffset": "Posição da linha inferior",
-  "ui.logoBottomOffset": "Altura do logo"
+  "ui.logoBottomOffset": "Altura do logo",
+  "ui.minimal": "Minimal",
+  "ui.tintStrength": "Intensidade do matiz"
 }

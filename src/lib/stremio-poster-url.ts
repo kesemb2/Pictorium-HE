@@ -103,6 +103,7 @@ export function buildStremioPosterUrl(input: BuildStremioPosterUrlInput): URL {
     blurFade: mapping?.blurFade ?? input.defaults.blurFade,
     blurDarkness: mapping?.blurDarkness ?? input.defaults.blurDarkness,
     blurEnabled: mapping?.blurEnabled ?? input.defaults.blurEnabled,
+    tintStrength: mapping?.tintStrength ?? input.defaults.tintStrength,
     customBadge,
     title: mapping?.title ?? undefined,
     networkLogo: (input.defaults.networkLogo !== false) && (mapping?.networkLogo !== false),

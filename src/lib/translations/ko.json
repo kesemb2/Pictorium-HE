@@ -637,5 +637,7 @@
   "ui.ratingStar": "평점 별",
   "ui.badgeTopOffset": "상단 배지 위치",
   "ui.badgeBottomOffset": "하단 줄 위치",
-  "ui.logoBottomOffset": "로고 높이"
+  "ui.logoBottomOffset": "로고 높이",
+  "ui.minimal": "미니멀",
+  "ui.tintStrength": "틴트 강도"
 }

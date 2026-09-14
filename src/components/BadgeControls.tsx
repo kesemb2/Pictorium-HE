@@ -341,7 +341,7 @@ export function BadgeControls() {
 
         <BadgeStyleSelector
           value={ed.badgeStyle}
-          options={["shadow", "pill", "bar", "colored", "bordo", "vetro"]}
+          options={["shadow", "pill", "bar", "colored", "bordo", "vetro", "minimal"]}
           onChange={ed.setBadgeStyle}
           t={t}
           accentColor={accentColor}

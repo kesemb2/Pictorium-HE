@@ -637,5 +637,7 @@
   "ui.ratingStar": "Bewertungsstern",
   "ui.badgeTopOffset": "Position oberes Badge",
   "ui.badgeBottomOffset": "Position untere Zeile",
-  "ui.logoBottomOffset": "Logo-Höhe"
+  "ui.logoBottomOffset": "Logo-Höhe",
+  "ui.minimal": "Minimal",
+  "ui.tintStrength": "Tint-Stärke"
 }

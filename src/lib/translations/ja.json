@@ -637,5 +637,7 @@
   "ui.ratingStar": "評価の星",
   "ui.badgeTopOffset": "上部バッジの位置",
   "ui.badgeBottomOffset": "下部テキストの位置",
-  "ui.logoBottomOffset": "ロゴの高さ"
+  "ui.logoBottomOffset": "ロゴの高さ",
+  "ui.minimal": "ミニマル",
+  "ui.tintStrength": "ティント強度"
 }

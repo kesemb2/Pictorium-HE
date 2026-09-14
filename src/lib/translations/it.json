@@ -637,5 +637,7 @@
   "ui.ratingStar": "Stella del voto",
   "ui.badgeTopOffset": "Posizione badge in alto",
   "ui.badgeBottomOffset": "Posizione riga in basso",
-  "ui.logoBottomOffset": "Altezza del logo"
+  "ui.logoBottomOffset": "Altezza del logo",
+  "ui.minimal": "Minimale",
+  "ui.tintStrength": "Intensità tinta"
 }
