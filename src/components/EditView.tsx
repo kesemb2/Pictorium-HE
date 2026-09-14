@@ -57,6 +57,10 @@ export default function EditView() {
   const setSettingsOpen = usePSelector((v) => v.setSettingsOpen)
   const titleOf = usePSelector((v) => v.titleOf)
   const tmdbKey = usePSelector((v) => v.tmdbKey)
+  const serverHasTmdbKey = usePSelector((v) => v.serverHasTmdbKey)
+  // Chiave disponibile = browser oppure env d'istanza (fallback server):
+  // solo quando mancano entrambe si mostra il pannello di benvenuto.
+  const hasTmdbKey = !!tmdbKey || serverHasTmdbKey
   const tvdbApiKey = usePSelector((v) => v.tvdbApiKey)
   const topEdgeColor = usePSelector((v) => v.topEdgeColor)
   const trendRank = usePSelector((v) => v.trendRank)
@@ -97,7 +101,7 @@ export default function EditView() {
 
   const searchBar = (
     <div className={selected ? "w-full max-w-lg relative z-[100] isolate" : "max-w-lg mx-auto relative z-[100] isolate mb-8"}>
-      <SearchBar tmdbKey={tmdbKey} value={query} onChange={setQuery} onSearch={(q) => { setQuery(q); router.push("search"); doSearch(q) }} large onFocus={() => setSearchFocused(true)} onBlur={() => { blurTimerRef.current = setTimeout(() => setSearchFocused(false), 200) }} />
+      <SearchBar tmdbKey={tmdbKey} hasServerKey={serverHasTmdbKey} value={query} onChange={setQuery} onSearch={(q) => { setQuery(q); router.push("search"); doSearch(q) }} large onFocus={() => setSearchFocused(true)} onBlur={() => { blurTimerRef.current = setTimeout(() => setSearchFocused(false), 200) }} />
       {searchFocused && recentSearches.length > 0 && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-surface border border-border rounded-xl p-2 shadow-2xl shadow-black/50 z-50 animate-fade-scale-in">
           <div className="flex items-center justify-between px-2 py-1.5 border-b border-white/[0.06] mb-1">
@@ -485,7 +489,7 @@ export default function EditView() {
           {searchBar}
         </div>
       )}
-      {!selected && !tmdbKey && (
+      {!selected && !hasTmdbKey && (
         <div className="max-w-md mx-auto mt-16 mb-16">
           <div className="glass-panel relative overflow-hidden p-8 flex flex-col items-center text-center animate-fade-scale-in-hero">
             <div className="welcome-accent" />
@@ -533,7 +537,7 @@ export default function EditView() {
           </div>
         </div>
       )}
-      {!selected && tmdbKey && (
+      {!selected && hasTmdbKey && (
         <>
           <HomeHero />
           <ScrollReveal animation="fade-up" threshold={0.05}>

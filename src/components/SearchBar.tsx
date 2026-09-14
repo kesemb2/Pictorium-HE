@@ -6,6 +6,8 @@ import { Search, ArrowRight, AlertCircle } from "lucide-react"
 
 interface Props {
   tmdbKey: string
+  /** True se l'istanza ha una chiave TMDB env: la ricerca funziona senza chiave browser. */
+  hasServerKey?: boolean
   onSearch: (q: string) => void
   large?: boolean
   value?: string
@@ -17,6 +19,7 @@ interface Props {
 
 export function SearchBar({
   tmdbKey,
+  hasServerKey = false,
   onSearch,
   large,
   value,
@@ -48,6 +51,7 @@ export function SearchBar({
   }, [])
 
   const placeholder = large ? t("ui.searchPlaceholderLarge") : t("ui.searchPlaceholder")
+  const canSearch = !!tmdbKey || hasServerKey
 
   return (
     <div
@@ -81,7 +85,7 @@ export function SearchBar({
           onBlur?.()
         }}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && text.length >= 2 && tmdbKey) {
+          if (e.key === "Enter" && text.length >= 2 && canSearch) {
             onSearch(text)
           }
         }}
@@ -104,11 +108,11 @@ export function SearchBar({
           type="button"
           aria-label={t("ui.searchButton")}
           onClick={() => {
-            if (text.length >= 2 && tmdbKey) {
+            if (text.length >= 2 && canSearch) {
               onSearch(text)
             }
           }}
-          disabled={!tmdbKey}
+          disabled={!canSearch}
           className="shrink-0 w-8 sm:w-10 h-8 sm:h-10 mr-1.5 flex items-center justify-center text-white rounded-full active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 transition-all duration-200 bg-accent-orange hover:shadow-lg hover:shadow-accent-orange/30 cursor-pointer"
         >
           <ArrowRight className="w-4 h-4" />

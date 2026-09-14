@@ -11,6 +11,8 @@ import type { PictoriumCtx } from "@/lib/context"
 export interface SettingsCtx {
   tmdbKey: string
   setTmdbKey: (v: string) => void
+  /** True se l'istanza ha una chiave TMDB env: la home funziona senza chiave browser. */
+  serverHasTmdbKey: boolean
   tmdbKeyInput: string
   setTmdbKeyInput: React.Dispatch<React.SetStateAction<string>>
   showKey: boolean
@@ -50,6 +52,7 @@ export function SettingsProvider({
     () => ({
       tmdbKey: value.tmdbKey,
       setTmdbKey: value.setTmdbKey,
+      serverHasTmdbKey: value.serverHasTmdbKey,
       tmdbKeyInput: value.tmdbKeyInput,
       setTmdbKeyInput: value.setTmdbKeyInput,
       showKey: value.showKey,
@@ -70,7 +73,7 @@ export function SettingsProvider({
       copyUrl: value.copyUrl,
     }),
     [
-      value.tmdbKey, value.setTmdbKey,
+      value.tmdbKey, value.setTmdbKey, value.serverHasTmdbKey,
       value.tmdbKeyInput, value.setTmdbKeyInput,
       value.showKey, value.setShowKey,
       value.mdblistApiKey, value.setMdblistApiKey,

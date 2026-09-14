@@ -89,6 +89,7 @@ export const MOCK_CTX: PictoriumCtx = {
   showKey: false,
   setShowKey: stubFn,
   setTmdbKey: stubFn,
+  serverHasTmdbKey: false,
   mdblistApiKey: "",
   setMdblistApiKey: stubFn,
   tvdbApiKey: "",

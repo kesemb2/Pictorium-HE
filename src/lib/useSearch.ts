@@ -27,7 +27,7 @@ function writeRecentSearches(searches: string[]): void {
   }
 }
 
-export function useSearch(tmdbKey: string, lang: string) {
+export function useSearch(tmdbKey: string, lang: string, hasServerKey = false) {
   const toast = useToast()
   const toastRef = useRef(toast)
   toastRef.current = toast
@@ -54,7 +54,9 @@ export function useSearch(tmdbKey: string, lang: string) {
 
   const doSearch = useCallback(async (q?: string, page = 1, opts?: { silent?: boolean }): Promise<SearchResult[]> => {
     const searchQuery = q ?? query
-    if (searchQuery.length < 2 || !tmdbKey) return []
+    // Senza chiave browser si prova comunque se il server ne ha una d'istanza
+    // (fallback env in resolveRequestApiKey): a vuoto risponde 401 e si torna [].
+    if (searchQuery.length < 2 || (!tmdbKey && !hasServerKey)) return []
     const rev = ++revRef.current
     abortRef.current?.abort()
     const controller = new AbortController()
@@ -90,7 +92,7 @@ export function useSearch(tmdbKey: string, lang: string) {
     } finally {
       if (!opts?.silent && rev === revRef.current) setSearching(false)
     }
-  }, [query, tmdbKey, lang])
+  }, [query, tmdbKey, lang, hasServerKey])
 
   const loadMoreRef = useRef(false)
   const loadMore = useCallback(async () => {

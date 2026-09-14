@@ -94,6 +94,16 @@ const defaultsSchema = z.object({
 
 export async function GET(req: NextRequest) {
   const d = getServerDefaults()
+  // Flag pubblici (solo booleani): dicono al client se l'istanza ha chiavi
+  // env, così la welcome screen appare solo quando non c'è chiave da nessuna
+  // parte (né browser né server). I VALORI restano dietro requireAdminToken
+  // qui sotto — un booleano non espone alcun segreto (l'health endpoint
+  // rivela già lo stesso segnale via status degraded/healthy).
+  const hasInstanceKeys = {
+    tmdbKey: !!(envWithFallback("TMDB_KEY") || process.env.TMDB_API_KEY),
+    mdblistKey: !!(envWithFallback("MDBLIST_KEY") || process.env.MDBLIST_API_KEY),
+    tvdbKey: !!(envWithFallback("TVDB_API_KEY") || process.env.TVDB_API_KEY),
+  }
   // Le chiavi d'istanza non devono mai trapelare su istanze pubbliche:
   // checkAdminToken è true per chiunque con PICTORIUM_PUBLIC_INSTANCE=1,
   // quindi qui serve requireAdminToken (solo ADMIN_TOKEN o sessione PIN valida).
@@ -103,9 +113,9 @@ export async function GET(req: NextRequest) {
       mdblistApiKey: envWithFallback("MDBLIST_KEY") || process.env.MDBLIST_API_KEY || "",
       tvdbApiKey: envWithFallback("TVDB_API_KEY") || process.env.TVDB_API_KEY || "",
     }
-    return Response.json({ ...d, serverKeys })
+    return Response.json({ ...d, hasInstanceKeys, serverKeys })
   }
-  return Response.json({ ...d })
+  return Response.json({ ...d, hasInstanceKeys })
 }
 
 export async function PUT(req: NextRequest) {

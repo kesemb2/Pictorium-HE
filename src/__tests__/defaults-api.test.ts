@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server"
 import { rm } from "node:fs/promises"
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { GET, PUT } from "@/app/api/defaults/route"
 import { cacheClear, cacheGet, cacheSet } from "@/lib/cache"
 
@@ -174,5 +174,60 @@ describe("GET /api/defaults — instance keys", () => {
     process.env.ADMIN_TOKEN = "let-me-in"
     const body = await (await GET(get({ "x-admin-token": "wrong-token" }) as unknown as NextRequest)).json()
     expect(body.serverKeys).toBeUndefined()
+  })
+})
+
+describe("GET /api/defaults hasInstanceKeys", () => {
+  const KEY_ENVS = ["PICTORIUM_TMDB_KEY", "POSTERIUM_TMDB_KEY", "TMDB_KEY", "TMDB_API_KEY"] as const
+  let saved: Record<string, string | undefined>
+
+  function mockGetRequest(headers?: Record<string, string>): Request {
+    return new Request("http://localhost:3000/api/defaults", { headers })
+  }
+
+  beforeEach(() => {
+    saved = {}
+    for (const k of KEY_ENVS) {
+      saved[k] = process.env[k]
+      delete process.env[k]
+    }
+    delete process.env.ADMIN_TOKEN
+  })
+
+  afterEach(() => {
+    for (const k of KEY_ENVS) {
+      if (saved[k] === undefined) delete process.env[k]
+      else process.env[k] = saved[k]
+    }
+    delete process.env.ADMIN_TOKEN
+  })
+
+  it("exposes only booleans publicly, never key values (no leak)", async () => {
+    process.env.PICTORIUM_TMDB_KEY = "secret-instance-key"
+    const res = await GET(mockGetRequest() as unknown as NextRequest)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body.hasInstanceKeys).toMatchObject({ tmdbKey: true, mdblistKey: false, tvdbKey: false })
+    expect(body).not.toHaveProperty("serverKeys")
+    expect(JSON.stringify(body)).not.toContain("secret-instance-key")
+  })
+
+  it("reports false when no instance key is configured", async () => {
+    const res = await GET(mockGetRequest() as unknown as NextRequest)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body.hasInstanceKeys).toMatchObject({ tmdbKey: false, mdblistKey: false, tvdbKey: false })
+    expect(body).not.toHaveProperty("serverKeys")
+  })
+
+  it("still exposes values to an authenticated admin", async () => {
+    process.env.PICTORIUM_TMDB_KEY = "secret-instance-key"
+    process.env.ADMIN_TOKEN = "secret-token"
+    const res = await GET(
+      mockGetRequest({ "x-admin-token": "secret-token" }) as unknown as NextRequest,
+    )
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body.hasInstanceKeys).toMatchObject({ tmdbKey: true })
+    expect(body).toHaveProperty("serverKeys")
+    expect((body.serverKeys as Record<string, unknown>).tmdbKey).toBe("secret-instance-key")
   })
 })

@@ -64,6 +64,16 @@ describe("SearchBar", () => {
     })
   })
 
+  it("enables search without browser key when the server has an instance key", async () => {
+    const user = userEvent.setup()
+    const onSearch = vi.fn()
+    renderWithCtx(<SearchBar tmdbKey="" hasServerKey value="" onChange={() => {}} onSearch={onSearch} />)
+    const input = screen.getByRole("textbox")
+    await user.type(input, "Inception")
+    await user.click(screen.getByLabelText("ui.searchButton"))
+    expect(onSearch).toHaveBeenCalledWith("Inception")
+  })
+
   it("shows error indicator when error prop is set", () => {
     renderWithCtx(<SearchBar tmdbKey="test" value="test" onChange={() => {}} onSearch={() => {}} error="error" />)
     expect(screen.getByRole("search").querySelector(".text-danger")).toBeInTheDocument()

@@ -8,7 +8,7 @@ import { getRegionDef } from "./regions"
 import type { SearchResult, FlixPatrolChart } from "./types"
 import type { EnrichedAnimeItem } from "./validation"
 
-export function useTrending(tmdbKey: string, mdblistApiKey: string, regionCode = "IT") {
+export function useTrending(tmdbKey: string, mdblistApiKey: string, regionCode = "IT", hasServerKey = false) {
   const region = getRegionDef(regionCode)
   const flixCountry = region.flixSlug
   const [trending, setTrending] = useState<Array<SearchResult & { rank: number }>>([])
@@ -19,7 +19,7 @@ export function useTrending(tmdbKey: string, mdblistApiKey: string, regionCode =
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
-    if (!tmdbKey) return
+    if (!tmdbKey && !hasServerKey) return
     const ctrl = new AbortController()
     const signal = ctrl.signal
     http<{ movies: Array<SearchResult & { rank: number }>; tv: Array<SearchResult & { rank: number }> }>(`/api/tmdb/trending?api_key=${tmdbKey}&country=${encodeURIComponent(region.code)}`, { timeout: 30000, signal })
@@ -64,12 +64,12 @@ export function useTrending(tmdbKey: string, mdblistApiKey: string, regionCode =
           .catch(() => {})
       })
     return () => { ctrl.abort() }
-  }, [tmdbKey, mdblistApiKey, region.code])
+  }, [tmdbKey, mdblistApiKey, region.code, hasServerKey])
 
   // FlixPatrol: defer + limit concurrency (evita burst di 8 fetch al mount).
   // Il paese segue la regione attiva: al cambio regione si ricaricano le chart.
   useEffect(() => {
-    if (!tmdbKey) return
+    if (!tmdbKey && !hasServerKey) return
     setStreamingCharts({})
     const ctrl = new AbortController()
     const signal = ctrl.signal
@@ -92,10 +92,10 @@ export function useTrending(tmdbKey: string, mdblistApiKey: string, regionCode =
       runNext()
     }, 2000)
     return () => { clearTimeout(timer); ctrl.abort() }
-  }, [tmdbKey, flixCountry])
+  }, [tmdbKey, flixCountry, hasServerKey])
 
   const refreshLists = useCallback(async () => {
-    if (!tmdbKey) return
+    if (!tmdbKey && !hasServerKey) return
     const now = Date.now()
     if (now - lastRefreshRef.current < 15 * 1000) {
       import("sonner").then(({ toast }) => toast(t("ui.refreshRateLimit")))
@@ -141,7 +141,7 @@ export function useTrending(tmdbKey: string, mdblistApiKey: string, regionCode =
         .catch((e) => { if (signal.aborted) return; console.error("[pictorium] FlixPatrol refresh failed for", p.slug, e) })
     }
     import("sonner").then(({ toast }) => toast(t("ui.listsRefreshed")))
-  }, [tmdbKey, mdblistApiKey, region.code, flixCountry])
+  }, [tmdbKey, mdblistApiKey, region.code, flixCountry, hasServerKey])
 
   return { trending, trendingError, mdblistAnimeList, streamingCharts, refreshLists }
 }

@@ -15,6 +15,8 @@ export function SearchView() {
   const s = useSearchCtx()
   const { setQuery } = s
   const tmdbKey = usePSelector((v) => v.tmdbKey)
+  const serverHasTmdbKey = usePSelector((v) => v.serverHasTmdbKey)
+  const hasKey = !!tmdbKey || serverHasTmdbKey
   const mappingsMap = usePSelector((v) => v.mappingsMap)
   const navigateToPoster = usePSelector((v) => v.navigateToPoster)
   const router = usePSelector((v) => v.router)
@@ -97,6 +99,7 @@ export function SearchView() {
       <div className="max-w-lg mx-auto relative z-[100] isolate mb-6">
         <SearchBar
           tmdbKey={tmdbKey}
+          hasServerKey={serverHasTmdbKey}
           value={s.query}
           onChange={handleQueryChange}
           onSearch={(q) => {
@@ -328,7 +331,7 @@ export function SearchView() {
           <ChevronUp className="w-5 h-5" />
         </button>
       )}
-      {!tmdbKey && (
+      {!hasKey && (
         <div className="text-center py-16 animate-fade-scale-in">
           <div className="empty-state-illustration mb-4">
             <svg className="w-10 h-10 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -354,7 +357,7 @@ export function SearchView() {
           <button type="button" onClick={() => { s.setError(null); s.doSearch(s.query) }} className="px-5 py-2 rounded-xl text-xs font-semibold bg-red-900/30 border border-red-800/40 text-red-300 hover:bg-red-900/50 hover:text-red-200 active:scale-95 transition-all duration-200 press-scale">{t("ui.retry")}</button>
         </div>
       )}
-      {s.results.length === 0 && !s.searching && !showRecent && !s.error && s.query.length >= 2 && tmdbKey && (
+      {s.results.length === 0 && !s.searching && !showRecent && !s.error && s.query.length >= 2 && hasKey && (
         <div className="text-center py-16 animate-fade-scale-in">
           <div className="empty-state-illustration mb-4">
             <svg className="w-10 h-10 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

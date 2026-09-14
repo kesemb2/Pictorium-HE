@@ -25,6 +25,13 @@ describe("EditView", () => {
     expect(screen.getByText("ui.noKey")).toBeInTheDocument()
   })
 
+  it("shows home instead of welcome when the server has an instance key", () => {
+    renderWithCtx(<EditView />, { tmdbKey: "", serverHasTmdbKey: true })
+    expect(screen.queryByText("ui.noKey")).not.toBeInTheDocument()
+    const title = screen.getByRole("heading", { level: 1 })
+    expect(title.textContent).toContain("ui.heroTitleLead")
+  })
+
   it("shows trending when no item selected and has tmdbKey", () => {
     renderWithCtx(<EditView />)
     const title = screen.getByRole("heading", { level: 1 })
