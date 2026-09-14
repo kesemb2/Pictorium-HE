@@ -69,7 +69,9 @@ describe("minimal separator in a Hebrew line", () => {
   const HE_GENRE = "\u05e4\u05e2\u05d5\u05dc\u05d4"
   function slots(svg: string): string[] {
     return (svg.match(/<tspan[^>]*>([^<]*)<\/tspan>/g) || [])
-      .map((t) => t.replace(/<[^>]+>/g, ""))
+      // Via i caratteri di formattazione bidi: sono a larghezza zero e qui
+      // interessa solo l'ordine dei segmenti.
+      .map((t) => t.replace(/<[^>]+>/g, "").replace(/[\u2066-\u2069\u200E\u200F]/g, ""))
   }
 
   it("puts the pipe exactly where the bullet goes", () => {

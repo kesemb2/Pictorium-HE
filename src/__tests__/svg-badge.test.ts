@@ -25,7 +25,7 @@ describe("buildGenreBadgeSVG", () => {
   it("keeps genre separators in natural text flow", () => {
     const { svg } = buildGenreTextSvg("Sci-Fi & Fantasy", "8.0", "2022", 63, "#e5e7eb", "shadow")
 
-    expect(svg).toContain("<tspan>Sci-Fi &amp; Fantasy</tspan>")
+    expect(svg).toContain("<tspan>\u2068Sci-Fi &amp; Fantasy\u2069</tspan>")
     expect(svg).toContain('<tspan dx="21" fill-opacity="0.6">•</tspan>')
     expect(svg).toContain('text-anchor="middle"')
     expect(svg).toContain('lengthAdjust="spacingAndGlyphs"')

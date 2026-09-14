@@ -63,6 +63,30 @@ export function rtlSafe(text: string): string {
   return HEBREW_RE.test(text) ? text + RLM : text
 }
 
+/** FIRST STRONG ISOLATE e POP DIRECTIONAL ISOLATE: larghezza zero. */
+const FSI = "\u2068"
+const PDI = "\u2069"
+
+/**
+ * Isola un segmento dal resto della riga.
+ *
+ * La riga genere è una sequenza di `<tspan>` separati da `dx`, ma il bidi non
+ * si ferma ai confini dei tspan: con un genere ebraico l'intera riga veniva
+ * riordinata e i `dx` finivano dal lato sbagliato del separatore, che restava
+ * incollato al genere. Misurato su "פעולה • ★ 8.5": 4px da un lato e 13
+ * dall'altro, contro 13 e 13 in latino.
+ *
+ * L'isolato chiude il segmento in una direzione sua, quindi il resto della
+ * riga si impagina come in latino e il separatore torna in mezzo. FSI e non
+ * RLI: la direzione la decide il primo carattere forte, così vale per
+ * qualunque lingua senza doverla riconoscere. Larghezza zero (vedi
+ * `charWidthFactor`), quindi le stime di larghezza non cambiano, e in latino
+ * l'output resta identico al pixel.
+ */
+export function bidiIsolate(text: string): string {
+  return text ? FSI + text + PDI : text
+}
+
 export function fontFamilyFor(text: string): string {
   return HEBREW_RE.test(text) ? "Rubik" : "Inter"
 }
@@ -266,7 +290,7 @@ function buildGenreTextFlow({ genreName, voteStr, yearStr, fs, centerX, y, parts
   const starGapDx = hasGenre ? dims.gap : 0
   const yearGapDx = (hasGenre || hasRating) ? dims.gap : 0
   if (hasGenre) {
-    tspan.push(`<tspan>${escSvg(genreName)}</tspan>`)
+    tspan.push(`<tspan>${escSvg(bidiIsolate(genreName))}</tspan>`)
     if (hasRating || hasYear) tspan.push(bullet(dims.gap))
   }
   if (hasRating) {
