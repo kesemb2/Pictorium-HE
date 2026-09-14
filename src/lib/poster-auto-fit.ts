@@ -34,6 +34,8 @@ interface SelectBestLogoFitPosterInput {
   readonly logoOffsetX?: number | null
   readonly logoOffsetY?: number | null
   readonly hasBadges: boolean
+  /** Altezza della fascia sfocata in % del poster; null a blur spento. */
+  readonly blurBandPct?: number | null
 }
 
 // Più candidati del passato (8): col decode-once dello scoring il budget di
@@ -75,7 +77,7 @@ function cacheKey(candidates: readonly PosterCandidate[], input: SelectBestLogoF
   const posterSignature = candidates.map((poster) =>
     `${poster.file_path}:${poster.vote_average ?? "x"}:${poster.width ?? "x"}:${poster.height ?? "x"}`,
   ).join(",")
-  return `auto-fit:${posterSignature}:${input.logoPath}:${input.logoScale ?? "auto"}:${input.logoOffsetX ?? 0}:${input.logoOffsetY ?? 0}:${input.hasBadges}`
+  return `auto-fit:${posterSignature}:${input.logoPath}:${input.logoScale ?? "auto"}:${input.logoOffsetX ?? 0}:${input.logoOffsetY ?? 0}:${input.hasBadges}:${input.blurBandPct ?? "noblur"}`
 }
 
 function cacheGet(key: string): PosterFitSelection | null {
@@ -144,12 +146,13 @@ export async function rankBestFitPosters(
   logoOffsetY: number,
   hasBadges: boolean,
   offsetYVariants?: number[],
+  blurBandPct?: number | null,
 ): Promise<RankedFitResult[]> {
   if (posterEntries.length === 0) return []
 
   const ranked = await withTimeout(
-    rankPostersByFit(posterEntries, logoBuffer, logoScale, logoOffsetX, logoOffsetY, hasBadges, offsetYVariants),
-    posterEntries.map((p) => ({ posterPath: p.posterPath, score: 0, metrics: { cleanliness: 0, contrast: 0, detailPenalty: 0, badgeReadability: 0 }, reasons: [] })),
+    rankPostersByFit(posterEntries, logoBuffer, logoScale, logoOffsetX, logoOffsetY, hasBadges, offsetYVariants, blurBandPct),
+    posterEntries.map((p) => ({ posterPath: p.posterPath, score: 0, metrics: { cleanliness: 0, contrast: 0, detailPenalty: 0, badgeReadability: 0, bandIntrusion: 0 }, reasons: [] })),
     AUTO_FIT_TIMEOUT_MS,
   )
 
@@ -219,6 +222,7 @@ export async function selectBestLogoFitPosterPath(input: SelectBestLogoFitPoster
     input.logoOffsetY ?? 0,
     input.hasBadges,
     [-20, 0, 20],
+    input.blurBandPct,
   )
 
   const selectedPosterPath = selectAcceptedPosterPath(rankedResults, fallbackResult.posterPath)

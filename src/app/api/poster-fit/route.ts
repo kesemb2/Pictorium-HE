@@ -20,6 +20,8 @@ interface PosterFitBody {
   logoOffsetX?: number
   logoOffsetY?: number
   hasBadges?: boolean
+  /** Altezza della fascia sfocata in % del poster; null/assente a blur spento. */
+  blurBandPct?: number | null
   posterSize?: "w342" | "w500"
   voteAverages?: number[]
   widths?: number[]
@@ -110,6 +112,10 @@ for (const field of ["logoScale", "logoOffsetX", "logoOffsetY"] as const) {
 if (body.hasBadges !== undefined && typeof body.hasBadges !== "boolean") {
   return Response.json({ error: "Invalid body field: 'hasBadges' must be a boolean" }, { status: 400 })
 }
+if (body.blurBandPct !== undefined && body.blurBandPct !== null
+    && (typeof body.blurBandPct !== "number" || !Number.isFinite(body.blurBandPct))) {
+  return Response.json({ error: "Invalid body field: 'blurBandPct' must be a number" }, { status: 400 })
+}
 
 // logoPath entra in una URL TMDB: deve essere un path assoluto, non una URL.
 if (!body.logoPath.startsWith("/")) {
@@ -138,6 +144,7 @@ if (!body.logoPath.startsWith("/")) {
   const logoOffsetX = body.logoOffsetX ?? 0
   const logoOffsetY = body.logoOffsetY ?? 0
   const hasBadges = body.hasBadges ?? true
+  const blurBandPct = body.blurBandPct ?? null
 
   const logoUrl = `${TMDB_IMAGE_BASE}/w500${body.logoPath}`
 
@@ -194,6 +201,7 @@ if (!body.logoPath.startsWith("/")) {
     logoOffsetY,
     hasBadges,
     [-20, 0, 20],
+    blurBandPct,
   )
 
   const ranked = rankedResults.map((r) => ({

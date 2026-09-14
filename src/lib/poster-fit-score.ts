@@ -6,6 +6,9 @@ import { STD_W, STD_H, clamp, luma, type RgbData, decodePosterRaw, sliceRgb } fr
 
 const log = createLogger("poster-fit-score")
 
+/** Fascia ispezionata quando il blur è spento: solo i badge in basso. */
+const BADGE_ONLY_BAND = 0.16
+
 /**
  * ## Poster fit scoring algorithm
  *
@@ -52,6 +55,8 @@ export interface PosterFitInput {
   logoOffsetX: number
   logoOffsetY: number
   hasBadges: boolean
+  /** Altezza della fascia sfocata in % del poster. Assente = blur spento. */
+  blurBandPct?: number | null
   offsetYVariants?: number[]
   /** Valori derivati dal logo, pre-calcolati una volta per run da
    *  `rankPostersByFit`. Quando assenti (path test) vengono calcolati
@@ -77,6 +82,8 @@ export interface PosterFitMetrics {
   contrast: number
   detailPenalty: number
   badgeReadability: number
+  /** Quota di dettaglio del poster che finisce sotto fascia e logo. */
+  bandIntrusion: number
 }
 
 export interface PosterFitResult {
@@ -356,7 +363,7 @@ async function buildLogoFitContext(
 }
 
 export async function scorePosterLogoFit(input: PosterFitInput): Promise<PosterFitResult> {
-  const { posterBuffer, logoBuffer, posterPath, logoScale, logoOffsetX, logoOffsetY, hasBadges, offsetYVariants, context } = input
+  const { posterBuffer, logoBuffer, posterPath, logoScale, logoOffsetX, logoOffsetY, hasBadges, blurBandPct, offsetYVariants, context } = input
   const ctx = context ?? await buildLogoFitContext(logoBuffer, logoScale, logoOffsetX, logoOffsetY, hasBadges)
   const { logoW, logoH, logoLuma, baseLayout, logoMask, maskLeft, maskTop } = ctx
 
@@ -378,6 +385,7 @@ export async function scorePosterLogoFit(input: PosterFitInput): Promise<PosterF
   let contrast = 0.5
   let lowDetailScore = 0.5
   let badgeReadability = 0.5
+  let bandIntrusion = 0
   const reasons: string[] = []
 
   if (safetyArea) {
@@ -493,26 +501,50 @@ export async function scorePosterLogoFit(input: PosterFitInput): Promise<PosterF
     }
   }
 
-  if (hasBadges) {
-    const badgeTop = Math.round(STD_H * 0.82)
-    const badgeHeight = Math.round(STD_H * 0.16)
-    if (badgeHeight > 0) {
-      const badgeArea = sliceRgb(posterRaw, 0, badgeTop, STD_W, badgeHeight)
-      if (badgeArea) {
-        const badgeAnalysis = analyzeLuma(badgeArea)
-        badgeReadability = 1 - clamp(badgeAnalysis.stdDev / 90, 0, 1)
-        if (badgeReadability < 0.45) reasons.push("Zona badge caotica")
+  // La fascia da guardare è quella che il render disegnerà davvero, non un
+  // 16% fisso: con il blur al default (30%) un soggetto fra il 70% e l'84%
+  // dell'altezza finiva sotto la sfocatura ed era comunque fuori dal
+  // rettangolo che questo punteggio ispezionava.
+  const bandPct = blurBandPct != null && Number.isFinite(blurBandPct)
+    ? clamp(blurBandPct, 5, 100) / 100
+    : BADGE_ONLY_BAND
+  const bandHeight = Math.round(STD_H * bandPct)
+  const bandTop = STD_H - bandHeight
+  if ((hasBadges || blurBandPct != null) && bandHeight > 0) {
+    const bandArea = sliceRgb(posterRaw, 0, bandTop, STD_W, bandHeight)
+    if (bandArea) {
+      const bandAnalysis = analyzeLuma(bandArea)
+      badgeReadability = 1 - clamp(bandAnalysis.stdDev / 90, 0, 1)
+      if (badgeReadability < 0.45) reasons.push("Zona badge caotica")
+
+      // Quanto del dettaglio del poster sta per sparire. `edgeAvg` è energia
+      // media per pixel, quindi va pesata per l'area: un soggetto nella fascia
+      // alza l'energia lì e abbassa il punteggio, mentre uno sfondo piatto
+      // sotto un soggetto centrato non costa niente.
+      const wholeAnalysis = analyzeLuma(posterRaw)
+      const wholeEnergy = wholeAnalysis.edgeAvg * STD_W * STD_H
+      const bandEnergy = bandAnalysis.edgeAvg * STD_W * bandHeight
+      if (wholeEnergy > 0) {
+        // Rapportata all'area: una fascia alta contiene più dettaglio per
+        // costruzione, e non è quello che vogliamo penalizzare.
+        const share = (bandEnergy / wholeEnergy) / Math.max(bandPct, 0.01)
+        bandIntrusion = clamp(share - 1, 0, 1)
+        if (bandIntrusion > 0.35) reasons.push("Soggetto sotto la fascia")
       }
     }
   }
 
   // When contrast is poor, penalize the overall score multiplicatively
+  // La fascia pesa per metà sulla calma (il testo bianco deve leggersi) e
+  // per metà sul non nascondere il soggetto.
+  const bandClear = badgeReadability * 0.5 + (1 - bandIntrusion) * 0.5
+
   const contrastMultiplier = Math.min(1, contrast * 2.5 + 0.25)
   let score = clamp(
-    (cleanliness * 0.35 +
-    contrast * 0.30 +
-    lowDetailScore * 0.25 +
-    badgeReadability * 0.10) * contrastMultiplier,
+    (cleanliness * 0.28 +
+    contrast * 0.24 +
+    lowDetailScore * 0.18 +
+    bandClear * 0.30) * contrastMultiplier,
     0, 1,
   )
 
@@ -559,7 +591,7 @@ export async function scorePosterLogoFit(input: PosterFitInput): Promise<PosterF
   return {
     posterPath,
     score,
-    metrics: { cleanliness, contrast, detailPenalty: 1 - lowDetailScore, badgeReadability },
+    metrics: { cleanliness, contrast, detailPenalty: 1 - lowDetailScore, badgeReadability, bandIntrusion },
     reasons,
     posterRaw,
     logoZone: { left: baseLayout.left, top: baseLayout.top, width: baseLayout.width, height: baseLayout.height },
@@ -574,6 +606,7 @@ export async function rankPostersByFit(
   logoOffsetY: number,
   hasBadges: boolean,
   offsetYVariants?: number[],
+  blurBandPct?: number | null,
 ): Promise<PosterFitResult[]> {
   const context = await buildLogoFitContext(logoBuffer, logoScale, logoOffsetX, logoOffsetY, hasBadges)
 
@@ -587,6 +620,7 @@ export async function rankPostersByFit(
         logoOffsetX,
         logoOffsetY,
         hasBadges,
+        blurBandPct,
         offsetYVariants,
         context,
       }).catch((err: Error) => {

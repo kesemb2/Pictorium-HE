@@ -30,6 +30,8 @@ export interface UsePosterFitInput {
   logoOffsetX: number
   logoOffsetY: number
   hasBadges: boolean
+  /** Altezza della fascia sfocata in % del poster; null a blur spento. */
+  blurBandPct: number | null
 }
 
 export interface UsePosterFitResult {
@@ -70,6 +72,7 @@ function serialise(input: UsePosterFitInput): string | null {
     input.logoOffsetX,
     input.logoOffsetY,
     input.hasBadges,
+    input.blurBandPct,
   ])
 }
 
@@ -131,6 +134,7 @@ export function usePosterFit(input: UsePosterFitInput): UsePosterFitResult {
             logoOffsetX: inp.logoOffsetX,
             logoOffsetY: inp.logoOffsetY,
             hasBadges: inp.hasBadges,
+            blurBandPct: inp.blurBandPct,
             voteAverages: inp.cleanPosters.map((p) => p.vote_average),
             widths: inp.cleanPosters.map((p) => p.width),
             heights: inp.cleanPosters.map((p) => p.height),

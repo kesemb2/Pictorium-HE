@@ -73,6 +73,10 @@ export function PosterOptions({ posters, posterActivePath, lang, selectPoster, a
     logoOffsetX: ed.logoOffsetX,
     logoOffsetY: ed.logoOffsetY,
     hasBadges: ed.globalBadges,
+    // La fascia che coprirà il poster fa parte della scelta: stessa
+    // grandezza che il server risolve, così l'anteprima e Stremio
+    // classificano allo stesso modo.
+    blurBandPct: ed.blurEnabled ? ed.gradientHeight : null,
   })
 
   const scoreMap = useMemo(() => new Map(results.map((r) => [r.posterPath, r.adjustedScore])), [results])

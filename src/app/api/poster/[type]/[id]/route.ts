@@ -736,6 +736,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         if (logoPath && logoFitEnabled) {
           try {
             const fitStart = Date.now()
+            const qGradEarly = req.nextUrl.searchParams.get("gradHeight")
+            const qBlurEarly = req.nextUrl.searchParams.get("blur0")
+            const blurOnEarly = qBlurEarly !== null
+              ? qBlurEarly !== "1"
+              : (sd.blurEnabled ?? true)
+            const gradEarly = qGradEarly !== null && Number.isFinite(Number(qGradEarly))
+              ? Number(qGradEarly)
+              : (sd.gradientHeight ?? 30)
             const bestFit = await selectBestLogoFitPosterPath({
               posters: images.posters, logoPath,
               fetchImage: async (path: string) => {
@@ -756,6 +764,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
                 return Buffer.from(await res.arrayBuffer())
               },
               hasBadges: true,
+              // La scelta deve tenere conto della fascia che la coprirà:
+              // con il default al 30% un soggetto fra il 70% e l'84%
+              // dell'altezza finisce sotto la sfocatura.
+              blurBandPct: blurOnEarly ? gradEarly : null,
             })
             const fitMs = Date.now() - fitStart
             if (bestFit && bestFit.posterPath && bestFit.posterPath !== clean.file_path) {
