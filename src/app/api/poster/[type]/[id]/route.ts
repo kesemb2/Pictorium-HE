@@ -999,16 +999,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           let wikidataTimer: ReturnType<typeof setTimeout> | undefined
           let wikidataTimedOut = false
           const wdStart = Date.now()
+          // Lo zombie SPARQL perso alla race viene abortito subito (stesso
+          // pattern di ratingAbort): senza, campava fino ai suoi 5s interni
+          // occupando uno slot del limiter awards (max 2).
+          const wdAbort = new AbortController()
           const wikidataTimeout = new Promise<typeof emptyWikidata>((r) => {
             wikidataTimer = setTimeout(() => { wikidataTimedOut = true; r(emptyWikidata) }, WIKIDATA_TIMEOUT)
           })
           const result = await Promise.race([
             rankingEnabledEarly
-              ? fetchAllWikidata(tmdbId, mediaType, renderAbort.signal).catch(() => emptyWikidata)
+              ? fetchAllWikidata(tmdbId, mediaType, combineAbortSignals(renderAbort.signal, wdAbort.signal)).catch(() => emptyWikidata)
               : Promise.resolve(emptyWikidata),
             wikidataTimeout,
           ])
           if (wikidataTimer) clearTimeout(wikidataTimer)
+          wdAbort.abort()
           // a. Osservabilità lotteria badge: esito + tempo + contenuto. Un
           // timeout qui = poster senza premi (per le serie, senza rete: nessun
           // badge) congelato in cache per ore — dal log si distingue subito un

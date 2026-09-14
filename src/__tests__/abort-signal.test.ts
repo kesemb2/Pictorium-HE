@@ -32,4 +32,19 @@ describe("combineAbortSignals", () => {
     ctrl.abort()
     expect(combineAbortSignals(ctrl.signal, 10_000).aborted).toBe(true)
   })
+
+  it("accepts a second signal instead of a timeout (fires on either)", async () => {
+    const a = new AbortController()
+    const b = new AbortController()
+    const combined = combineAbortSignals(a.signal, b.signal)
+    expect(combined.aborted).toBe(false)
+    b.abort()
+    await sleep(10)
+    expect(combined.aborted).toBe(true)
+  })
+
+  it("returns the second signal as-is when no external signal is given", () => {
+    const b = new AbortController()
+    expect(combineAbortSignals(undefined, b.signal)).toBe(b.signal)
+  })
 })
