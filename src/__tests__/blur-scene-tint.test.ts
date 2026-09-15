@@ -19,8 +19,8 @@ async function darkSaturatedPoster(): Promise<Buffer> {
  * `findAccentColor` porta di proposito l'accento di un poster scuro fino a
  * L=0.88, perché il testo del badge resti leggibile. Quando quello stesso
  * colore tingeva anche la fascia, il fondo del poster usciva più chiaro
- * dell'artwork sopra. La tinta di scena chiude a L=0.20 e risolve il problema
- * alla radice: due colori, due mestieri.
+ * dell'artwork sopra. La tinta di scena resta sulla luminosità dei pixel che
+ * copre e risolve il problema alla radice: due colori, due mestieri.
  */
 describe("scene tint vs badge accent on a dark poster", () => {
   it("keeps the band tint dark where the badge accent goes near-white", async () => {
@@ -28,15 +28,16 @@ describe("scene tint vs badge accent on a dark poster", () => {
     const pixels = await sharp(buf).ensureAlpha().raw().toBuffer()
 
     const badge = findAccentColor(pixels, 200, 300, "")
-    const scene = findSceneTint(pixels, 200, 300, "")
+    const scene = findSceneTint(pixels, 200, 300)!
 
+    expect(scene).not.toBeNull()
     expect(relLuma(badge)).toBeGreaterThan(0.6)
     expect(relLuma(scene)).toBeLessThan(0.35)
     expect(relLuma(scene)).toBeLessThan(relLuma(badge))
   })
 
   it("returns a usable hex through the render helper", async () => {
-    const hex = await extractSceneTint(await darkSaturatedPoster(), "")
+    const hex = await extractSceneTint(await darkSaturatedPoster(), 0.3)
     expect(hex).toMatch(/^#[0-9a-f]{6}$/)
   })
 })

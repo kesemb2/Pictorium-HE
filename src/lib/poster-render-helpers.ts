@@ -233,32 +233,99 @@ export async function extractBadgeColor(
 }
 
 /**
- * Estrae la tinta tonale di scena (same-hue) dal poster.
+ * Percentuale minima a cui l'adattamento può ridurre la fascia.
  *
- * Analizza l'INTERO thumb (niente crop): il crop bottom-40% falliva sui
- * portrait con facce in basso (es. Silo: pelle/tuta arancione nel fondo
- * votavano marrone #86642d invece dello smeraldo della scena, che vive
- * nella parte alta). La famiglia dominante per area vince per costruzione.
+ * La riga di testo in basso è centrata a ~85px dal fondo su 750 (`targetCenter`
+ * nella route del poster): sotto il 18% il testo comincerebbe a sedersi su
+ * artwork non sfocato, che è peggio del problema che stiamo risolvendo.
+ */
+export const MIN_FITTED_BAND_PCT = 18
+
+/**
+ * Deviazione standard di luma oltre la quale una riga conta come "occupata".
+ * Una riga piatta o con un gradiente dolce sta molto sotto; una riga che
+ * attraversa un volto, un titolo o un blocco chiaro sta molto sopra.
+ */
+const BUSY_ROW_ENERGY = 24
+
+/**
+ * Adatta l'altezza della fascia al poster: se il bordo superiore cadrebbe
+ * dentro qualcosa, alza il bordo invece di inghiottirlo.
  *
- * Total fail-safe: non lancia mai eccezioni, in caso di errore o buffer corrotto
- * restituisce l'hex di fallback del genere o #555555.
+ * Misura l'energia di dettaglio riga per riga sul thumb già decodificato e, se
+ * la riga del bordo richiesto sta dentro una corsa di righe occupate, sposta il
+ * bordo appena sotto quella corsa.
+ *
+ * Solo restringe, mai allarga: l'altezza richiesta resta il tetto, e il
+ * pavimento è `MIN_FITTED_BAND_PCT`. Vive nel percorso di render, quindi
+ * l'anteprima dell'editor — che è essa stessa un render server — lo eredita
+ * senza una seconda implementazione che possa divergere.
+ */
+export async function fitBandToPoster(posterBuf: Buffer, requestedPct: number): Promise<number> {
+  if (!Number.isFinite(requestedPct) || requestedPct <= MIN_FITTED_BAND_PCT) return requestedPct
+  try {
+    const w = 200, h = 300
+    const gray = await sharp(await posterThumb(posterBuf)).greyscale().raw().toBuffer()
+
+    const busy = new Array<boolean>(h)
+    for (let y = 0; y < h; y++) {
+      let sum = 0, sumSq = 0
+      for (let x = 0; x < w; x++) {
+        const v = gray[y * w + x]
+        sum += v
+        sumSq += v * v
+      }
+      const mean = sum / w
+      busy[y] = Math.sqrt(Math.max(0, sumSq / w - mean * mean)) >= BUSY_ROW_ENERGY
+    }
+
+    const topRow = h - Math.round(h * requestedPct / 100)
+    if (topRow < 0 || topRow >= h || !busy[topRow]) return requestedPct
+
+    let runEnd = topRow
+    while (runEnd + 1 < h && busy[runEnd + 1]) runEnd++
+
+    const fittedPct = ((h - (runEnd + 1)) / h) * 100
+    return Math.max(MIN_FITTED_BAND_PCT, Math.min(requestedPct, fittedPct))
+  } catch {
+    return requestedPct
+  }
+}
+
+/**
+ * Estrae la tinta della fascia sfocata dalla striscia che la fascia coprirà.
+ *
+ * `regionFraction` è l'altezza reale del blur: il colore nasce dagli stessi
+ * pixel su cui verrà steso, non dalla cornice esterna del poster. Campionare
+ * altrove era il motivo per cui un poster con il fondo vuoto riceveva comunque
+ * una tinta presa da tutt'altra zona.
+ *
+ * Restituisce `null` quando la striscia non ha colore da descrivere, o al
+ * primo errore: nessun fallback di genere, perché un poster senza colore non
+ * deve riceverne uno inventato.
  * Riusa `posterThumb(posterBuf)` condividendo la memo WeakMap con `extractBadgeColor`.
  * Non analizza loghi (evita inquinamento cromatico da marchi bianchi/luminosi).
  */
 export async function extractSceneTint(
   posterBuf: Buffer,
-  fallbackGenre?: string | null,
-): Promise<string> {
-  const defaultFallback = fallbackGenre ? (GENRE_FALLBACK[fallbackGenre] || "#555555") : "#555555"
+  regionFraction: number = DEFAULT_ACCENT_REGION_FRACTION,
+): Promise<string | null> {
   try {
     const thumbBuf = await posterThumb(posterBuf)
     const posterW = 200
-    const posterH = 300
+    const stripH = Math.max(1, Math.min(300, Math.round(300 * clampAccentRegionFraction(regionFraction))))
 
-    const pixels = await sharp(thumbBuf).ensureAlpha().raw().toBuffer()
-    const tint = findSceneTint(pixels, posterW, posterH, fallbackGenre || "")
+    const stripBuf = stripH >= 300
+      ? thumbBuf
+      : await sharp(thumbBuf)
+          .extract({ left: 0, top: 300 - stripH, width: posterW, height: stripH })
+          .toBuffer()
+
+    const pixels = await sharp(stripBuf).ensureAlpha().raw().toBuffer()
+    const tint = findSceneTint(pixels, posterW, stripH)
+    if (!tint) return null
     return `#${tint.r.toString(16).padStart(2, "0")}${tint.g.toString(16).padStart(2, "0")}${tint.b.toString(16).padStart(2, "0")}`
   } catch {
-    return defaultFallback
+    return null
   }
 }

@@ -11,6 +11,7 @@ import {
   DEFAULT_ACCENT_REGION_FRACTION,
   extractBadgeColor,
   extractSceneTint,
+  fitBandToPoster,
   fitBadgeToCanvas,
   fitCompositeToCanvas,
   isValidHex,
@@ -668,8 +669,13 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // percentuale del poster, e applyBlur la clampa a un minimo di 100px su 750.
   // Campionare un 40% fisso mentre la fascia ne copriva il 30% dava un colore
   // preso anche da pixel che restavano scoperti.
+  // La fascia si adatta al poster: se il bordo alto cadrebbe dentro qualcosa,
+  // sale invece di inghiottirlo. Solo restringe, e l'altezza richiesta resta il
+  // tetto. Va calcolata prima della frazione campionata, così colore e fascia
+  // guardano gli stessi pixel.
+  const fittedBlurHeight = blurEnabled ? await fitBandToPoster(posterBuf, blurHeight) : blurHeight
   const accentBottomFraction = blurEnabled
-    ? Math.min(Math.max(blurHeight / 100, 100 / STD_H), 1)
+    ? Math.min(Math.max(fittedBlurHeight / 100, 100 / STD_H), 1)
     : DEFAULT_ACCENT_REGION_FRACTION
   const badgeColors = needColors
     ? (accentOverride
@@ -679,11 +685,11 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // La fascia NON prende il colore del badge. L'accento viene schiarito di
   // proposito (fino a L=0.88 sui poster scuri) perché il testo resti
   // leggibile, e riusarlo per la fascia schiariva il fondo sopra l'artwork.
-  // La tinta di scena nasce dalla cornice esterna del poster, preferisce le
-  // aree sature e SCURE e chiude a L=0.20: stessa famiglia cromatica, profonda.
+  // La tinta di scena descrive la striscia che la fascia coprirà davvero —
+  // stessa frazione usata per l'accent — e resta `null` se lì non c'è colore.
   // Un accento manuale (`ac=`) resta prioritario, è una scelta esplicita.
   const tintColor = accentTintEnabled && blurEnabled
-    ? (accentOverride?.genreColor ?? await extractSceneTint(posterBuf, genreName))
+    ? (accentOverride?.genreColor ?? await extractSceneTint(posterBuf, accentBottomFraction))
     : null
   const accentColorGenre = badgeColors?.genreColor || (GENRE_FALLBACK[genreName || ""] || "#555555")
   const accentColorRank = badgeColors?.rankColor || "#555555"
@@ -692,7 +698,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     applyBlur({
       posterBuf,
       blurEnabled,
-      blurHeight,
+      blurHeight: fittedBlurHeight,
       blurIntensity,
       blurFade,
       blurDarkness,

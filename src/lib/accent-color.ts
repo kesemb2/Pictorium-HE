@@ -121,7 +121,6 @@ export function analyzeBuckets(
   pixels: Uint8ClampedArray | Buffer,
   width: number,
   height: number,
-  tintMode: "badge" | "scene" = "badge",
 ): BucketAnalysis {
   const step = 2
   let sumR = 0, sumG = 0, sumB = 0, countLuma = 0
@@ -137,14 +136,6 @@ export function analyzeBuckets(
 
   for (let y = 0; y < height; y += step) {
     for (let x = 0; x < width; x += step) {
-      // Modalità scena: campiona SOLO la cornice esterna (stile Ambilight).
-      // Facce/loghi/titoli stanno al centro e hijackerebbero il voto (pelle
-      // arancione su Silo); i bordi vedono quasi sempre lo sfondo/atmosfera.
-      if (tintMode === "scene") {
-        const bx = Math.max(8, Math.floor(width * 0.15))
-        const by = Math.max(8, Math.floor(height * 0.15))
-        if (x >= bx && x < width - bx && y >= by && y < height - by) continue
-      }
       const i = (y * width + x) * 4
       const pr = pixels[i], pg = pixels[i + 1], pb = pixels[i + 2]
       const alpha = pixels[i + 3]
@@ -162,12 +153,8 @@ export function analyzeBuckets(
       const hue = fastHue(r, g, b, d, max)
       const bucketIdx = Math.floor(hue / 30) % 12
       const bkt = buckets[bucketIdx]
-      // Badge: penalità per scuro/chiaro (serve contrasto per il testo).
-      // Scena: vince l'area satura e SCURA (lo scrim vive nel fondo scuro;
-      // pelli e cieli chiari non devono hijackare la tinta).
-      const weight = tintMode === "scene"
-        ? Math.pow(s, 1.5) * (1 - l)
-        : Math.pow(s, 1.5) * (1 - Math.abs(l - 0.5) * 1.5)
+      // Penalità per scuro/chiaro: al badge serve contrasto per il testo.
+      const weight = Math.pow(s, 1.5) * (1 - Math.abs(l - 0.5) * 1.5)
       bkt.count += weight
       bkt.totalSat += s * weight
       bkt.hueSin += Math.sin(hue * Math.PI / 180) * weight
@@ -278,34 +265,84 @@ export function findAccentColor(pixels: Uint8ClampedArray | Buffer, width: numbe
   return result
 }
 
+/** Croma minimo perché un pixel voti la tonalità: sotto è grigio, non colore. */
+const MIN_PIXEL_CHROMA = 0.02
+
+/** Croma medio minimo della striscia perché valga la pena tingerla. */
+const MIN_REGION_CHROMA = 0.05
+
+/** Tetto di saturazione: limita una tinta accesa, non ne alza mai una spenta. */
+const MAX_SCENE_SAT = 0.55
+
 /**
- * Calcola la tinta di scena naturale (same-hue) per la sfocatura di fondo.
+ * Tinta della fascia sfocata: descrive la striscia che il blur coprirà.
  *
- * A differenza di findAccentColor:
- * - NESSUNA rotazione a +150°: preserva la famiglia cromatica della scena.
- * - Saturazione controllata in [0.30, 0.50]: tinta presente ma non accesa.
- * - Luminosità L = 0.20: tinta già profonda come gli scrim di riferimento.
- * - NESSUNA ricerca dicotomica di contrasto: deve fondersi armoniosamente con l'immagine.
- * - Fallback monocromatico: GENRE_FALLBACK puro senza pushContrast.
+ * Tonalità, saturazione e luminosità escono TUTTE dai pixel campionati. La
+ * versione precedente prendeva solo la tonalità dominante della cornice esterna
+ * e poi forzava S in [0.30, 0.50] e L a 0.20, e quei due vincoli inventavano il
+ * colore: un nero caldo con il 3% di croma usciva marrone, un poster bianco
+ * prendeva il rosso di un dettaglio minuscolo, un rosso uniforme riceveva una
+ * fascia più scura del rosso che copriva.
+ *
+ * Qui la saturazione è quella misurata (solo limitata verso l'alto, mai alzata)
+ * e la luminosità è quella misurata, così a scurire la fascia resta solo
+ * `blurDarkness`, nella misura configurata.
+ *
+ * Restituisce `null` quando la striscia è sostanzialmente acromatica: un poster
+ * senza colore non deve riceverne uno. `applyBlur` tratta l'assenza di
+ * `accentColor` come fascia non tinta, quindi resta sfocatura più shade.
  */
 export function findSceneTint(
   pixels: Uint8ClampedArray | Buffer,
   width: number,
   height: number,
-  genre: string,
-): AccentResult {
-  const analysis = analyzeBuckets(pixels, width, height, "scene")
-  if (analysis.vibrantWeight < 1) {
-    const fb = GENRE_FALLBACK[genre] || "#555555"
-    const [r, g, b] = parseColor(fb)
-    return { r, g, b }
+): AccentResult | null {
+  const step = 2
+  let sampled = 0
+  let sumL = 0
+  let sumC = 0
+  let hueSin = 0, hueCos = 0, hueWeight = 0
+
+  for (let y = 0; y < height; y += step) {
+    for (let x = 0; x < width; x += step) {
+      const i = (y * width + x) * 4
+      if (pixels[i + 3] < 128) continue
+
+      const r = pixels[i] / 255, g = pixels[i + 1] / 255, b = pixels[i + 2] / 255
+      const max = Math.max(r, g, b), min = Math.min(r, g, b)
+      const l = (max + min) / 2
+      const c = max - min
+
+      sampled++
+      sumL += l
+      sumC += c
+
+      // Voto pesato per croma × area: un campo ampio e appena tinto batte pochi
+      // pixel accesi. È il caso del poster bianco con i tacchi rossi, dove la
+      // media pesata per sola saturazione eleggeva i tacchi.
+      if (c >= MIN_PIXEL_CHROMA) {
+        const hue = fastHue(r, g, b, c, max)
+        hueSin += Math.sin(hue * Math.PI / 180) * c
+        hueCos += Math.cos(hue * Math.PI / 180) * c
+        hueWeight += c
+      }
+    }
   }
 
-  // Same-hue: estrazione diretta della famiglia cromatica nativa della scena.
-  // L scuro (0.20): la tinta di scrim/badge nasce già profonda (riferimento
-  // RPDB ~#184236 per Silo); lo shade del blur la porta poi a fondo campo.
-  const sat = Math.min(0.50, Math.max(0.30, analysis.avgSat))
-  const res = hslToRgb(analysis.hue, sat, 0.20)
+  if (sampled === 0 || hueWeight <= 0) return null
+
+  const meanL = sumL / sampled
+  const meanC = sumC / sampled
+  if (meanC < MIN_REGION_CHROMA) return null
+
+  // C = (1 - |2L-1|) · S è la definizione HSL: invertirla restituisce la tinta
+  // con esattamente il croma e la luminosità misurati sulla striscia.
+  const span = 1 - Math.abs(2 * meanL - 1)
+  if (span <= 0.001) return null
+
+  const hue = ((Math.atan2(hueSin, hueCos) * 180 / Math.PI) % 360 + 360) % 360
+  const sat = Math.min(MAX_SCENE_SAT, meanC / span)
+  const res = hslToRgb(hue, sat, meanL)
   return {
     r: Math.max(0, Math.min(255, res.r)),
     g: Math.max(0, Math.min(255, res.g)),
