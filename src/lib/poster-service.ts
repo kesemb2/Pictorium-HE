@@ -669,14 +669,14 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // percentuale del poster, e applyBlur la clampa a un minimo di 100px su 750.
   // Campionare un 40% fisso mentre la fascia ne copriva il 30% dava un colore
   // preso anche da pixel che restavano scoperti.
-  // La fascia si adatta al poster: se cadrebbe a metà di qualcosa lo COPRE
-  // (rampa più corta, sfocatura più forte) invece di ritirarsi sotto di esso,
-  // che lasciava il logo su artwork nitido. Nessun parametro cresce oltre il
-  // richiesto. Va calcolata prima della frazione campionata, così colore e
-  // fascia guardano gli stessi pixel.
+  // La fascia si toglie di mezzo: si ritira sotto quello che troverebbe a metà
+  // e si indebolisce dove non ha niente da nascondere. Non fa mai PIÙ di quanto
+  // chiesto, e il fade non si tocca. Al logo lasciato scoperto pensa la
+  // velatura locale sotto al logo, non la fascia. Va calcolata prima della
+  // frazione campionata, così colore e fascia guardano gli stessi pixel.
   const fittedBand = blurEnabled
-    ? await fitBandToPoster(posterBuf, { blurHeight, blurFade, blurIntensity })
-    : { blurHeight, blurFade, blurIntensity }
+    ? await fitBandToPoster(posterBuf, { blurHeight, blurFade, blurIntensity, blurDarkness })
+    : { blurHeight, blurFade, blurIntensity, blurDarkness }
   const accentBottomFraction = blurEnabled
     ? Math.min(Math.max(fittedBand.blurHeight / 100, 100 / STD_H), 1)
     : DEFAULT_ACCENT_REGION_FRACTION
@@ -702,7 +702,6 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
       posterBuf,
       blurEnabled,
       ...fittedBand,
-      blurDarkness,
       accentColor: tintColor ?? undefined,
       tintStrength: tintStrength / 100,
     }),

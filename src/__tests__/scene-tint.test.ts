@@ -64,6 +64,26 @@ describe("findSceneTint (same-hue scene tint extraction)", () => {
     expect(Math.abs(hslLightness(tint.r, tint.g, tint.b) - hslLightness(190, 40, 40))).toBeLessThan(0.05)
   })
 
+  it("is no lighter than the dark half of a mixed region", () => {
+    // Metà nera, metà blu chiaro. Con la MEDIA la tinta usciva a mezza strada e
+    // miscelata alzava i neri in un velo: era la foschia sulla fascia. Il
+    // quartile basso la tiene dalla parte scura.
+    const raw = Buffer.alloc(100 * 100 * 4)
+    for (let y = 0; y < 100; y++) {
+      for (let x = 0; x < 100; x++) {
+        const i = (y * 100 + x) * 4
+        const bright = y >= 50
+        raw[i] = bright ? 120 : 6
+        raw[i + 1] = bright ? 150 : 8
+        raw[i + 2] = bright ? 210 : 20
+        raw[i + 3] = 255
+      }
+    }
+    const tint = findSceneTint(raw, 100, 100)!
+    expect(tint).not.toBeNull()
+    expect(hslLightness(tint.r, tint.g, tint.b)).toBeLessThan(hslLightness(20, 24, 40))
+  })
+
   it("never raises the saturation of a washed-out region", () => {
     // Grigio appena tinto di blu: resta appena tinto, non diventa blu pieno.
     const raw = createSolidRawRgba(100, 100, 120, 128, 150)

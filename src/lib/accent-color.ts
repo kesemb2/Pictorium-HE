@@ -265,6 +265,17 @@ export function findAccentColor(pixels: Uint8ClampedArray | Buffer, width: numbe
   return result
 }
 
+/** Luminosità al percentile richiesto, dal centro del bin che lo contiene. */
+function percentileLightness(hist: Uint32Array, total: number, q: number): number {
+  const target = total * q
+  let seen = 0
+  for (let i = 0; i < hist.length; i++) {
+    seen += hist[i]
+    if (seen >= target) return (i + 0.5) / hist.length
+  }
+  return 1 - 0.5 / hist.length
+}
+
 /** Croma minimo perché un pixel voti la tonalità: sotto è grigio, non colore. */
 const MIN_PIXEL_CHROMA = 0.02
 
@@ -299,9 +310,11 @@ export function findSceneTint(
 ): AccentResult | null {
   const step = 2
   let sampled = 0
-  let sumL = 0
   let sumC = 0
   let hueSin = 0, hueCos = 0, hueWeight = 0
+  // Istogramma di luminosità: serve il quartile basso, non la media (vedi sotto).
+  const LBINS = 64
+  const lHist = new Uint32Array(LBINS)
 
   for (let y = 0; y < height; y += step) {
     for (let x = 0; x < width; x += step) {
@@ -314,7 +327,7 @@ export function findSceneTint(
       const c = max - min
 
       sampled++
-      sumL += l
+      lHist[Math.min(LBINS - 1, Math.floor(l * LBINS))]++
       sumC += c
 
       // Voto pesato per croma × area: un campo ampio e appena tinto batte pochi
@@ -331,18 +344,24 @@ export function findSceneTint(
 
   if (sampled === 0 || hueWeight <= 0) return null
 
-  const meanL = sumL / sampled
   const meanC = sumC / sampled
   if (meanC < MIN_REGION_CHROMA) return null
 
+  // Quartile BASSO, non la media. Su una striscia mista la media sta sopra le
+  // parti scure, e miscelarla alzava i neri in un velo: era la foschia rosa
+  // sulla fascia. Con il p25 la tinta non è mai più chiara della zona che
+  // copre, e a scurire resta solo `blurDarkness`. Su una striscia uniforme
+  // p25 e media coincidono, quindi i poster a tinta unita non cambiano.
+  const tintL = percentileLightness(lHist, sampled, 0.25)
+
   // C = (1 - |2L-1|) · S è la definizione HSL: invertirla restituisce la tinta
-  // con esattamente il croma e la luminosità misurati sulla striscia.
-  const span = 1 - Math.abs(2 * meanL - 1)
+  // con esattamente il croma misurato, alla luminosità scelta.
+  const span = 1 - Math.abs(2 * tintL - 1)
   if (span <= 0.001) return null
 
   const hue = ((Math.atan2(hueSin, hueCos) * 180 / Math.PI) % 360 + 360) % 360
   const sat = Math.min(MAX_SCENE_SAT, meanC / span)
-  const res = hslToRgb(hue, sat, meanL)
+  const res = hslToRgb(hue, sat, tintL)
   return {
     r: Math.max(0, Math.min(255, res.r)),
     g: Math.max(0, Math.min(255, res.g)),

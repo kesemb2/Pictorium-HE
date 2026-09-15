@@ -5,7 +5,6 @@ import { combineAbortSignals } from "./abort-signal"
 import { findAccentColor, findSceneTint, type AccentHueMode } from "@/lib/accent-color"
 import { GENRE_FALLBACK } from "@/lib/badges"
 import { ARTWORKS_BASE } from "@/lib/tvdb"
-import { bandGeometry } from "@/lib/blur"
 // Batch B: STD_W/STD_H ora provengono da image-utils.ts (single source of truth)
 import { STD_W, STD_H, computeRegionStats } from "@/lib/image-utils"
 
@@ -243,125 +242,128 @@ export async function extractBadgeColor(
 export const MIN_FITTED_BAND_PCT = 18
 
 /**
- * Quanto può accorciarsi l'altezza, in punti percentuali.
- *
- * Abbassare il bordo è l'unica mossa che GARANTISCE che l'elemento resti
- * nitido, ed è anche quella che lascia il logo su artwork contrastato. Resta
- * disponibile solo come ritocco, quando bastano pochi punti per scavalcare del
- * tutto quello che si è trovato.
- */
-const MAX_BAND_SHRINK_PCT = 4
-
-/**
- * Pavimento del fade. Sotto questa percentuale la rampa diventa così ripida che
- * il bordo alto della fascia si legge come una linea netta.
- */
-export const MIN_BAND_FADE = 20
-
-/** Aumento massimo dell'intensità di sfocatura, in frazione del richiesto. */
-const MAX_BLUR_BOOST = 0.6
-
-/**
  * Deviazione standard di luma oltre la quale una riga conta come "occupata".
  * Una riga piatta o con un gradiente dolce sta molto sotto; una riga che
  * attraversa un volto, un titolo o un blocco chiaro sta molto sopra.
  */
 const BUSY_ROW_ENERGY = 24
 
-/** I tre parametri della fascia, come li chiede l'utente e come escono adattati. */
+/** Quanto può scendere una forza rispetto a quella richiesta. */
+const MIN_STRENGTH_SCALE = 0.5
+
+/** Luminosità della striscia sopra la quale lo scurimento resta pieno. */
+const DARKNESS_REF_LIGHTNESS = 0.35
+
+/** I parametri della fascia, come li chiede l'utente e come escono adattati. */
 export interface BandFit {
   readonly blurHeight: number
   readonly blurFade: number
   readonly blurIntensity: number
+  readonly blurDarkness: number
 }
 
-/** Energia di dettaglio riga per riga sul thumb 200×300 già decodificato. */
-async function rowEnergies(posterBuf: Buffer): Promise<Float64Array> {
+interface ThumbRows {
+  /** Deviazione standard di luma per riga del thumb. */
+  readonly energy: Float64Array
+  /** Luminosità HSL media per riga del thumb. */
+  readonly lightness: Float64Array
+}
+
+/** Energia di dettaglio e luminosità riga per riga sul thumb già decodificato. */
+async function thumbRowStats(posterBuf: Buffer): Promise<ThumbRows> {
   const w = 200, h = 300
-  const gray = await sharp(await posterThumb(posterBuf)).greyscale().raw().toBuffer()
-  const energies = new Float64Array(h)
+  const rgb = await sharp(await posterThumb(posterBuf)).removeAlpha().raw().toBuffer()
+  const energy = new Float64Array(h)
+  const lightness = new Float64Array(h)
   for (let y = 0; y < h; y++) {
-    let sum = 0, sumSq = 0
+    let sum = 0, sumSq = 0, sumL = 0
     for (let x = 0; x < w; x++) {
-      const v = gray[y * w + x]
-      sum += v
-      sumSq += v * v
+      const i = (y * w + x) * 3
+      const r = rgb[i], g = rgb[i + 1], b = rgb[i + 2]
+      // Luma per l'energia, luminosità HSL per lo scurimento: la prima dice
+      // quanto c'è da vedere, la seconda quanto è già buio.
+      const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
+      sum += luma
+      sumSq += luma * luma
+      sumL += (Math.max(r, g, b) + Math.min(r, g, b)) / 2
     }
     const mean = sum / w
-    energies[y] = Math.sqrt(Math.max(0, sumSq / w - mean * mean))
+    energy[y] = Math.sqrt(Math.max(0, sumSq / w - mean * mean))
+    lightness[y] = sumL / w / 255
   }
-  return energies
+  return { energy, lightness }
 }
 
 /**
- * Adatta la fascia al poster COPRENDO quello che trova, invece di ritirarsi.
+ * Adatta la fascia al poster TOGLIENDOSI DI MEZZO: si ritira e si indebolisce
+ * il più possibile, senza mai fare di più di quanto chiesto.
  *
- * La versione precedente abbassava il bordo sotto l'elemento trovato, ed era la
- * mossa sbagliata: il logo restava su artwork nitido e contrastato, e un logo
- * nero su poster bianco spariva. La geometria lo spiega — un logo a scala di
- * default occupa circa y 413..600 su 750, mentre una fascia al 30% con fade 60
- * diventa opaca solo a y 653, cioè sotto al logo. Ritirandosi al 18% la rampa
- * scendeva a y 599..690 e il logo non riceveva copertura affatto.
+ * Le due versioni precedenti hanno sbagliato in direzioni opposte. La prima
+ * abbassava il bordo e lasciava il logo su artwork nitido. La seconda teneva
+ * l'altezza e accorciava il fade per COPRIRE l'elemento: la soglia di riga
+ * occupata scatta su quasi ogni poster vero, quindi il fade crollava al
+ * pavimento e la fascia smetteva di essere un gradiente per diventare una
+ * lastra a metà poster, con la tinta stesa piatta sopra.
  *
- * Ora, nell'ordine:
- * - se bastano `MAX_BAND_SHRINK_PCT` punti per scavalcare del tutto la corsa di
- *   righe occupate, si accorcia di quel poco e non si tocca altro;
- * - altrimenti l'altezza resta e si accorcia il FADE, così la rampa diventa
- *   opaca all'inizio dell'elemento invece che sotto di esso. Lo stesso `u`
- *   guida `blurDarkness`, quindi la fascia copre e scurisce più in alto;
- * - e l'intensità sale con lui: una fascia opaca su un elemento contrastato
- *   resta un blob contrastato se il sigma è basso.
+ * Qui la fascia fa solo due cose, entrambe in sottrazione:
  *
- * Nessuno dei tre parametri cresce mai oltre il richiesto: gli slider restano
- * il tetto. Vive nel percorso di render, quindi l'anteprima dell'editor — che è
- * essa stessa un render server — lo eredita senza una seconda implementazione.
+ * - **si ritira**: se il bordo alto cade dentro una corsa di righe occupate,
+ *   scende sotto quella corsa, con pavimento a `MIN_FITTED_BAND_PCT`;
+ * - **si indebolisce**: su una striscia già scura serve meno scurimento, su una
+ *   striscia già piatta serve meno sfocatura. Mai sotto metà del richiesto.
+ *
+ * Il fade non si tocca mai: è esattamente ciò che rende la fascia un gradiente
+ * invece di una lastra.
+ *
+ * La leggibilità del logo non è più affare della fascia: se ritirandosi lascia
+ * il logo scoperto, a intervenire è la velatura locale sotto al logo
+ * (`logoScrimStrength`), che ora misura la zona CON la fascia sopra. Una
+ * velatura grande quanto il logo, non una lastra grande quanto il poster.
+ *
+ * Vive nel percorso di render, quindi l'anteprima dell'editor — che è essa
+ * stessa un render server — lo eredita senza una seconda implementazione.
  */
 export async function fitBandToPoster(posterBuf: Buffer, requested: BandFit): Promise<BandFit> {
-  const { blurHeight, blurFade, blurIntensity } = requested
+  const { blurHeight, blurFade, blurIntensity, blurDarkness } = requested
   if (!Number.isFinite(blurHeight) || !Number.isFinite(blurFade)) return requested
   try {
-    const energies = await rowEnergies(posterBuf)
-    const rows = energies.length
-    /** Riga del thumb corrispondente a una riga del poster. */
+    const { energy, lightness } = await thumbRowStats(posterBuf)
+    const rows = energy.length
     const thumbRow = (y: number) => Math.min(rows - 1, Math.max(0, Math.floor(y * rows / STD_H)))
-    const busyAt = (y: number) => energies[thumbRow(y)] >= BUSY_ROW_ENERGY
 
-    const geom = bandGeometry(blurHeight, blurFade)
-
-    // La zona critica è la rampa: lì la fascia è semitrasparente e un elemento
-    // si vede a metà. Sotto `opaqueFrom` è già coperto.
-    let runStart = -1
-    for (let y = geom.extTop; y < geom.opaqueFrom && y < STD_H; y++) {
-      if (busyAt(y)) { runStart = y; break }
-    }
-    if (runStart < 0) return requested
-
-    while (runStart > 0 && busyAt(runStart - 1)) runStart--
-    let runEnd = runStart
-    while (runEnd + 1 < STD_H && busyAt(runEnd + 1)) runEnd++
-
-    // Ritocco: se pochi punti bastano a scavalcare la corsa, è la soluzione più
-    // semplice e non tocca né fade né sfocatura.
-    const clearedHeight = ((STD_H - (runEnd + 1)) / STD_H) * 100
-    if (clearedHeight >= blurHeight - MAX_BAND_SHRINK_PCT && clearedHeight >= MIN_FITTED_BAND_PCT) {
-      return { ...requested, blurHeight: Math.min(blurHeight, clearedHeight) }
+    // --- Ritirata ---
+    let fittedHeight = blurHeight
+    if (blurHeight > MIN_FITTED_BAND_PCT) {
+      const topRow = thumbRow(STD_H - Math.round(STD_H * blurHeight / 100))
+      if (energy[topRow] >= BUSY_ROW_ENERGY) {
+        let runEnd = topRow
+        while (runEnd + 1 < rows && energy[runEnd + 1] >= BUSY_ROW_ENERGY) runEnd++
+        const clearedPct = ((rows - (runEnd + 1)) / rows) * 100
+        fittedHeight = Math.max(MIN_FITTED_BAND_PCT, Math.min(blurHeight, clearedPct))
+      }
     }
 
-    // Altrimenti si copre: rampa che finisce dove l'elemento comincia.
-    const neededFade = geom.extH <= 1 ? 0 : ((runStart - geom.extTop) / (geom.extH - 1)) * 100
-    // Il pavimento non deve MAI far salire il fade sopra il richiesto: chi ha
-    // già chiesto una rampa cortissima l'ha chiesta.
-    const fittedFade = Math.min(blurFade, Math.max(MIN_BAND_FADE, neededFade))
+    // --- Indebolimento, misurato sulla striscia che la fascia copre davvero ---
+    const firstRow = thumbRow(STD_H - Math.round(STD_H * fittedHeight / 100))
+    let sumL = 0, sumE = 0, n = 0
+    for (let y = firstRow; y < rows; y++) { sumL += lightness[y]; sumE += energy[y]; n++ }
+    const stripL = n > 0 ? sumL / n : 0.5
+    const stripE = n > 0 ? sumE / n : BUSY_ROW_ENERGY
 
-    // Sfocatura proporzionale al contrasto che la fascia deve dissolvere.
-    let peak = 0
-    for (let y = geom.gradTop; y < STD_H; y++) peak = Math.max(peak, energies[thumbRow(y)])
-    const boost = Math.min(1, Math.max(0, (peak - BUSY_ROW_ENERGY) / BUSY_ROW_ENERGY))
-    const fittedIntensity = Number.isFinite(blurIntensity)
-      ? Math.min(100, Math.round(blurIntensity * (1 + MAX_BLUR_BOOST * boost)))
-      : blurIntensity
+    const scale = (ratio: number) => Math.min(1, Math.max(MIN_STRENGTH_SCALE, ratio))
+    const darknessScale = scale(stripL / DARKNESS_REF_LIGHTNESS)
+    const intensityScale = scale(stripE / BUSY_ROW_ENERGY)
 
-    return { blurHeight, blurFade: fittedFade, blurIntensity: fittedIntensity }
+    return {
+      blurHeight: fittedHeight,
+      blurFade,
+      blurIntensity: Number.isFinite(blurIntensity)
+        ? Math.max(1, Math.round(blurIntensity * intensityScale))
+        : blurIntensity,
+      blurDarkness: Number.isFinite(blurDarkness)
+        ? Math.round(blurDarkness * darknessScale)
+        : blurDarkness,
+    }
   } catch {
     return requested
   }
