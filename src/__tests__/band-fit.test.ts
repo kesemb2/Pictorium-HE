@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest"
 import sharp from "sharp"
-import { fitBandToPoster, MIN_FITTED_BAND_PCT } from "@/lib/poster-render-helpers"
+import { bandGeometry } from "@/lib/blur"
+import { fitBandToPoster, MIN_BAND_FADE, MIN_FITTED_BAND_PCT, type BandFit } from "@/lib/poster-render-helpers"
 
 const W = 200
 const H = 300
 
-/** Costruisce un poster PNG 200×300 dipinto riga per riga. */
+const REQUESTED: BandFit = { blurHeight: 30, blurFade: 60, blurIntensity: 8 }
+
+/** Poster PNG alla risoluzione del thumb, dipinto riga per riga. */
 async function poster(paint: (raw: Buffer, x: number, y: number) => void): Promise<Buffer> {
   const raw = Buffer.alloc(W * H * 4)
   for (let y = 0; y < H; y++) {
@@ -23,55 +26,85 @@ function gray(raw: Buffer, x: number, y: number, v: number): void {
   raw[i] = v; raw[i + 1] = v; raw[i + 2] = v
 }
 
+/** Blocco chiaro su fondo scuro fra due righe del thumb (estremi inclusi). */
+function block(from: number, to: number) {
+  return (raw: Buffer, x: number, y: number) => {
+    gray(raw, x, y, y >= from && y <= to && x > W * 0.25 && x < W * 0.75 ? 240 : 20)
+  }
+}
+
 describe("fitBandToPoster", () => {
-  it("raises the top edge above a bright block that the requested band would cut through", async () => {
-    // Blocco chiaro fra il 66% e il 76% dell'altezza, largo mezzo poster: il
-    // bordo di una fascia al 30% cadrebbe al 70%, in mezzo al blocco.
-    const buf = await poster((raw, x, y) => {
-      const inBlock = y >= H * 0.66 && y <= H * 0.76 && x > W * 0.25 && x < W * 0.75
-      gray(raw, x, y, inBlock ? 240 : 20)
-    })
-    const fitted = await fitBandToPoster(buf, 30)
-    expect(fitted).toBeLessThan(30)
-    // Il bordo deve stare SOTTO il blocco, non dentro: blocco fino al 76%,
-    // quindi una fascia di al più il 24%.
-    expect(fitted).toBeLessThanOrEqual(24.5)
-    // E deve fermarsi lì, non precipitare sul pavimento: è la corsa di righe
-    // occupate a decidere il bordo, non il clamp.
-    expect(fitted).toBeGreaterThan(MIN_FITTED_BAND_PCT + 3)
+  it("covers an element the ramp would cut through instead of retreating from it", async () => {
+    // Blocco largo, dalle righe 198..228 del thumb: la rampa di una fascia al
+    // 30% con fade 60 gli passa in mezzo semitrasparente.
+    const fitted = await fitBandToPoster(await poster(block(198, 228)), REQUESTED)
+
+    // L'altezza NON si muove: è quella che tiene il logo sopra una base calma.
+    expect(fitted.blurHeight).toBe(REQUESTED.blurHeight)
+    // La rampa si accorcia, così la fascia è opaca dove l'elemento comincia.
+    expect(fitted.blurFade).toBeLessThan(REQUESTED.blurFade)
+    expect(fitted.blurFade).toBeGreaterThanOrEqual(MIN_BAND_FADE)
+    // E la sfocatura sale, o l'elemento coperto resta un blob contrastato.
+    expect(fitted.blurIntensity).toBeGreaterThan(REQUESTED.blurIntensity)
   })
 
-  it("keeps the requested height when the bottom of the poster is clean", async () => {
-    // Dettaglio solo in alto, fondo piatto: niente da evitare.
-    const buf = await poster((raw, x, y) => {
-      const noisy = y < H * 0.5
-      gray(raw, x, y, noisy ? ((x * 37 + y * 53) % 255) : 40)
-    })
-    expect(await fitBandToPoster(buf, 30)).toBe(30)
+  it("makes the band opaque at the top of the element, not below it", async () => {
+    const buf = await poster(block(198, 228))
+    const fitted = await fitBandToPoster(buf, REQUESTED)
+
+    const before = bandGeometry(REQUESTED.blurHeight, REQUESTED.blurFade)
+    const after = bandGeometry(fitted.blurHeight, fitted.blurFade)
+    // Il blocco sul poster 500×750 comincia a y≈495: prima la fascia diventava
+    // opaca solo a y 653, cioè oltre l'elemento e oltre il logo.
+    expect(before.opaqueFrom).toBeGreaterThan(560)
+    expect(after.opaqueFrom).toBeLessThan(before.opaqueFrom)
+    expect(after.opaqueFrom).toBeLessThanOrEqual(560)
   })
 
-  it("clamps at the floor instead of vanishing on a poster busy all the way down", async () => {
-    const buf = await poster((raw, x, y) => {
-      gray(raw, x, y, (x * 61 + y * 29) % 255)
-    })
-    const fitted = await fitBandToPoster(buf, 30)
-    expect(fitted).toBe(MIN_FITTED_BAND_PCT)
+  it("takes a small shrink when a few points clear the element outright", async () => {
+    // Blocco basso e corto: bastano ~3 punti per scavalcarlo del tutto.
+    const fitted = await fitBandToPoster(await poster(block(205, 219)), REQUESTED)
+
+    expect(fitted.blurHeight).toBeLessThan(REQUESTED.blurHeight)
+    expect(fitted.blurHeight).toBeGreaterThanOrEqual(REQUESTED.blurHeight - 4)
+    // Il ritocco basta da solo: fade e sfocatura restano come richiesti.
+    expect(fitted.blurFade).toBe(REQUESTED.blurFade)
+    expect(fitted.blurIntensity).toBe(REQUESTED.blurIntensity)
   })
 
-  it("never grows the band beyond the requested height", async () => {
-    const buf = await poster((raw, x, y) => gray(raw, x, y, y < H * 0.9 ? 30 : 200))
-    for (const requested of [12, 18, 25, 40, 60]) {
-      expect(await fitBandToPoster(buf, requested)).toBeLessThanOrEqual(requested)
+  it("keeps everything as requested when the bottom of the poster is clean", async () => {
+    const buf = await poster((raw, x, y) => gray(raw, x, y, y < H * 0.5 ? ((x * 37 + y * 53) % 255) : 40))
+    expect(await fitBandToPoster(buf, REQUESTED)).toEqual(REQUESTED)
+  })
+
+  it("keeps the full height on a poster busy all the way down", async () => {
+    // Il caso che prima collassava al pavimento del 18% e lasciava il logo
+    // sull'artwork nitido.
+    const buf = await poster((raw, x, y) => gray(raw, x, y, (x * 61 + y * 29) % 255))
+    const fitted = await fitBandToPoster(buf, REQUESTED)
+
+    expect(fitted.blurHeight).toBe(REQUESTED.blurHeight)
+    expect(fitted.blurHeight).toBeGreaterThan(MIN_FITTED_BAND_PCT)
+    expect(fitted.blurFade).toBe(MIN_BAND_FADE)
+    expect(fitted.blurIntensity).toBeGreaterThan(REQUESTED.blurIntensity)
+  })
+
+  it("never returns a value above what was asked for", async () => {
+    const buf = await poster((raw, x, y) => gray(raw, x, y, (x * 61 + y * 29) % 255))
+    for (const requested of [
+      { blurHeight: 30, blurFade: 60, blurIntensity: 8 },
+      { blurHeight: 50, blurFade: 10, blurIntensity: 90 },
+      { blurHeight: 20, blurFade: 100, blurIntensity: 100 },
+      { blurHeight: 15, blurFade: 25, blurIntensity: 1 },
+    ] satisfies BandFit[]) {
+      const fitted = await fitBandToPoster(buf, requested)
+      expect(fitted.blurHeight).toBeLessThanOrEqual(requested.blurHeight)
+      expect(fitted.blurFade).toBeLessThanOrEqual(requested.blurFade)
+      expect(fitted.blurIntensity).toBeLessThanOrEqual(100)
     }
   })
 
-  it("leaves a request already at or below the floor untouched", async () => {
-    const buf = await poster((raw, x, y) => gray(raw, x, y, (x * 61 + y * 29) % 255))
-    expect(await fitBandToPoster(buf, 10)).toBe(10)
-    expect(await fitBandToPoster(buf, MIN_FITTED_BAND_PCT)).toBe(MIN_FITTED_BAND_PCT)
-  })
-
-  it("falls back to the requested height on a corrupt buffer", async () => {
-    expect(await fitBandToPoster(Buffer.from([1, 2, 3, 4]), 30)).toBe(30)
+  it("falls back to the requested band on a corrupt buffer", async () => {
+    expect(await fitBandToPoster(Buffer.from([1, 2, 3, 4]), REQUESTED)).toEqual(REQUESTED)
   })
 })

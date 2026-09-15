@@ -11,6 +11,7 @@
 import sharp from "sharp"
 import { contrastRatio, relativeLuminance } from "./accent-color"
 import { computeRegionStats, STD_H, STD_W } from "./image-utils"
+import type { BlurOverlay } from "./blur"
 
 /**
  * Soglia minima. 3.0 è lo stesso obiettivo che `findContrastingLightness` usa
@@ -50,20 +51,61 @@ export async function logoInkLuminance(logoBuf: Buffer): Promise<number | null> 
  * Luminanza della fascia di poster su cui il logo verrà composto. Il rettangolo
  * arriva da `computeLogoLayout`, così si misura esattamente ciò che starà dietro
  * al logo e non il poster nel suo insieme.
+ *
+ * Con `band` la misura tiene conto della fascia sfocata, che nel render finisce
+ * SOTTO al logo e sopra al poster: `poster·(1-α) + fascia·α`, riga per riga,
+ * con α preso dall'overlay stesso. Senza, il comportamento è quello storico.
+ * La differenza non è accademica: un logo nero su poster bianco misurato sul
+ * poster nudo risulta ad alto contrasto e non riceve velatura, salvo poi
+ * sparire perché la fascia ha scurito proprio quella zona.
  */
 export async function posterLogoZoneLuminance(
   posterBuf: Buffer,
   zone: { left: number; top: number; width: number; height: number },
+  band?: BlurOverlay | null,
 ): Promise<number | null> {
-  const stats = await computeRegionStats(
-    posterBuf,
-    Math.max(0, zone.left),
-    Math.max(0, zone.top),
-    Math.min(STD_W, zone.width),
-    Math.min(STD_H, zone.height),
-  )
-  if (!stats) return null
-  return relativeLuminance(stats.meanR, stats.meanG, stats.meanB)
+  const left = Math.max(0, Math.round(zone.left))
+  const top = Math.max(0, Math.round(zone.top))
+  const width = Math.min(STD_W - left, Math.round(zone.width))
+  const height = Math.min(STD_H - top, Math.round(zone.height))
+  if (width <= 0 || height <= 0) return null
+
+  if (!band) {
+    const stats = await computeRegionStats(posterBuf, left, top, width, height)
+    if (!stats) return null
+    return relativeLuminance(stats.meanR, stats.meanG, stats.meanB)
+  }
+
+  try {
+    const zonePixels = await sharp(posterBuf)
+      .resize(STD_W, STD_H, { fit: "fill" })
+      .extract({ left, top, width, height })
+      .removeAlpha()
+      .raw()
+      .toBuffer()
+
+    let sumR = 0, sumG = 0, sumB = 0
+    for (let y = 0; y < height; y++) {
+      const overlayRow = top + y - band.top
+      const covered = overlayRow >= 0 && overlayRow < band.height
+      for (let x = 0; x < width; x++) {
+        const zi = (y * width + x) * 3
+        let r = zonePixels[zi], g = zonePixels[zi + 1], b = zonePixels[zi + 2]
+        if (covered) {
+          const oi = (overlayRow * STD_W + left + x) * 4
+          const a = band.overlay[oi + 3] / 255
+          r = r * (1 - a) + band.overlay[oi] * a
+          g = g * (1 - a) + band.overlay[oi + 1] * a
+          b = b * (1 - a) + band.overlay[oi + 2] * a
+        }
+        sumR += r; sumG += g; sumB += b
+      }
+    }
+    const n = width * height
+    return relativeLuminance(sumR / n, sumG / n, sumB / n)
+  } catch {
+    return null
+  }
 }
 
 /**

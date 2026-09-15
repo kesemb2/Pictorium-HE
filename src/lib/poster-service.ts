@@ -669,13 +669,16 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // percentuale del poster, e applyBlur la clampa a un minimo di 100px su 750.
   // Campionare un 40% fisso mentre la fascia ne copriva il 30% dava un colore
   // preso anche da pixel che restavano scoperti.
-  // La fascia si adatta al poster: se il bordo alto cadrebbe dentro qualcosa,
-  // sale invece di inghiottirlo. Solo restringe, e l'altezza richiesta resta il
-  // tetto. Va calcolata prima della frazione campionata, così colore e fascia
-  // guardano gli stessi pixel.
-  const fittedBlurHeight = blurEnabled ? await fitBandToPoster(posterBuf, blurHeight) : blurHeight
+  // La fascia si adatta al poster: se cadrebbe a metà di qualcosa lo COPRE
+  // (rampa più corta, sfocatura più forte) invece di ritirarsi sotto di esso,
+  // che lasciava il logo su artwork nitido. Nessun parametro cresce oltre il
+  // richiesto. Va calcolata prima della frazione campionata, così colore e
+  // fascia guardano gli stessi pixel.
+  const fittedBand = blurEnabled
+    ? await fitBandToPoster(posterBuf, { blurHeight, blurFade, blurIntensity })
+    : { blurHeight, blurFade, blurIntensity }
   const accentBottomFraction = blurEnabled
-    ? Math.min(Math.max(fittedBlurHeight / 100, 100 / STD_H), 1)
+    ? Math.min(Math.max(fittedBand.blurHeight / 100, 100 / STD_H), 1)
     : DEFAULT_ACCENT_REGION_FRACTION
   const badgeColors = needColors
     ? (accentOverride
@@ -698,9 +701,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     applyBlur({
       posterBuf,
       blurEnabled,
-      blurHeight: fittedBlurHeight,
-      blurIntensity,
-      blurFade,
+      ...fittedBand,
       blurDarkness,
       accentColor: tintColor ?? undefined,
       tintStrength: tintStrength / 100,
@@ -748,7 +749,15 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
       if (logoScrimDisabled) return null
       const [inkLum, zoneLum] = await Promise.all([
         logoInkLuminance(logoFetch!),
-        posterLogoZoneLuminance(posterBuf, { left: logoResult.left, top: logoResult.top, width: logoResult.w, height: logoResult.h }),
+        // La zona si misura CON la fascia sopra: è quella che il logo vedrà
+        // davvero. Misurandola sul poster nudo, un logo nero su poster bianco
+        // risultava ad alto contrasto e non riceveva velatura — salvo poi
+        // sparire una volta che la fascia aveva scurito la zona.
+        posterLogoZoneLuminance(
+          posterBuf,
+          { left: logoResult.left, top: logoResult.top, width: logoResult.w, height: logoResult.h },
+          blurOverlay,
+        ),
       ])
       const strength = logoScrimStrength(logoContrast(inkLum, zoneLum))
       if (strength <= 0) return null

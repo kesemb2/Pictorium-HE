@@ -5,6 +5,7 @@ import { combineAbortSignals } from "./abort-signal"
 import { findAccentColor, findSceneTint, type AccentHueMode } from "@/lib/accent-color"
 import { GENRE_FALLBACK } from "@/lib/badges"
 import { ARTWORKS_BASE } from "@/lib/tvdb"
+import { bandGeometry } from "@/lib/blur"
 // Batch B: STD_W/STD_H ora provengono da image-utils.ts (single source of truth)
 import { STD_W, STD_H, computeRegionStats } from "@/lib/image-utils"
 
@@ -233,13 +234,32 @@ export async function extractBadgeColor(
 }
 
 /**
- * Percentuale minima a cui l'adattamento può ridurre la fascia.
+ * Pavimento assoluto dell'altezza della fascia.
  *
  * La riga di testo in basso è centrata a ~85px dal fondo su 750 (`targetCenter`
  * nella route del poster): sotto il 18% il testo comincerebbe a sedersi su
- * artwork non sfocato, che è peggio del problema che stiamo risolvendo.
+ * artwork non sfocato.
  */
 export const MIN_FITTED_BAND_PCT = 18
+
+/**
+ * Quanto può accorciarsi l'altezza, in punti percentuali.
+ *
+ * Abbassare il bordo è l'unica mossa che GARANTISCE che l'elemento resti
+ * nitido, ed è anche quella che lascia il logo su artwork contrastato. Resta
+ * disponibile solo come ritocco, quando bastano pochi punti per scavalcare del
+ * tutto quello che si è trovato.
+ */
+const MAX_BAND_SHRINK_PCT = 4
+
+/**
+ * Pavimento del fade. Sotto questa percentuale la rampa diventa così ripida che
+ * il bordo alto della fascia si legge come una linea netta.
+ */
+export const MIN_BAND_FADE = 20
+
+/** Aumento massimo dell'intensità di sfocatura, in frazione del richiesto. */
+const MAX_BLUR_BOOST = 0.6
 
 /**
  * Deviazione standard di luma oltre la quale una riga conta come "occupata".
@@ -248,47 +268,102 @@ export const MIN_FITTED_BAND_PCT = 18
  */
 const BUSY_ROW_ENERGY = 24
 
-/**
- * Adatta l'altezza della fascia al poster: se il bordo superiore cadrebbe
- * dentro qualcosa, alza il bordo invece di inghiottirlo.
- *
- * Misura l'energia di dettaglio riga per riga sul thumb già decodificato e, se
- * la riga del bordo richiesto sta dentro una corsa di righe occupate, sposta il
- * bordo appena sotto quella corsa.
- *
- * Solo restringe, mai allarga: l'altezza richiesta resta il tetto, e il
- * pavimento è `MIN_FITTED_BAND_PCT`. Vive nel percorso di render, quindi
- * l'anteprima dell'editor — che è essa stessa un render server — lo eredita
- * senza una seconda implementazione che possa divergere.
- */
-export async function fitBandToPoster(posterBuf: Buffer, requestedPct: number): Promise<number> {
-  if (!Number.isFinite(requestedPct) || requestedPct <= MIN_FITTED_BAND_PCT) return requestedPct
-  try {
-    const w = 200, h = 300
-    const gray = await sharp(await posterThumb(posterBuf)).greyscale().raw().toBuffer()
+/** I tre parametri della fascia, come li chiede l'utente e come escono adattati. */
+export interface BandFit {
+  readonly blurHeight: number
+  readonly blurFade: number
+  readonly blurIntensity: number
+}
 
-    const busy = new Array<boolean>(h)
-    for (let y = 0; y < h; y++) {
-      let sum = 0, sumSq = 0
-      for (let x = 0; x < w; x++) {
-        const v = gray[y * w + x]
-        sum += v
-        sumSq += v * v
-      }
-      const mean = sum / w
-      busy[y] = Math.sqrt(Math.max(0, sumSq / w - mean * mean)) >= BUSY_ROW_ENERGY
+/** Energia di dettaglio riga per riga sul thumb 200×300 già decodificato. */
+async function rowEnergies(posterBuf: Buffer): Promise<Float64Array> {
+  const w = 200, h = 300
+  const gray = await sharp(await posterThumb(posterBuf)).greyscale().raw().toBuffer()
+  const energies = new Float64Array(h)
+  for (let y = 0; y < h; y++) {
+    let sum = 0, sumSq = 0
+    for (let x = 0; x < w; x++) {
+      const v = gray[y * w + x]
+      sum += v
+      sumSq += v * v
+    }
+    const mean = sum / w
+    energies[y] = Math.sqrt(Math.max(0, sumSq / w - mean * mean))
+  }
+  return energies
+}
+
+/**
+ * Adatta la fascia al poster COPRENDO quello che trova, invece di ritirarsi.
+ *
+ * La versione precedente abbassava il bordo sotto l'elemento trovato, ed era la
+ * mossa sbagliata: il logo restava su artwork nitido e contrastato, e un logo
+ * nero su poster bianco spariva. La geometria lo spiega — un logo a scala di
+ * default occupa circa y 413..600 su 750, mentre una fascia al 30% con fade 60
+ * diventa opaca solo a y 653, cioè sotto al logo. Ritirandosi al 18% la rampa
+ * scendeva a y 599..690 e il logo non riceveva copertura affatto.
+ *
+ * Ora, nell'ordine:
+ * - se bastano `MAX_BAND_SHRINK_PCT` punti per scavalcare del tutto la corsa di
+ *   righe occupate, si accorcia di quel poco e non si tocca altro;
+ * - altrimenti l'altezza resta e si accorcia il FADE, così la rampa diventa
+ *   opaca all'inizio dell'elemento invece che sotto di esso. Lo stesso `u`
+ *   guida `blurDarkness`, quindi la fascia copre e scurisce più in alto;
+ * - e l'intensità sale con lui: una fascia opaca su un elemento contrastato
+ *   resta un blob contrastato se il sigma è basso.
+ *
+ * Nessuno dei tre parametri cresce mai oltre il richiesto: gli slider restano
+ * il tetto. Vive nel percorso di render, quindi l'anteprima dell'editor — che è
+ * essa stessa un render server — lo eredita senza una seconda implementazione.
+ */
+export async function fitBandToPoster(posterBuf: Buffer, requested: BandFit): Promise<BandFit> {
+  const { blurHeight, blurFade, blurIntensity } = requested
+  if (!Number.isFinite(blurHeight) || !Number.isFinite(blurFade)) return requested
+  try {
+    const energies = await rowEnergies(posterBuf)
+    const rows = energies.length
+    /** Riga del thumb corrispondente a una riga del poster. */
+    const thumbRow = (y: number) => Math.min(rows - 1, Math.max(0, Math.floor(y * rows / STD_H)))
+    const busyAt = (y: number) => energies[thumbRow(y)] >= BUSY_ROW_ENERGY
+
+    const geom = bandGeometry(blurHeight, blurFade)
+
+    // La zona critica è la rampa: lì la fascia è semitrasparente e un elemento
+    // si vede a metà. Sotto `opaqueFrom` è già coperto.
+    let runStart = -1
+    for (let y = geom.extTop; y < geom.opaqueFrom && y < STD_H; y++) {
+      if (busyAt(y)) { runStart = y; break }
+    }
+    if (runStart < 0) return requested
+
+    while (runStart > 0 && busyAt(runStart - 1)) runStart--
+    let runEnd = runStart
+    while (runEnd + 1 < STD_H && busyAt(runEnd + 1)) runEnd++
+
+    // Ritocco: se pochi punti bastano a scavalcare la corsa, è la soluzione più
+    // semplice e non tocca né fade né sfocatura.
+    const clearedHeight = ((STD_H - (runEnd + 1)) / STD_H) * 100
+    if (clearedHeight >= blurHeight - MAX_BAND_SHRINK_PCT && clearedHeight >= MIN_FITTED_BAND_PCT) {
+      return { ...requested, blurHeight: Math.min(blurHeight, clearedHeight) }
     }
 
-    const topRow = h - Math.round(h * requestedPct / 100)
-    if (topRow < 0 || topRow >= h || !busy[topRow]) return requestedPct
+    // Altrimenti si copre: rampa che finisce dove l'elemento comincia.
+    const neededFade = geom.extH <= 1 ? 0 : ((runStart - geom.extTop) / (geom.extH - 1)) * 100
+    // Il pavimento non deve MAI far salire il fade sopra il richiesto: chi ha
+    // già chiesto una rampa cortissima l'ha chiesta.
+    const fittedFade = Math.min(blurFade, Math.max(MIN_BAND_FADE, neededFade))
 
-    let runEnd = topRow
-    while (runEnd + 1 < h && busy[runEnd + 1]) runEnd++
+    // Sfocatura proporzionale al contrasto che la fascia deve dissolvere.
+    let peak = 0
+    for (let y = geom.gradTop; y < STD_H; y++) peak = Math.max(peak, energies[thumbRow(y)])
+    const boost = Math.min(1, Math.max(0, (peak - BUSY_ROW_ENERGY) / BUSY_ROW_ENERGY))
+    const fittedIntensity = Number.isFinite(blurIntensity)
+      ? Math.min(100, Math.round(blurIntensity * (1 + MAX_BLUR_BOOST * boost)))
+      : blurIntensity
 
-    const fittedPct = ((h - (runEnd + 1)) / h) * 100
-    return Math.max(MIN_FITTED_BAND_PCT, Math.min(requestedPct, fittedPct))
+    return { blurHeight, blurFade: fittedFade, blurIntensity: fittedIntensity }
   } catch {
-    return requestedPct
+    return requested
   }
 }
 

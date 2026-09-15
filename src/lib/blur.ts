@@ -39,6 +39,40 @@ export interface BlurParams {
   tintStrength?: number
 }
 
+export interface BandGeometry {
+  /** Altezza della fascia in pixel (clampata come nel render). */
+  readonly gh: number
+  /** Prima riga della fascia vera e propria. */
+  readonly gradTop: number
+  /** Prima riga dell'overlay, `gradTop` meno il bleed di cucitura. */
+  readonly extTop: number
+  /** Altezza dell'overlay, bleed incluso. */
+  readonly extH: number
+  /** Frazione dell'overlay occupata dalla rampa di opacità. */
+  readonly fadeStop: number
+  /** Prima riga del poster in cui la fascia è completamente opaca. */
+  readonly opaqueFrom: number
+}
+
+/**
+ * Geometria della fascia, unica fonte di verità.
+ *
+ * `applyBlur` la usa per comporre e `fitBandToPoster` per sapere DOVE cade la
+ * rampa prima di deciderne la pendenza: due copie della stessa aritmetica
+ * finirebbero per divergere, e la fascia adattata non corrisponderebbe più a
+ * quella disegnata.
+ */
+export function bandGeometry(blurHeight: number, blurFade: number, canvasH: number = STD_H): BandGeometry {
+  const gh = Math.min(Math.max(Math.round(canvasH * blurHeight / 100), 100), canvasH)
+  const gradTop = canvasH - gh
+  const pad = Math.min(16, gradTop)
+  const extTop = gradTop - pad
+  const extH = canvasH - extTop
+  const fadeStop = Math.min(Math.max(blurFade, 0), 100) / 100
+  const opaqueFrom = extTop + (extH <= 1 ? 0 : Math.ceil(fadeStop * (extH - 1)))
+  return { gh, gradTop, extTop, extH, fadeStop, opaqueFrom }
+}
+
 export interface BlurOverlay {
   /** Raw RGBA pixels (canvasW × height), da passare a `composite()` con raw. */
   readonly overlay: Buffer
@@ -61,17 +95,10 @@ export async function applyBlur(params: BlurParams): Promise<BlurOverlay | null>
   const canvasW = params.canvasW ?? STD_W
   const canvasH = params.canvasH ?? STD_H
 
-  const gh = Math.min(Math.max(Math.round(canvasH * blurHeight / 100), 100), canvasH)
-  const gradTop = canvasH - gh
-
-  // Bleed padding (16px) sopra gradTop per eliminare artefatti di cucitura (seam edge clamping)
-  const pad = Math.min(16, gradTop)
-  const extTop = gradTop - pad
-  const extH = canvasH - extTop
-
-  const fadedPct = Math.min(Math.max(blurFade, 0), 100)
+  // Bleed padding (16px) sopra gradTop per eliminare artefatti di cucitura
+  // (seam edge clamping): sta dentro `bandGeometry` insieme al resto.
+  const { extTop, extH, fadeStop } = bandGeometry(blurHeight, blurFade, canvasH)
   const darkAlpha = Math.min(Math.max(blurDarkness / 100, 0), 1)
-  const fadeStop = fadedPct / 100
 
   // Sigmi dual-stage: low-sigma all'inizio zona, high-sigma al fondo
   const clampedIntensity = Math.min(Math.max(blurIntensity, 1), 100)

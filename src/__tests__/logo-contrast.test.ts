@@ -9,6 +9,7 @@ import {
   logoScrimStrength,
   posterLogoZoneLuminance,
 } from "@/lib/logo-contrast"
+import { applyBlur } from "@/lib/blur"
 import { selectLogoTier, pickReadableLogo } from "@/lib/logo-selection"
 import type { TMDBImage } from "@/lib/types"
 
@@ -66,6 +67,76 @@ describe("logoContrast", () => {
     expect(logoContrast(null, 0.2)).toBe(LOGO_CONTRAST_MIN)
     expect(logoContrast(0.9, null)).toBe(LOGO_CONTRAST_MIN)
   })
+})
+
+/**
+ * La fascia sfocata finisce SOTTO al logo e SOPRA al poster. Misurare la zona
+ * sul poster nudo dava la risposta giusta a una domanda che nessuno ha fatto:
+ * quello che il logo vedrà è il poster CON la fascia sopra.
+ */
+describe("posterLogoZoneLuminance con la fascia", () => {
+  async function band(posterHex: string, blurDarkness = 70) {
+    return applyBlur({
+      posterBuf: await poster(posterHex),
+      blurEnabled: true,
+      blurHeight: 50,
+      blurIntensity: 8,
+      blurFade: 20,
+      blurDarkness,
+    })
+  }
+
+  it("reads darker on a bright poster once the band is over it", async () => {
+    const buf = await poster("#f2f0ec")
+    const bare = await posterLogoZoneLuminance(buf, ZONE)
+    const covered = await posterLogoZoneLuminance(buf, ZONE, await band("#f2f0ec"))
+    expect(bare).not.toBeNull()
+    expect(covered).not.toBeNull()
+    expect(covered!).toBeLessThan(bare! * 0.5)
+  }, 20000)
+
+  it("stops painting a halo under a white logo the band has already made readable", async () => {
+    // Bianco su poster chiaro misura contrasto bassissimo e riceve una velatura
+    // NERA. Ma la fascia ha già scurito quella zona: l'alone era di troppo.
+    const ink = await logoInkLuminance(await logo("#ffffff"))
+    const buf = await poster("#e8e4dd")
+
+    const bare = logoContrast(ink, await posterLogoZoneLuminance(buf, ZONE))
+    const covered = logoContrast(ink, await posterLogoZoneLuminance(buf, ZONE, await band("#e8e4dd", 40)))
+
+    expect(logoScrimStrength(bare)).toBeGreaterThan(0.3)
+    expect(covered).toBeGreaterThan(bare)
+    // Quel che resta è sotto il 2% di alpha: nessun alone visibile.
+    expect(logoScrimStrength(covered)).toBeLessThan(0.02)
+  }, 20000)
+
+  it("asks for a scrim under a dark logo where a strong band swallows it", async () => {
+    // L'altra direzione: nero su bianco misura contrasto altissimo e non riceve
+    // niente, poi la fascia scurisce la zona e il logo sparisce sul fondo.
+    const ink = await logoInkLuminance(await logo("#0a0a0a"))
+    const buf = await poster("#f2f0ec")
+
+    const bare = logoContrast(ink, await posterLogoZoneLuminance(buf, ZONE))
+    const covered = logoContrast(ink, await posterLogoZoneLuminance(buf, ZONE, await band("#f2f0ec", 85)))
+
+    expect(bare).toBeGreaterThan(LOGO_CONTRAST_MIN)
+    expect(logoScrimStrength(bare)).toBe(0)
+    expect(covered).toBeLessThan(LOGO_CONTRAST_MIN)
+    expect(logoScrimStrength(covered)).toBeGreaterThan(0)
+  }, 20000)
+
+  it("is identical to the historic reading when no band is passed", async () => {
+    const buf = await poster("#3a4d66")
+    expect(await posterLogoZoneLuminance(buf, ZONE, null)).toBe(await posterLogoZoneLuminance(buf, ZONE))
+  }, 20000)
+
+  it("ignores a band that does not reach the logo zone", async () => {
+    const buf = await poster("#f2f0ec")
+    const highUp = { left: 0, top: 10, width: 500, height: 120 }
+    const bare = await posterLogoZoneLuminance(buf, highUp)
+    const covered = await posterLogoZoneLuminance(buf, highUp, await band("#f2f0ec"))
+    expect(covered).toBeCloseTo(bare!, 5)
+  }, 20000)
 })
 
 describe("logoScrimStrength", () => {
