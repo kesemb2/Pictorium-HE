@@ -203,9 +203,13 @@ export async function buildGenreBadgeSVG(
   const isPill = s === "pill" || s === "colored"
   const isBar = s === "bar"
 
+  // Solo `shadow` e `minimal` posano i glifi direttamente sull'artwork, quindi
+  // solo loro accettano il colore imposto da fuori: gli altri stili portano il
+  // proprio sfondo e il contrasto se lo risolvono da soli.
+  const onArtwork = s === "shadow" || isMinimal
   const textColor = s === "colored"
     ? textColorForBg(accentColor || "")
-    : (isPill ? "rgba(0,0,0,0.80)" : "#e5e7eb")
+    : (isPill ? "rgba(0,0,0,0.80)" : ((onArtwork && textStyle?.color) || "#e5e7eb"))
   const bgColor = s === "colored"
     ? (accentColor && accentColor !== "#555555" ? accentColor : "rgba(255,255,255,0.80)")
     : (isPill ? "rgba(255,255,255,0.80)" : "rgba(0,0,0,0.80)")

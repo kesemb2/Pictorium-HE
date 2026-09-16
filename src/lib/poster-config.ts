@@ -96,6 +96,10 @@ export interface PosterRenderConfig {
   textShadowBlur: number
   textShadowOffset: number
   ratingStar: boolean
+  /** Glifi scuri sotto, quando la zona è chiara e piatta. */
+  autoDarkText: boolean
+  /** Alone automatico dietro testo e logo su artwork movimentato. */
+  textHalo: boolean
   ribbonSide: "left" | "right"
   /** Stato pre-digitale (darken + badge Coming Soon, solo film). Default OFF. */
   preRelease: boolean
@@ -364,6 +368,18 @@ const qOxNum = qOx ? Number(qOx) : NaN
     ? rawRatingStar !== "0"
     : (mapping?.ratingStar ?? (configOverride !== null ? configOverride.ratingStar : undefined) ?? sd.ratingStar ?? true)
 
+  // Leggibilità automatica del testo che cade sull'artwork: glifi scuri su
+  // campo chiaro e piatto, alone largo e debole su artwork movimentato.
+  // Entrambi accesi di default.
+  const rawAutoDarkText = q.get("dtx")
+  const autoDarkText: boolean = rawAutoDarkText !== null
+    ? rawAutoDarkText !== "0"
+    : (mapping?.autoDarkText ?? (configOverride !== null ? configOverride.autoDarkText : undefined) ?? sd.autoDarkText ?? true)
+  const rawTextHalo = q.get("halo")
+  const textHalo: boolean = rawTextHalo !== null
+    ? rawTextHalo !== "0"
+    : (mapping?.textHalo ?? (configOverride !== null ? configOverride.textHalo : undefined) ?? sd.textHalo ?? true)
+
   // Accent dalla tinta DOMINANTE del poster (e tinta della fascia sfocata)
   // invece del complementare storico. Default acceso.
   const rawAccentDominant = q.get("ad")
@@ -431,6 +447,8 @@ const qSide = q.get("side")
     textShadowBlur,
     textShadowOffset,
     ratingStar,
+    autoDarkText,
+    textHalo,
     ribbonSide,
     preRelease,
   }

@@ -78,6 +78,8 @@ const defaultsSchema = z.object({
   textShadowBlur: z.number().optional(),
   textShadowOffset: z.number().optional(),
   ratingStar: z.boolean().optional(),
+  autoDarkText: z.boolean().optional(),
+  textHalo: z.boolean().optional(),
   badgeTopOffset: z.number().optional(),
   badgeBottomOffset: z.number().optional(),
   logoBottomOffset: z.number().optional(),

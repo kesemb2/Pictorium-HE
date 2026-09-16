@@ -132,6 +132,8 @@ export interface Mapping {
   textShadowBlur?: number | null
   textShadowOffset?: number | null
   ratingStar?: boolean | null
+  autoDarkText?: boolean | null
+  textHalo?: boolean | null
   badgeTopOffset?: number | null
   badgeBottomOffset?: number | null
   ribbonSide?: "left" | "right" | null

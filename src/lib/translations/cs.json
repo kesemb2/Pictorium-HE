@@ -635,6 +635,8 @@
   "ui.textShadowBlur": "Rozostření stínu",
   "ui.textShadowOffset": "Posun stínu",
   "ui.ratingStar": "Hvězdička hodnocení",
+  "ui.autoDarkText": "Dark text on light posters",
+  "ui.textHalo": "Auto text halo",
   "ui.badgeTopOffset": "Pozice horního odznaku",
   "ui.badgeBottomOffset": "Pozice spodního řádku",
   "ui.logoBottomOffset": "Výška loga",

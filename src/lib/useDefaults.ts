@@ -55,6 +55,8 @@ export interface DefaultsState {
   defaultTextShadowBlur: number
   defaultTextShadowOffset: number
   defaultRatingStar: boolean
+  defaultAutoDarkText: boolean
+  defaultTextHalo: boolean
   defaultBadgeTopOffset: number
   defaultBadgeBottomOffset: number
   defaultLogoBottomOffset: number
@@ -83,6 +85,8 @@ export interface DefaultsState {
   textShadowBlur: number
   textShadowOffset: number
   ratingStar: boolean
+  autoDarkText: boolean
+  textHalo: boolean
   badgeTopOffset: number
   badgeBottomOffset: number
   logoBottomOffset: number
@@ -152,6 +156,8 @@ const DEFAULTS: DefaultsState = {
   defaultTextShadowBlur: 100,
   defaultTextShadowOffset: 100,
   defaultRatingStar: true,
+  defaultAutoDarkText: true,
+  defaultTextHalo: true,
   defaultBadgeTopOffset: 0,
   defaultBadgeBottomOffset: 0,
   defaultLogoBottomOffset: 0,
@@ -177,6 +183,8 @@ const DEFAULTS: DefaultsState = {
   textShadowBlur: 100,
   textShadowOffset: 100,
   ratingStar: true,
+  autoDarkText: true,
+  textHalo: true,
   badgeTopOffset: 0,
   badgeBottomOffset: 0,
   logoBottomOffset: 0,
@@ -229,7 +237,11 @@ interface StoredDefaults {
   textShadowOffset?: number
   defaultTextShadowOffset?: number
   ratingStar?: boolean
+  autoDarkText?: boolean
+  textHalo?: boolean
   defaultRatingStar?: boolean
+  defaultAutoDarkText?: boolean
+  defaultTextHalo?: boolean
   badgeTopOffset?: number
   defaultBadgeTopOffset?: number
   badgeBottomOffset?: number
@@ -363,6 +375,8 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     defaultTextShadowBlur: d.defaultTextShadowBlur ?? d.textShadowBlur ?? 100,
     defaultTextShadowOffset: d.defaultTextShadowOffset ?? d.textShadowOffset ?? 100,
     defaultRatingStar: d.defaultRatingStar ?? d.ratingStar ?? true,
+    defaultAutoDarkText: d.defaultAutoDarkText ?? d.autoDarkText ?? true,
+    defaultTextHalo: d.defaultTextHalo ?? d.textHalo ?? true,
     defaultBadgeTopOffset: d.defaultBadgeTopOffset ?? d.badgeTopOffset ?? 0,
     defaultBadgeBottomOffset: d.defaultBadgeBottomOffset ?? d.badgeBottomOffset ?? 0,
     defaultLogoBottomOffset: d.defaultLogoBottomOffset ?? d.logoBottomOffset ?? 0,
@@ -388,6 +402,8 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     textShadowBlur: d.textShadowBlur ?? d.defaultTextShadowBlur ?? 100,
     textShadowOffset: d.textShadowOffset ?? d.defaultTextShadowOffset ?? 100,
     ratingStar: d.ratingStar ?? d.defaultRatingStar ?? true,
+    autoDarkText: d.autoDarkText ?? d.defaultAutoDarkText ?? true,
+    textHalo: d.textHalo ?? d.defaultTextHalo ?? true,
     badgeTopOffset: d.badgeTopOffset ?? d.defaultBadgeTopOffset ?? 0,
     badgeBottomOffset: d.badgeBottomOffset ?? d.defaultBadgeBottomOffset ?? 0,
     logoBottomOffset: d.logoBottomOffset ?? d.defaultLogoBottomOffset ?? 0,
@@ -466,6 +482,8 @@ function defaultsToPayload(d: DefaultsState): Record<string, unknown> {
     textShadowBlur: d.defaultTextShadowBlur,
     textShadowOffset: d.defaultTextShadowOffset,
     ratingStar: d.defaultRatingStar,
+    autoDarkText: d.defaultAutoDarkText,
+    textHalo: d.defaultTextHalo,
     badgeTopOffset: d.defaultBadgeTopOffset,
     badgeBottomOffset: d.defaultBadgeBottomOffset,
     logoBottomOffset: d.defaultLogoBottomOffset,

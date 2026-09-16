@@ -140,6 +140,22 @@ export interface TextStyle {
   readonly shadowBlur?: number
   /** Scostamento dell'ombra, 0-200 come percentuale di quello di default. */
   readonly shadowOffset?: number
+  /**
+   * Colore dell'ombra. Nero per default; su glifi scuri va passato chiaro,
+   * perché un'ombra nera dietro testo nero non stacca niente.
+   */
+  readonly shadowColor?: string
+  /**
+   * Alone largo e debole dietro al testo, 0-1. Serve dove l'artwork sotto è
+   * movimentato e il testo ci si perde dentro. A 0 il livello non viene
+   * nemmeno emesso, quindi l'SVG resta identico a prima.
+   */
+  readonly halo?: number
+  /**
+   * Colore dei glifi che cadono sull'artwork (riga genere/voto in stile
+   * `shadow`/`minimal` e titolo). Assente = il chiaro di sempre.
+   */
+  readonly color?: string
 }
 
 export const DEFAULT_TEXT_STYLE: Required<TextStyle> = {
@@ -147,7 +163,21 @@ export const DEFAULT_TEXT_STYLE: Required<TextStyle> = {
   shadowOpacity: 100,
   shadowBlur: 100,
   shadowOffset: 100,
+  shadowColor: "0,0,0",
+  halo: 0,
+  color: "",
 }
+
+/** Canale RGB dell'ombra, in forma "r,g,b" come la vuole `rgba()`. */
+export const SHADOW_DARK = "0,0,0"
+export const SHADOW_LIGHT = "255,255,255"
+
+/**
+ * Alone: largo, centrato e debole. `dy: 0` perché deve circondare il glifo, non
+ * cadergli sotto come un'ombra; l'alpha massima resta bassa di proposito —
+ * serve a staccare il testo dall'artwork, non a disegnarci sopra una macchia.
+ */
+const TEXT_HALO_LAYER = { dy: 0, sd: 9, alpha: 0.35 } as const
 
 function pct(value: number | undefined, max: number): number {
   if (!Number.isFinite(value as number)) return 1
@@ -155,11 +185,14 @@ function pct(value: number | undefined, max: number): number {
 }
 
 export function normalizeTextStyle(style?: TextStyle) {
+  const halo = style?.halo ?? DEFAULT_TEXT_STYLE.halo
   return {
     opacity: pct(style?.opacity ?? DEFAULT_TEXT_STYLE.opacity, 100),
     shadowOpacity: pct(style?.shadowOpacity ?? DEFAULT_TEXT_STYLE.shadowOpacity, 100),
     shadowBlur: pct(style?.shadowBlur ?? DEFAULT_TEXT_STYLE.shadowBlur, 200),
     shadowOffset: pct(style?.shadowOffset ?? DEFAULT_TEXT_STYLE.shadowOffset, 200),
+    shadowColor: style?.shadowColor || DEFAULT_TEXT_STYLE.shadowColor,
+    halo: Number.isFinite(halo) ? Math.min(Math.max(halo, 0), 1) : 0,
   }
 }
 
@@ -182,9 +215,18 @@ const TEXT_SHADOW_LAYERS = [
 export function textShadowDefs(id: string, style?: TextStyle): string {
   const n = normalizeTextStyle(style)
   const layers = TEXT_SHADOW_LAYERS
-    .map((l) => `<feDropShadow dx="0" dy="${num(l.dy * n.shadowOffset)}" stdDeviation="${num(l.sd * n.shadowBlur)}" flood-color="rgba(0,0,0,${num(l.alpha * n.shadowOpacity)})"/>`)
+    .map((l) => `<feDropShadow dx="0" dy="${num(l.dy * n.shadowOffset)}" stdDeviation="${num(l.sd * n.shadowBlur)}" flood-color="rgba(${n.shadowColor},${num(l.alpha * n.shadowOpacity)})"/>`)
     .join("")
-  return `<defs><filter id="${id}" x="-50%" y="-50%" width="200%" height="200%">${layers}</filter></defs>`
+  return `<defs><filter id="${id}" x="-50%" y="-50%" width="200%" height="200%">${haloLayer(n)}${layers}</filter></defs>`
+}
+
+/**
+ * Il livello alone, o stringa vuota a 0. Non segue shadowOpacity/Blur/Offset:
+ * non è l'ombra che l'utente regola, è una risposta automatica all'artwork.
+ */
+function haloLayer(n: ReturnType<typeof normalizeTextStyle>): string {
+  if (n.halo <= 0) return ""
+  return `<feDropShadow dx="0" dy="${TEXT_HALO_LAYER.dy}" stdDeviation="${TEXT_HALO_LAYER.sd}" flood-color="rgba(${n.shadowColor},${num(TEXT_HALO_LAYER.alpha * n.halo)})"/>`
 }
 
 /**
@@ -195,9 +237,12 @@ export function textShadowDefs(id: string, style?: TextStyle): string {
  */
 export function textShadowBox(style?: TextStyle): { pad: number; drop: number } {
   const n = normalizeTextStyle(style)
+  // L'alone è più largo dell'ombra: senza allargare il riquadro verrebbe
+  // tagliato ai bordi del badge.
+  const haloPad = n.halo > 0 ? TEXT_HALO_LAYER.sd * 2 : 0
   return {
-    pad: Math.ceil(8 * Math.max(1, n.shadowBlur, n.shadowOffset)),
-    drop: Math.ceil(5 * Math.max(1, n.shadowOffset)),
+    pad: Math.ceil(Math.max(8 * Math.max(1, n.shadowBlur, n.shadowOffset), haloPad)),
+    drop: Math.ceil(Math.max(5 * Math.max(1, n.shadowOffset), haloPad)),
   }
 }
 
@@ -425,8 +470,11 @@ export function buildGenreTextSvg(genreName: string, voteStr: string, yearStr: s
   const isMinimal = style === "minimal"
   const dims = genreBadgeSvgDims(fs, genreName, voteStr, yearStr, parts, style)
   const box = textShadowBox(textStyle)
-  const shadowPad = style === "shadow" ? box.pad : (isMinimal ? 2 : 0)
-  const shadowDrop = style === "shadow" ? box.drop : (isMinimal ? 1 : 0)
+  const n = normalizeTextStyle(textStyle)
+  // `minimal` tiene i suoi 2px storici, ma con l'alone deve allargarsi come
+  // `shadow` o l'alone verrebbe tagliato al bordo del badge.
+  const shadowPad = style === "shadow" ? box.pad : (isMinimal ? (n.halo > 0 ? box.pad : 2) : 0)
+  const shadowDrop = style === "shadow" ? box.drop : (isMinimal ? (n.halo > 0 ? box.drop : 1) : 0)
   const safePad = genreBadgeSafePad(fs)
   const renderW = dims.totalW + shadowPad * 2 + safePad * 2
   const renderH = dims.svgH + shadowDrop
@@ -437,7 +485,7 @@ export function buildGenreTextSvg(genreName: string, voteStr: string, yearStr: s
     defs = textShadowDefs("sh", textStyle)
     filterAttr = ' filter="url(#sh)"'
   } else if (isMinimal) {
-    defs = `<defs><filter id="sh" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="rgba(0,0,0,0.7)"/></filter></defs>`
+    defs = `<defs><filter id="sh" x="-50%" y="-50%" width="200%" height="200%">${haloLayer(n)}<feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="rgba(${n.shadowColor},0.7)"/></filter></defs>`
     filterAttr = ' filter="url(#sh)"'
   }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${renderH}">${defs}<g fill="${textColor}"${filterAttr}${textOpacityAttr(textStyle)}>${textParts}</g></svg>`

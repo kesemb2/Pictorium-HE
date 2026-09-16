@@ -38,6 +38,8 @@ export interface StremioPosterParamsInput {
   readonly textShadowBlur?: number
   readonly textShadowOffset?: number
   readonly ratingStar?: boolean
+  readonly autoDarkText?: boolean
+  readonly textHalo?: boolean
   readonly badgeTopOffset?: number
   readonly badgeBottomOffset?: number
   readonly logoBottomOffset?: number
@@ -143,6 +145,8 @@ export function buildStremioPosterSearchParams(input: StremioPosterParamsInput):
   params.set("tsb", String(input.textShadowBlur ?? DEFAULT_STREMIO_POSTER_PARAMS.textShadowBlur))
   params.set("tsf", String(input.textShadowOffset ?? DEFAULT_STREMIO_POSTER_PARAMS.textShadowOffset))
   params.set("star", input.ratingStar !== false ? "1" : "0")
+  params.set("dtx", input.autoDarkText !== false ? "1" : "0")
+  params.set("halo", input.textHalo !== false ? "1" : "0")
   params.set("bto", String(input.badgeTopOffset ?? DEFAULT_STREMIO_POSTER_PARAMS.badgeTopOffset))
   params.set("bbo", String(input.badgeBottomOffset ?? DEFAULT_STREMIO_POSTER_PARAMS.badgeBottomOffset))
   params.set("lbo", String(input.logoBottomOffset ?? DEFAULT_STREMIO_POSTER_PARAMS.logoBottomOffset))

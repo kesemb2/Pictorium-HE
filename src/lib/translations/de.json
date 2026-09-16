@@ -635,6 +635,8 @@
   "ui.textShadowBlur": "Schattenweichzeichnung",
   "ui.textShadowOffset": "Schattenversatz",
   "ui.ratingStar": "Bewertungsstern",
+  "ui.autoDarkText": "Dark text on light posters",
+  "ui.textHalo": "Auto text halo",
   "ui.badgeTopOffset": "Position oberes Badge",
   "ui.badgeBottomOffset": "Position untere Zeile",
   "ui.logoBottomOffset": "Logo-Höhe",

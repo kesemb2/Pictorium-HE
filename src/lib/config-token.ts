@@ -68,6 +68,8 @@ export const configTokenSchema = z.object({
   textShadowBlur: z.number().finite().optional(),
   textShadowOffset: z.number().finite().optional(),
   ratingStar: z.boolean().optional(),
+  autoDarkText: z.boolean().optional(),
+  textHalo: z.boolean().optional(),
   badgeTopOffset: z.number().finite().optional(),
   badgeBottomOffset: z.number().finite().optional(),
   logoBottomOffset: z.number().finite().optional(),

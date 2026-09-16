@@ -58,6 +58,8 @@ interface BadgeParams {
   textShadowBlur?: number
   textShadowOffset?: number
   ratingStar?: boolean
+  autoDarkText?: boolean
+  textHalo?: boolean
   badgeTopOffset?: number
   badgeBottomOffset?: number
   logoBottomOffset?: number
@@ -139,6 +141,8 @@ export function buildUrlPattern(bp: BadgeParams & { tmdbKey: string; lang: strin
     textShadowBlur: bp.textShadowBlur,
     textShadowOffset: bp.textShadowOffset,
     ratingStar: bp.ratingStar,
+    autoDarkText: bp.autoDarkText,
+    textHalo: bp.textHalo,
     badgeTopOffset: bp.badgeTopOffset,
     badgeBottomOffset: bp.badgeBottomOffset,
     logoBottomOffset: bp.logoBottomOffset,
@@ -268,6 +272,8 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
   params.push(`tsb=${bp.textShadowBlur ?? 100}`)
   params.push(`tsf=${bp.textShadowOffset ?? 100}`)
   params.push(`star=${bp.ratingStar !== false ? "1" : "0"}`)
+  params.push(`dtx=${bp.autoDarkText !== false ? "1" : "0"}`)
+  params.push(`halo=${bp.textHalo !== false ? "1" : "0"}`)
   params.push(`bto=${bp.badgeTopOffset ?? 0}`)
   params.push(`bbo=${bp.badgeBottomOffset ?? 0}`)
   params.push(`lbo=${bp.logoBottomOffset ?? 0}`)

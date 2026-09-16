@@ -635,6 +635,8 @@
   "ui.textShadowBlur": "Sfocatura dell'ombra",
   "ui.textShadowOffset": "Scostamento dell'ombra",
   "ui.ratingStar": "Stella del voto",
+  "ui.autoDarkText": "Testo scuro su poster chiari",
+  "ui.textHalo": "Alone automatico del testo",
   "ui.badgeTopOffset": "Posizione badge in alto",
   "ui.badgeBottomOffset": "Posizione riga in basso",
   "ui.logoBottomOffset": "Altezza del logo",

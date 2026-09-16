@@ -335,7 +335,7 @@ export function usePictorium(): PictoriumCtx {
     badgeTopOffset, setBadgeTopOffset,
     badgeBottomOffset, setBadgeBottomOffset,
     logoBottomOffset,
-    textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
+    textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo,
     ribbonSide,
     // Defaults
     defaultBadgeStyle,
@@ -637,10 +637,10 @@ export function usePictorium(): PictoriumCtx {
       customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, tintStrength, networkLogo, preRelease, ribbonSide,
       topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale,
       genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY,
-      networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
+      networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo,
       tmdbKey, lang, mdblistApiKey,
     }))
-  }, [globalBadges, rankingBadges, badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources, networkLogo, preRelease, ribbonSide, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, tintStrength, badgeStyle, rankingBadgeStyle, topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale, genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, tmdbKey, lang, mdblistApiKey]) // eslint-disable-line react-hooks/exhaustive-deps -- customBadge intentionally excluded to avoid loop
+  }, [globalBadges, rankingBadges, badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources, networkLogo, preRelease, ribbonSide, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, tintStrength, badgeStyle, rankingBadgeStyle, topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale, genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo, tmdbKey, lang, mdblistApiKey]) // eslint-disable-line react-hooks/exhaustive-deps -- customBadge intentionally excluded to avoid loop
 
   // --- Preview URL ---
   const buildPreviewUrlCb = useCallback(() => {
@@ -656,14 +656,14 @@ export function usePictorium(): PictoriumCtx {
         topEdgeColor, accentColor, autoAccentColor, lang, tmdbKey,
         region: editorCtx.defaultRegion,
       },
-      { globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources, customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, tintStrength, networkLogo, preRelease, ribbonSide, topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale, genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar }
+      { globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources, customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, tintStrength, networkLogo, preRelease, ribbonSide, topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale, genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo }
     )
     setPreviewUrl(url)
   }, [navigation.selected, navigation.previewPoster, navigation.selectedLogo, selectedBackdrop,
     logoScale, logoOffsetX, logoOffsetY, backdropScale, backdropOffsetX, backdropOffsetY,
     metaInfo, trendRank, trending.mdblistAnimeList, topEdgeColor, accentColor, autoAccentColor, lang, tmdbKey,
     editorCtx.defaultRegion,
-    globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources, customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, tintStrength, networkLogo, preRelease, ribbonSide, topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale, genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar])
+    globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources, customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, tintStrength, networkLogo, preRelease, ribbonSide, topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale, genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo])
 
   // A1: trailing debounce della preview URL (200ms). Ogni tick di slider
   // cambia l'identità di buildPreviewUrlCb → senza debounce ogni pixel di

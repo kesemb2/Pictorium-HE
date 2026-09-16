@@ -65,6 +65,8 @@ const USER_SAVED = {
   textShadowBlur: 100,
   textShadowOffset: 100,
   ratingStar: true,
+  autoDarkText: true,
+  textHalo: true,
   badgeTopOffset: 0,
   badgeBottomOffset: 0,
   logoBottomOffset: 0,

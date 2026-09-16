@@ -28,7 +28,7 @@ const TOP_BADGE_MARGIN = 10
 const TITLE_BAND_GAP = 6
 import { renderGenreBadge, renderRankingBadge, renderExtraBadge, renderQualityBadge, renderTitleText, renderComingSoonRibbon, comingSoonRibbonLayout, renderSVG } from "./svg-badge"
 import type { TextStyle } from "./badge-svg-shared"
-import { buildLogoScrim, logoContrast, logoInkLuminance, logoScrimStrength, posterLogoZoneLuminance } from "./logo-contrast"
+import { buildLogoHalo, buildLogoScrim, logoContrast, logoInkLuminance, logoScrimStrength, posterLogoZoneLuminance, posterZoneStats, zoneTextTreatment } from "./logo-contrast"
 import { renderFirstMatchingNetworkLogoBadge, renderFirstMatchingNetworkRawBadge, renderFirstMatchingNetworkLogoBadgeHybrid, renderFirstMatchingNetworkRawBadgeHybrid, type NetworkCandidate } from "./network-svgs"
 import { computeLogoLayout } from "./logo-layout"
 import fs from "fs"
@@ -189,6 +189,16 @@ export interface GenerationInput {
   ratingStar?: boolean
   /** Disattiva la velatura di sicurezza sotto al logo (default: attiva). */
   logoScrimDisabled?: boolean
+  /**
+   * Glifi scuri quando la zona sotto la scritta è chiara e piatta (un campo
+   * bianco). Default ON.
+   */
+  autoDarkText?: boolean
+  /**
+   * Alone largo e debole dietro a testo e logo quando l'artwork sotto è
+   * movimentato. Default ON.
+   */
+  textHalo?: boolean
   releaseDate: string | null
   firstAirDate: string | null
   /** Ultima messa in onda + n. stagioni + origin country (badge Nuova stagione / K-Drama). */
@@ -586,7 +596,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     voteCount, nextEpisodeAirDate, tmdbTrending, accentDominant,
     badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset,
     textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
-    logoScrimDisabled,
+    logoScrimDisabled, autoDarkText, textHalo,
     wikidataResult, tmdbKeywords, locale, t,
     qLabel, queryExtra, qNetLogo, networkLogo, sd, accentOverride, imdbTop250,
     posterSrc, logoSrc, backdropSrc,
@@ -728,6 +738,25 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
       : Promise.resolve(null),
   ])
 
+  // Il testo in basso e il titolo cadono sull'artwork, e da quando la fascia si
+  // ritira invece di coprire, su quell'artwork non c'è più niente a garantirne
+  // la leggibilità. Ogni scritta viene quindi giudicata su ciò che sta dietro a
+  // LEI, misurato con la fascia già fusa dentro: dove la fascia copre davvero,
+  // la zona esce scura e piatta e non scatta nessuno dei due trattamenti.
+  const metaZoneTop = Math.max(0, STD_H - Math.round((targetCenter + (badgeBottomOffset ?? 0)) * 1.8))
+  const titleZoneTop = logoResult ? Math.min(logoResult.top + logoResult.h, metaZoneTop) : 0
+  const [metaZoneStats, titleZoneStats] = await Promise.all([
+    posterZoneStats(posterBuf, { left: 0, top: metaZoneTop, width: STD_W, height: STD_H - metaZoneTop }, blurOverlay),
+    titleFit && logoResult && metaZoneTop > titleZoneTop
+      ? posterZoneStats(posterBuf, { left: 0, top: titleZoneTop, width: STD_W, height: metaZoneTop - titleZoneTop }, blurOverlay)
+      : Promise.resolve(null),
+  ])
+  const textTreatmentOpts = { darkText: autoDarkText !== false, halo: textHalo !== false }
+  const metaTreatment = zoneTextTreatment(metaZoneStats, textTreatmentOpts)
+  const titleTreatment = zoneTextTreatment(titleZoneStats ?? metaZoneStats, textTreatmentOpts)
+  const metaTextStyle: TextStyle = { ...textStyle, ...metaTreatment }
+  const titleTextStyle: TextStyle = { ...textStyle, ...titleTreatment }
+
   // -----------------------------------------------------------------------
   // 3. Vignette + logo (il blur resta un overlay grezzo, composto nel passo 7)
   // -----------------------------------------------------------------------
@@ -774,10 +803,32 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
       }
     })().catch(() => null)
     if (scrim) composites.push(scrim)
+    // Alone sagomato come il logo, quando l'artwork dietro è movimentato. Sta
+    // SOPRA la velatura ellittica e sotto al logo: la velatura è una base
+    // larga, l'alone segue i glifi e prende i casi che la media non vede.
+    if (textHalo !== false) {
+      const logoZone = await posterZoneStats(
+        posterBuf,
+        { left: logoResult.left, top: logoResult.top, width: logoResult.w, height: logoResult.h },
+        blurOverlay,
+      )
+      const strength = zoneTextTreatment(logoZone, { darkText: false, halo: true }).halo
+      const haloPng = strength > 0 ? await buildLogoHalo(logoResult.input, logoResult.w, logoResult.h, strength) : null
+      if (haloPng) {
+        const hMeta = await sharp(haloPng).metadata()
+        const hw = hMeta.width ?? 0
+        const hh = hMeta.height ?? 0
+        composites.push({
+          input: haloPng,
+          top: Math.min(Math.max(0, Math.round(logoResult.top + logoResult.h / 2 - hh / 2)), Math.max(0, STD_H - hh)),
+          left: Math.min(Math.max(0, Math.round(logoResult.left + logoResult.w / 2 - hw / 2)), Math.max(0, STD_W - hw)),
+        })
+      }
+    }
     composites.push(logoResult)
   }
   if (titleFit && logoResult) {
-    const titleBadge = await renderTitleText(title!, titleTextMaxW(STD_W), titleFit.fs, undefined, textStyle).catch(() => null)
+    const titleBadge = await renderTitleText(title!, titleTextMaxW(STD_W), titleFit.fs, titleTreatment.color || undefined, titleTextStyle).catch(() => null)
     if (titleBadge) {
       composites.push({
         input: titleBadge.png,
@@ -910,7 +961,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   const hasQualityBadge = badgeQuality !== false && !!quality
 
   const genreBadgeKey = hasGenreBadge
-    ? badgeCacheKey("genre", genreName, voteAverage, STD_W, year, badgeStyle, accentColorGenre, topLight, badgeGenre, badgeYear, badgeRating, effGenreScale, showRatingStar, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset)
+    ? badgeCacheKey("genre", genreName, voteAverage, STD_W, year, badgeStyle, accentColorGenre, topLight, badgeGenre, badgeYear, badgeRating, effGenreScale, showRatingStar, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, metaTreatment.color, metaTreatment.shadowColor, metaTreatment.halo)
     : null
   const rankBadgeKey = !showComingSoon && topBadge
     ? badgeCacheKey("rank", topBadge.type === "extra" ? topBadge.label : `${(topBadge as { rank: number }).rank}:${topBadge!.label}`, STD_W, topLight, rankingBadgeStyle, accentColorRank, ribbonSide, isAnimeRank, effTopScale)
@@ -926,7 +977,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     genreBadgeKey
       ? (cacheGet<{ png: Buffer; w: number; h: number }>(genreBadgeKey)
           || coalesceBadgeRender(genreBadgeKey, () =>
-              renderGenreBadge(genreName ?? "", voteAverage ?? 0, STD_W, year, badgeStyle, accentColorGenre, topLight, { showGenre: badgeGenre, showYear: badgeYear, showRating: badgeRating, showStar: showRatingStar }, badgeStyle === "bar" ? effGenreScale : 100, textStyle)
+              renderGenreBadge(genreName ?? "", voteAverage ?? 0, STD_W, year, badgeStyle, accentColorGenre, topLight, { showGenre: badgeGenre, showYear: badgeYear, showRating: badgeRating, showStar: showRatingStar }, badgeStyle === "bar" ? effGenreScale : 100, metaTextStyle)
                 .then((r) => { if (r) cacheSet(genreBadgeKey, r, ["badge"], BADGE_CACHE_TTL); return r })
             ))
       : Promise.resolve(null),

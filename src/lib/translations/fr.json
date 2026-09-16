@@ -635,6 +635,8 @@
   "ui.textShadowBlur": "Flou de l'ombre",
   "ui.textShadowOffset": "Décalage de l'ombre",
   "ui.ratingStar": "Étoile de la note",
+  "ui.autoDarkText": "Dark text on light posters",
+  "ui.textHalo": "Auto text halo",
   "ui.badgeTopOffset": "Position du badge du haut",
   "ui.badgeBottomOffset": "Position de la ligne du bas",
   "ui.logoBottomOffset": "Hauteur du logo",

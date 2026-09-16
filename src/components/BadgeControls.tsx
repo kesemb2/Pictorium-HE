@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronDown, Star, Trophy, Tv, Sparkles, Palette, Layers, Cloud } from "lucide-react"
+import { ChevronDown, Star, Trophy, Tv, Sparkles, Palette, Layers, Cloud, Contrast, Sun } from "lucide-react"
 import { usePSelector } from "@/lib/context"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { usePosterEditor } from "@/lib/contexts/PosterEditorContext"
@@ -225,6 +225,22 @@ export function BadgeControls() {
               {t("ui.blurSection")}
             </span>
             <Toggle value={ed.blurEnabled} onChange={(v) => ed.setBlurEnabled(v)} label={t("ui.blurSection")} />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-300 font-medium flex items-center gap-1.5">
+              <Contrast className="w-3.5 h-3.5 text-zinc-300" />
+              {t("ui.autoDarkText")}
+            </span>
+            <Toggle value={ed.autoDarkText} onChange={(v) => ed.setAutoDarkText(v)} label={t("ui.autoDarkText")} />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-300 font-medium flex items-center gap-1.5">
+              <Sun className="w-3.5 h-3.5 text-amber-300" />
+              {t("ui.textHalo")}
+            </span>
+            <Toggle value={ed.textHalo} onChange={(v) => ed.setTextHalo(v)} label={t("ui.textHalo")} />
           </div>
         </div>
       </div>

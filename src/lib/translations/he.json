@@ -635,6 +635,8 @@
   "ui.textShadowBlur": "טשטוש הצל",
   "ui.textShadowOffset": "היסט הצל",
   "ui.ratingStar": "כוכב הדירוג",
+  "ui.autoDarkText": "טקסט כהה על פוסטרים בהירים",
+  "ui.textHalo": "הילה אוטומטית לטקסט",
   "ui.badgeTopOffset": "מיקום תג עליון",
   "ui.badgeBottomOffset": "מיקום שורה תחתונה",
   "ui.logoBottomOffset": "גובה הלוגו",

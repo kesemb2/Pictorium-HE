@@ -1255,7 +1255,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY,
       queryExtra, qNetLogo, networkLogo, ribbonSide, preRelease, accentDominant,
       badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity,
-      textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
+      textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo,
     } = renderConfig
 
     // Il rilevamento (`preReleaseDetected`) cambia nel tempo: non entra nella
@@ -1435,7 +1435,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       voteCount, nextEpisodeAirDate, tmdbTrending,
       accentDominant,
       badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset,
-      textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
+      textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo,
       wikidataResult, tmdbKeywords, locale, t,
       qLabel, queryExtra, qNetLogo, networkLogo, sd,
       accentOverride, imdbTop250, preRelease: applyPreRelease,

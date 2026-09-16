@@ -635,6 +635,8 @@
   "ui.textShadowBlur": "Desenfoque de la sombra",
   "ui.textShadowOffset": "Desplazamiento de la sombra",
   "ui.ratingStar": "Estrella de la nota",
+  "ui.autoDarkText": "Dark text on light posters",
+  "ui.textHalo": "Auto text halo",
   "ui.badgeTopOffset": "Posición de la insignia superior",
   "ui.badgeBottomOffset": "Posición de la línea inferior",
   "ui.logoBottomOffset": "Altura del logo",

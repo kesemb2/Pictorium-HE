@@ -44,6 +44,8 @@ export interface ServerDefaults {
   textShadowBlur?: number
   textShadowOffset?: number
   ratingStar?: boolean
+  autoDarkText?: boolean
+  textHalo?: boolean
   badgeTopOffset?: number
   badgeBottomOffset?: number
   logoBottomOffset?: number
@@ -120,6 +122,8 @@ function defaultsFromEnv(): ServerDefaults {
   const netLogo = envBool("NETWORK_LOGO")
   const accentDom = envBool("ACCENT_DOMINANT")
   const ratingStarEnv = envBool("RATING_STAR")
+  const autoDarkTextEnv = envBool("AUTO_DARK_TEXT")
+  const textHaloEnv = envBool("TEXT_HALO")
   const geomEnv: [keyof ServerDefaults, number | undefined][] = [
     ["badgeTopScale", envNum("BADGE_TOP_SCALE")],
     ["badgeBottomScale", envNum("BADGE_BOTTOM_SCALE")],
@@ -147,6 +151,8 @@ function defaultsFromEnv(): ServerDefaults {
   if (netLogo !== undefined) d.networkLogo = netLogo
   if (accentDom !== undefined) d.accentDominant = accentDom
   if (ratingStarEnv !== undefined) d.ratingStar = ratingStarEnv
+  if (autoDarkTextEnv !== undefined) d.autoDarkText = autoDarkTextEnv
+  if (textHaloEnv !== undefined) d.textHalo = textHaloEnv
   for (const [key, val] of geomEnv) {
     if (val !== undefined) (d as Record<string, unknown>)[key] = val
   }

@@ -56,6 +56,8 @@ export function saveDefaults(ed: PosterEditorCtx): Promise<boolean> {
     textShadowBlur: ed.defaultTextShadowBlur,
     textShadowOffset: ed.defaultTextShadowOffset,
     ratingStar: ed.defaultRatingStar,
+    autoDarkText: ed.defaultAutoDarkText,
+    textHalo: ed.defaultTextHalo,
     autoRotateClean: ed.defaultAutoRotateClean,
     defaultLogoFitEnabled: ed.defaultLogoFitEnabled,
     defaultNetworkLogo: ed.defaultNetworkLogo,
