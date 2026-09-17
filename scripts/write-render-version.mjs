@@ -28,6 +28,7 @@ const RENDER_FILES = [
   "src/lib/logo-contrast.ts",
   "src/lib/logo-layout.ts",
   "src/lib/logo-selection.ts",
+  "src/lib/multi-rating-renderer.ts",
   "src/lib/network-svgs.ts",
   "src/lib/poster-auto-fit.ts",
   "src/lib/poster-badge.ts",

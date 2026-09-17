@@ -705,6 +705,21 @@ export function buildExtraGlassSvg(label: string, fs: number, textColor: string,
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${renderH}">${defs}${bgEl}${textEl}</svg>`, w: renderW, h: renderH }
 }
 
+/** Bordo per i badge "extra": stessa scatola della pill, solo contorno. */
+export function buildExtraBorderedSvg(label: string, fs: number, textColor: string, topLight: boolean) {
+  const px = Math.round(fs * 0.75)
+  const textW = Math.max(estimateTextWidth(label, fs), fs)
+  const totalW = textW + px * 2
+  const boxH = Math.round(fs * 1.8)
+  const r = Math.round(fs * 0.55)
+  const borderW = 2
+  const borderColor = topLight ? "rgba(0,0,0,0.50)" : "rgba(255,255,255,0.60)"
+  const bgFill = topLight ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.08)"
+  const bgEl = `<rect x="${borderW / 2}" y="${borderW / 2}" width="${totalW - borderW}" height="${boxH - borderW}" rx="${r}" fill="${bgFill}" stroke="${borderColor}" stroke-width="${borderW}"/>`
+  const textEl = `<text x="${totalW / 2}" y="${boxH / 2}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(label)}" font-weight="700" font-size="${fs}" fill="${textColor}">${escSvg(label)}</text>`
+  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${boxH}">${bgEl}${textEl}</svg>`, w: totalW, h: boxH }
+}
+
 export function buildNetflixRankSvg(rank: number, pw: number) {
   const fs = Math.round(Math.max(23 * pw / 380, 14))
   const w = Math.round(fs * 2.4)

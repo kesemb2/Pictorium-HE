@@ -9,7 +9,7 @@
 export const BADGE_STYLES = ["shadow", "pill", "bar", "colored", "bordo", "vetro", "minimal"] as const
 export type BadgeStyle = (typeof BADGE_STYLES)[number]
 
-export const RANKING_BADGE_STYLES = ["default", "bar", "colored", "pill", "netflix"] as const
+export const RANKING_BADGE_STYLES = ["default", "bar", "colored", "pill", "bordo", "vetro", "netflix"] as const
 export type RankingBadgeStyle = (typeof RANKING_BADGE_STYLES)[number]
 
 /** Stile accettato dai badge "extra" (trend/classifica): union dei due set; valori sconosciuti cadono sul default nel renderer. */

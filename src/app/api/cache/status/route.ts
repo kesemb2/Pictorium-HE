@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server"
+import { imageBytesStats } from "@/lib/image-bytes-cache"
 import sharp from "sharp"
 import { adminAuthResponse, checkAdminToken } from "@/lib/auth"
 import { cacheStatus } from "@/lib/cache"
@@ -40,6 +41,7 @@ export async function GET(req: NextRequest) {
     ...cacheStatus(),
     posterErrors: posterErrorStats(),
     poster: getPosterStats(),
+    imageBytes: imageBytesStats(),
     tmdb: getTMDBStats(),
     system: systemStats,
     circuitBreakers: {

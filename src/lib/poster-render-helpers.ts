@@ -2,6 +2,7 @@ import crypto from "node:crypto"
 import sharp from "sharp"
 import { FANART_ASSET_PREFIX } from "./fanart"
 import { combineAbortSignals } from "./abort-signal"
+import { cachedImageBytes } from "./image-bytes-cache"
 import { findAccentColor, findSceneTint, type AccentHueMode } from "@/lib/accent-color"
 import { GENRE_FALLBACK } from "@/lib/badges"
 import { ARTWORKS_BASE } from "@/lib/tvdb"
@@ -27,16 +28,23 @@ export function hashKey(key: string): string {
 }
 
 export async function fetchImg(url: string, signal?: AbortSignal): Promise<Buffer> {
-  // Se il chiamante passa un signal esterno, unirlo al timeout interno invece
-  // di sostituirlo: un signal mai abortito (es. renderAbort a render riuscito)
-  // lascerebbe il fetch senza tetto in background. Il limite resta 15s.
-  const res = await fetch(url, { signal: combineAbortSignals(signal, 15000) })
-  if (!res.ok) throw new Error(`fetch failed: ${res.status}`)
-  const cl = res.headers.get("content-length")
-  if (cl && Number(cl) > MAX_IMG_SIZE) throw new Error("image too large")
-  const buf = Buffer.from(await res.arrayBuffer())
-  if (buf.length > MAX_IMG_SIZE) throw new Error("image too large")
-  return buf
+  // LRU sui byte grezzi, per URL: le cache image-level esistenti salvano
+  // artefatti sharp, non i byte scaricati, quindi ogni render con una cache key
+  // diversa per lo stesso titolo ripagava la CDN. Da noi conta di più che a
+  // monte: oltre a TMDB peschiamo anche i tier fanart e TVDB.
+  // Controllo SSRF, signal/timeout e cap di dimensione restano dentro, invariati.
+  return cachedImageBytes(url, async () => {
+    // Se il chiamante passa un signal esterno, unirlo al timeout interno invece
+    // di sostituirlo: un signal mai abortito (es. renderAbort a render riuscito)
+    // lascerebbe il fetch senza tetto in background. Il limite resta 15s.
+    const res = await fetch(url, { signal: combineAbortSignals(signal, 15000) })
+    if (!res.ok) throw new Error(`fetch failed: ${res.status}`)
+    const cl = res.headers.get("content-length")
+    if (cl && Number(cl) > MAX_IMG_SIZE) throw new Error("image too large")
+    const buf = Buffer.from(await res.arrayBuffer())
+    if (buf.length > MAX_IMG_SIZE) throw new Error("image too large")
+    return buf
+  })
 }
 
 export function isValidHex(color: string): boolean {

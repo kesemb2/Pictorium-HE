@@ -9,7 +9,6 @@ import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { getServerDefaults } from "@/lib/server-defaults"
 import { getRegionDef, normalizeRegion, parseRegion, defaultRegionForLang } from "@/lib/regions"
 import { BEST_FIT_GLOBAL } from "@/lib/best-fit-config"
-import { warmFonts } from "@/lib/svg-badge"
 import { selectBestLogoFitPosterPath } from "@/lib/poster-auto-fit"
 import { fetchAllWikidata, matchTMDBStudios } from "@/lib/awards"
 import { createT } from "@/lib/i18n"
@@ -48,6 +47,7 @@ import {
   recordPosterCoalescedHit,
   recordTvdbRescue,
   recordBackdropCropRescue,
+  serverTimingValue,
   resolveImageFormat,
   type PosterCachePayload,
   type PosterErrorStatus,
@@ -160,7 +160,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   const startTime = Date.now()
   initSharp()
   const rl = await rateLimit(rateLimitKey(req), "poster")
-  warmFonts()
   if (!rl.ok) return rateLimitResponse(rl.retAfter)
   const { type, id } = await params
   const mediaType = (["series", "tv", "show", "tvshow"].includes(type?.toLowerCase() || "")) ? "tv" : "movie"
@@ -345,7 +344,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     if (!cachedPoster.stale) {
       log.debug("Poster cache: fresh hit", { mediaType, tmdbId, ms: Date.now() - startTime })
       if (outputFormat === "webp") return serveWebpVariant(cachedPoster.payload)
-      return posterResponse(cachedPoster.payload, immutablePoster, isPreview, dynamicPoster, outputFormat, dynamicTtlSec)
+      return posterResponse(cachedPoster.payload, immutablePoster, isPreview, dynamicPoster, outputFormat, dynamicTtlSec,
+        serverTimingValue([{ name: "cache", desc: "HIT" }, { name: "total", durMs: Date.now() - startTime }]))
     }
     if (!refreshRequest) {
       recordPosterStaleHit()
@@ -1175,6 +1175,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     const qLabel = req.nextUrl.searchParams.get("label")
     const finalRank = qRank !== null ? (parseInt(qRank, 10) >= 0 ? parseInt(qRank, 10) : rankingRank) : rankingRank
 
+    // Confine fetch/prep per Server-Timing: fin qui mapping/default, TMDB, JW,
+    // wikidata, immagini e selezione del logo. Da qui in poi è solo CPU locale.
+    const tFetchMs = Date.now() - startTime
+
     // 6. Resize poster + compute luminance
     const posterBuf = await sharp(originalBuf).resize(STD_W, STD_H, { fit: 'cover', position: 'centre' }).toBuffer()
     const qTopLight = req.nextUrl.searchParams.get("tl")
@@ -1471,7 +1475,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     log.info("Poster rendered", { mediaType, tmdbId, ms: Date.now() - startTime, bytes: composited.byteLength, cached: !!mappingTag, format: outputFormat })
     // C3: il webp è variante di risposta (convertita + cachata), non un render.
     if (outputFormat === "webp") return serveWebpVariant(payload)
-    return new Response(new Uint8Array(composited), { headers: posterHeaders(etag, immutablePoster, isPreview, dynamicPoster, outputFormat, dynamicTtlSec) })
+    const renderTiming = serverTimingValue([
+      { name: "fetch", durMs: tFetchMs },
+      { name: "prep", durMs: Date.now() - startTime - tFetchMs },
+      { name: "total", durMs: Date.now() - startTime },
+    ])
+    return new Response(new Uint8Array(composited), {
+      headers: { ...posterHeaders(etag, immutablePoster, isPreview, dynamicPoster, outputFormat, dynamicTtlSec), "Server-Timing": renderTiming },
+    })
   } catch (e) {
     completePosterRender(null)
     recordPosterError()

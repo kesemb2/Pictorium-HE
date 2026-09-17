@@ -142,6 +142,10 @@ export const posterQuerySchema = z.object({
   mv: boundedQueryString(32),
   fmt: boundedQueryString(8),
   format: boundedQueryString(8),
+  // Leggibilità automatica del testo in basso: inerti come valore (clamp al
+  // sito d'uso), ma i bound tengono fuori le stringhe assurde.
+  dtx: boundedQueryString(8),
+  halo: boundedQueryString(8),
 })
 
 export type PosterQuery = z.infer<typeof posterQuerySchema>

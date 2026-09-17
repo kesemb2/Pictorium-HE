@@ -162,3 +162,33 @@ describe("buildLogoHalo", () => {
     expect(await buildLogoHalo(Buffer.from([1, 2, 3]), 100, 50, 1)).toBeNull()
   })
 })
+
+/**
+ * Polarità del badge in basso. Prima la decideva `topLight`, misurato sull'8%
+ * SUPERIORE del poster: un cielo scuro sopra un fondo bianco mandava la pill
+ * chiara sul bianco.
+ */
+describe("bottomLight", () => {
+  const BRIGHT = ZONE_BRIGHT_LUMINANCE
+
+  it("reads the bottom, not the top, on a dark-top light-bottom poster", async () => {
+    const buf = await poster((raw, x, y) => gray(raw, x, y, y < STD_H * 0.5 ? 14 : 244))
+    const bottom = (await posterZoneStats(buf, ZONE))!
+    const top = (await posterZoneStats(buf, { left: 0, top: 0, width: STD_W, height: 60 }))!
+
+    expect(bottom.luminance > BRIGHT).toBe(true)
+    expect(top.luminance > BRIGHT).toBe(false)
+  })
+
+  it("counts a bottom the band has darkened as dark", async () => {
+    // La fascia copre quella striscia: il badge ci finisce sopra scuro, quindi
+    // la polarità deve restare quella scura anche se l'artwork sotto è bianco.
+    const buf = await poster((raw, x, y) => gray(raw, x, y, 244))
+    const band = await applyBlur({
+      posterBuf: buf, blurEnabled: true, blurHeight: 50,
+      blurIntensity: 8, blurFade: 20, blurDarkness: 85,
+    })
+    const covered = (await posterZoneStats(buf, ZONE, band))!
+    expect(covered.luminance > BRIGHT).toBe(false)
+  })
+})

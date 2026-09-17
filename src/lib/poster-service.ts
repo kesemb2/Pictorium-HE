@@ -5,6 +5,7 @@ import { cacheGet, cacheSet } from "./cache"
 import { GENRE_FALLBACK, cinematicVignetteSVG } from "./badges"
 import type { AccentHueMode } from "./accent-color"
 import { applyBlur } from "./blur"
+import { TOP_LIGHT_LUMINANCE } from "./constants"
 import {
   STD_W, STD_H,
   clampAccentRegionFraction,
@@ -755,6 +756,13 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   const metaTreatment = zoneTextTreatment(metaZoneStats, textTreatmentOpts)
   const titleTreatment = zoneTextTreatment(titleZoneStats ?? metaZoneStats, textTreatmentOpts)
   const metaTextStyle: TextStyle = { ...textStyle, ...metaTreatment }
+  // Polarità del badge in basso. Prima arrivava da `topLight`, che misura l'8%
+  // SUPERIORE del poster: un poster con cielo scuro e fondo bianco riceveva la
+  // pill chiara sul bianco. Qui la decide la luminanza della striscia che il
+  // badge occupa davvero, fascia inclusa — la stessa misura già presa per il
+  // trattamento del testo, quindi a costo zero. Non misurabile → si ricade su
+  // `topLight`, il comportamento storico.
+  const bottomLight = metaZoneStats ? metaZoneStats.luminance > TOP_LIGHT_LUMINANCE : topLight
   const titleTextStyle: TextStyle = { ...textStyle, ...titleTreatment }
 
   // -----------------------------------------------------------------------
@@ -961,7 +969,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   const hasQualityBadge = badgeQuality !== false && !!quality
 
   const genreBadgeKey = hasGenreBadge
-    ? badgeCacheKey("genre", genreName, voteAverage, STD_W, year, badgeStyle, accentColorGenre, topLight, badgeGenre, badgeYear, badgeRating, effGenreScale, showRatingStar, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, metaTreatment.color, metaTreatment.shadowColor, metaTreatment.halo)
+    ? badgeCacheKey("genre", genreName, voteAverage, STD_W, year, badgeStyle, accentColorGenre, bottomLight, badgeGenre, badgeYear, badgeRating, effGenreScale, showRatingStar, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, metaTreatment.color, metaTreatment.shadowColor, metaTreatment.halo)
     : null
   const rankBadgeKey = !showComingSoon && topBadge
     ? badgeCacheKey("rank", topBadge.type === "extra" ? topBadge.label : `${(topBadge as { rank: number }).rank}:${topBadge!.label}`, STD_W, topLight, rankingBadgeStyle, accentColorRank, ribbonSide, isAnimeRank, effTopScale)
@@ -977,7 +985,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     genreBadgeKey
       ? (cacheGet<{ png: Buffer; w: number; h: number }>(genreBadgeKey)
           || coalesceBadgeRender(genreBadgeKey, () =>
-              renderGenreBadge(genreName ?? "", voteAverage ?? 0, STD_W, year, badgeStyle, accentColorGenre, topLight, { showGenre: badgeGenre, showYear: badgeYear, showRating: badgeRating, showStar: showRatingStar }, badgeStyle === "bar" ? effGenreScale : 100, metaTextStyle)
+              renderGenreBadge(genreName ?? "", voteAverage ?? 0, STD_W, year, badgeStyle, accentColorGenre, bottomLight, { showGenre: badgeGenre, showYear: badgeYear, showRating: badgeRating, showStar: showRatingStar }, badgeStyle === "bar" ? effGenreScale : 100, metaTextStyle)
                 .then((r) => { if (r) cacheSet(genreBadgeKey, r, ["badge"], BADGE_CACHE_TTL); return r })
             ))
       : Promise.resolve(null),

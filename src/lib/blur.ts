@@ -105,18 +105,24 @@ export async function applyBlur(params: BlurParams): Promise<BlurOverlay | null>
   const sigmaLow = Math.max(1, Math.round(clampedIntensity * 0.25))
   const sigmaHigh = Math.max(sigmaLow + 1, clampedIntensity)
 
-  // Step 1: estrazione con bleed e dual-stage blur concorrente (C++, no PNG intermediate)
+  // Step 1: UN solo decode (extract+resize+raw), poi i due blur dual-stage
+  // lavorano in parallelo sullo STESSO raw in memoria — niente secondo decode
+  // né PNG intermedi. Le fasi restano le stesse operazioni di prima: blur sui
+  // canali originali (alpha inclusa, che cambia il percorso di convoluzione in
+  // libvips) e removeAlpha DOPO, col decode pagato una volta sola.
+  const { data: baseRaw, info: baseInfo } = await sharp(posterBuf)
+    .extract({ left: 0, top: extTop, width: canvasW, height: extH })
+    .resize(canvasW, extH, { fit: "fill" })
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+  const rawInput = { width: baseInfo.width, height: baseInfo.height, channels: baseInfo.channels as 1 | 3 | 4 }
   const [blurLow, blurHigh] = await Promise.all([
-    sharp(posterBuf)
-      .extract({ left: 0, top: extTop, width: canvasW, height: extH })
-      .resize(canvasW, extH, { fit: "fill" })
+    sharp(baseRaw, { raw: rawInput })
       .blur(sigmaLow)
       .removeAlpha()
       .raw()
       .toBuffer(),
-    sharp(posterBuf)
-      .extract({ left: 0, top: extTop, width: canvasW, height: extH })
-      .resize(canvasW, extH, { fit: "fill" })
+    sharp(baseRaw, { raw: rawInput })
       .blur(sigmaHigh)
       .removeAlpha()
       .raw()
