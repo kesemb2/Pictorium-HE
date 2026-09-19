@@ -6,7 +6,7 @@ import { resolveImdbToTmdb } from "@/lib/imdb-resolver"
 import { getDetailsWithExternalIds, getImages, resolveRequestApiKey } from "@/lib/tmdb"
 import { getFanartMovie, getFanartTv, type FanartImage } from "@/lib/fanart"
 import { fetchImg, imgSrc, isAllowedImageUrl } from "@/lib/poster-render-helpers"
-import { chooseLogo, composeLogoImage, inkLuminanceScorer, localizedTitle, whitenLogo } from "@/lib/logo-image"
+import { chooseLogo, composeLogoImage, inkProfiler, localizedTitle, whitenLogo } from "@/lib/logo-image"
 import { cacheGet, cacheSet } from "@/lib/cache"
 import { RENDER_VERSION } from "@/lib/render-version"
 import { recordPosterUrl } from "@/lib/poster-url-log"
@@ -105,7 +105,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       .filter((l) => !l.file_path.startsWith("http") || isAllowedImageUrl(l.file_path))
 
     const fetchLogo = (path: string) => fetchImg(imgSrc(path))
-    const choice = await chooseLogo(allLogos, lang, details?.original_language, inkLuminanceScorer(fetchLogo))
+    const choice = await chooseLogo(allLogos, lang, details?.original_language, inkProfiler(fetchLogo))
     if (!choice) {
       // Nessun logo in nessun livello: 404 e l'addon torna al suo fallback.
       log.info("No logo available", { mediaType, tmdbId, lang })

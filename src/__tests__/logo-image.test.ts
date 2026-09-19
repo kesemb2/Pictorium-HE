@@ -1,14 +1,13 @@
 import sharp from "sharp"
 import { describe, expect, it } from "vitest"
 import {
-  LOGO_LIGHT_MIN_LUMINANCE,
   chooseLogo,
   composeLogoImage,
-  inkLuminanceScorer,
+  inkProfiler,
   localizedTitle,
   whitenLogo,
 } from "@/lib/logo-image"
-import { logoInkLuminance } from "@/lib/logo-contrast"
+import { logoInkLuminance, logoInkProfile } from "@/lib/logo-contrast"
 import type { TMDBImage } from "@/lib/types"
 
 /** Wordmark: una barra piena del colore dato su tela trasparente. */
@@ -19,13 +18,30 @@ async function wordmark(hex: string, w = 300, h = 80): Promise<Buffer> {
     .png().toBuffer()
 }
 
+/** Wordmark nero con un segno colorato accanto: un logo che è anche un disegno. */
+async function wordmarkWithMark(w = 300, h = 80): Promise<Buffer> {
+  const bar = await sharp({ create: { width: 150, height: 40, channels: 4, background: "#0a0a0a" } }).png().toBuffer()
+  const mark = await sharp({ create: { width: 40, height: 40, channels: 4, background: "#c81e1e" } }).png().toBuffer()
+  return sharp({ create: { width: w, height: h, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: bar, top: 20, left: 20 }, { input: mark, top: 20, left: 190 }])
+    .png().toBuffer()
+}
+
+/** Wordmark su una targa opaca: sbiancarlo darebbe il blocco bianco segnalato. */
+async function wordmarkOnPlate(w = 300, h = 80): Promise<Buffer> {
+  const bar = await sharp({ create: { width: 150, height: 40, channels: 4, background: "#f2f2f2" } }).png().toBuffer()
+  return sharp({ create: { width: w, height: h, channels: 4, background: "#141414" } })
+    .composite([{ input: bar, top: 20, left: 75 }])
+    .png().toBuffer()
+}
+
 function img(path: string, lang: string | null): TMDBImage {
   return { file_path: path, iso_639_1: lang, width: 300, height: 80, vote_average: 0 }
 }
 
-/** Sorgente di loghi per path, così lo scorer misura inchiostro vero. */
+/** Sorgente di loghi per path, così il profiler misura inchiostro vero. */
 function scorerFor(map: Record<string, Buffer>) {
-  return inkLuminanceScorer(async (path) => {
+  return inkProfiler(async (path: string) => {
     const b = map[path]
     if (!b) throw new Error(`no logo for ${path}`)
     return b
@@ -42,7 +58,7 @@ describe("chooseLogo", () => {
     expect(choice.needsTitle).toBe(false)
   })
 
-  it("whitens a dark Hebrew logo rather than dropping to English", async () => {
+  it("whitens a flat black Hebrew logo rather than dropping to English", async () => {
     // Il punto della scala: la lingua non si perde per un problema di colore.
     const map = { "/he-black.png": await wordmark("#0a0a0a"), "/en-white.png": await wordmark("#ffffff") }
     const choice = (await chooseLogo([img("/he-black.png", "he"), img("/en-white.png", "en")], "he", "en", scorerFor(map)))!
@@ -50,6 +66,32 @@ describe("chooseLogo", () => {
     expect(choice.logo.file_path).toBe("/he-black.png")
     expect(choice.whitened).toBe(true)
     expect(choice.needsTitle).toBe(false)
+  })
+
+  it("counts a very dark flat grey as black", async () => {
+    const map = { "/he.png": await wordmark("#232323") }
+    expect((await chooseLogo([img("/he.png", "he")], "he", "en", scorerFor(map)))!.whitened).toBe(true)
+  })
+
+  it("leaves a flat mid grey alone — darkish is not black", async () => {
+    const map = { "/he.png": await wordmark("#808080") }
+    expect((await chooseLogo([img("/he.png", "he")], "he", "en", scorerFor(map)))!.whitened).toBe(false)
+  })
+
+  it("leaves a logo that is also a drawing alone", async () => {
+    // Sbiancarlo terrebbe la forma e cancellerebbe il segno colorato dentro.
+    const map = { "/he.png": await wordmarkWithMark() }
+    expect((await chooseLogo([img("/he.png", "he")], "he", "en", scorerFor(map)))!.whitened).toBe(false)
+  })
+
+  it("leaves a logo on an opaque plate alone", async () => {
+    // Il caso segnalato: con la vecchia regola sulla luminanza MEDIA questo
+    // veniva sbiancato, targa compresa, e usciva un blocco bianco.
+    const map = { "/he.png": await wordmarkOnPlate() }
+    const choice = (await chooseLogo([img("/he.png", "he")], "he", "en", scorerFor(map)))!
+    // La media dell'inchiostro è bassa — è proprio quello che ingannava prima.
+    expect(await logoInkLuminance(map["/he.png"])).toBeLessThan(0.45)
+    expect(choice.whitened).toBe(false)
   })
 
   it("prefers the lightest inside the Hebrew tier, since whitening loses colour", async () => {
@@ -82,9 +124,10 @@ describe("chooseLogo", () => {
     expect(choice.whitened).toBe(false)
   })
 
-  it("agrees with the threshold it documents", async () => {
-    expect(await logoInkLuminance(await wordmark("#ffffff"))).toBeGreaterThan(LOGO_LIGHT_MIN_LUMINANCE)
-    expect(await logoInkLuminance(await wordmark("#0a0a0a"))).toBeLessThan(LOGO_LIGHT_MIN_LUMINANCE)
+  it("reads flatness off the ink, not off the average", async () => {
+    expect((await logoInkProfile(await wordmark("#0a0a0a")))!.flatBlack).toBe(true)
+    expect((await logoInkProfile(await wordmarkWithMark()))!.flatBlack).toBe(false)
+    expect((await logoInkProfile(await wordmarkOnPlate()))!.flatBlack).toBe(false)
   })
 })
 
@@ -114,7 +157,10 @@ describe("whitenLogo", () => {
   })
 
   it("makes a dark logo read as light", async () => {
-    expect(await logoInkLuminance(await whitenLogo(await wordmark("#0a0a0a")))).toBeGreaterThan(LOGO_LIGHT_MIN_LUMINANCE)
+    const before = (await logoInkLuminance(await wordmark("#0a0a0a")))!
+    const after = (await logoInkLuminance(await whitenLogo(await wordmark("#0a0a0a"))))!
+    expect(before).toBeLessThan(0.05)
+    expect(after).toBeGreaterThan(0.9)
   })
 })
 

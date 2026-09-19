@@ -22,12 +22,42 @@ import type { BlurOverlay } from "./blur"
 export const LOGO_CONTRAST_MIN = 3.0
 
 /**
- * Luminanza dell'INCHIOSTRO del logo: media sui soli pixel abbastanza opachi.
- * Un logo è quasi tutto trasparente, quindi la media su tutta l'immagine
- * misurerebbe soprattutto il nulla e darebbe sempre lo stesso valore.
+ * Un pixel conta come nero quando nessun canale supera questo valore. Tiene
+ * dentro il nero puro, un grigio molto scuro e un blu notte — "nero, o quasi".
+ */
+export const INK_BLACK_MAX_CHANNEL = 48
+
+/**
+ * Frazione minima di inchiostro nero perché il logo conti come tinta piatta.
+ * Non 1.0: un artefatto di ricampionamento non deve poter mettere il veto su un
+ * wordmark palesemente piatto. Può stare così alto perché il filtro
+ * `alpha < 128` qui sotto butta via il bordo antialiasato — un wordmark nero
+ * puro misura il 100% di nero, non il 90 e rotti.
+ */
+export const INK_FLAT_MIN_FRACTION = 0.97
+
+export interface InkProfile {
+  /** Luminanza media dell'inchiostro, 0-1. */
+  readonly luminance: number
+  /**
+   * Ogni pixel opaco è nero o quasi: una tinta piatta, non un disegno.
+   *
+   * Serve a decidere se un logo si può ricolorare di bianco. Un wordmark in
+   * tinta unita non porta nessuna informazione oltre alla propria forma, quindi
+   * sbiancarlo non toglie niente; un logo con un emblema, una sfumatura, un
+   * contorno chiaro o una targa opaca sì — e diventerebbe un blocco bianco.
+   */
+  readonly flatBlack: boolean
+}
+
+/**
+ * Profilo dell'INCHIOSTRO del logo, dai soli pixel abbastanza opachi. Un logo è
+ * quasi tutto trasparente, quindi una misura su tutta l'immagine leggerebbe
+ * soprattutto il nulla e darebbe sempre lo stesso valore.
+ *
  * Ritorna null quando non c'è abbastanza inchiostro per dire qualcosa.
  */
-export async function logoInkLuminance(logoBuf: Buffer): Promise<number | null> {
+export async function logoInkProfile(logoBuf: Buffer): Promise<InkProfile | null> {
   try {
     const { data, info } = await sharp(logoBuf)
       .resize(120, 120, { fit: "inside" })
@@ -36,16 +66,29 @@ export async function logoInkLuminance(logoBuf: Buffer): Promise<number | null> 
       .toBuffer({ resolveWithObject: true })
     let sum = 0
     let n = 0
+    let black = 0
     for (let i = 0; i < data.length; i += info.channels) {
       if (data[i + 3] < 128) continue
       sum += relativeLuminance(data[i], data[i + 1], data[i + 2])
       n++
+      if (data[i] <= INK_BLACK_MAX_CHANNEL && data[i + 1] <= INK_BLACK_MAX_CHANNEL && data[i + 2] <= INK_BLACK_MAX_CHANNEL) {
+        black++
+      }
     }
     if (n < 16) return null
-    return sum / n
+    return { luminance: sum / n, flatBlack: black / n >= INK_FLAT_MIN_FRACTION }
   } catch {
     return null
   }
+}
+
+/**
+ * Luminanza dell'inchiostro. Il path poster misura solo questa: resta un
+ * numero solo, letto dal profilo qui sopra per non avere due cicli che
+ * campionano la stessa immagine in due modi che possono divergere.
+ */
+export async function logoInkLuminance(logoBuf: Buffer): Promise<number | null> {
+  return (await logoInkProfile(logoBuf))?.luminance ?? null
 }
 
 export interface ZoneStats {

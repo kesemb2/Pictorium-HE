@@ -6,6 +6,7 @@ import {
   buildLogoScrim,
   logoContrast,
   logoInkLuminance,
+  logoInkProfile,
   logoScrimStrength,
   posterLogoZoneLuminance,
 } from "@/lib/logo-contrast"
@@ -46,6 +47,31 @@ describe("logoInkLuminance", () => {
   it("returns null instead of throwing on a non-image", async () => {
     expect(await logoInkLuminance(Buffer.from("not an image"))).toBeNull()
   })
+})
+
+describe("logoInkProfile", () => {
+  // logoInkLuminance legge da qui: se i due divergessero, il path poster si
+  // muoverebbe per una modifica pensata solo per il path logo.
+  it("carries the same luminance logoInkLuminance reports", async () => {
+    for (const hex of ["#ffffff", "#000000", "#c81e1e"]) {
+      const buf = await logo(hex)
+      expect((await logoInkProfile(buf))!.luminance).toBe(await logoInkLuminance(buf))
+    }
+  }, 20000)
+
+  it("calls a flat black logo flat and a coloured one not", async () => {
+    expect((await logoInkProfile(await logo("#000000")))!.flatBlack).toBe(true)
+    expect((await logoInkProfile(await logo("#232323")))!.flatBlack).toBe(true)
+    expect((await logoInkProfile(await logo("#c81e1e")))!.flatBlack).toBe(false)
+    expect((await logoInkProfile(await logo("#ffffff")))!.flatBlack).toBe(false)
+  }, 20000)
+
+  it("returns null on an empty or unreadable buffer", async () => {
+    const empty = await sharp({ create: { width: 400, height: 200, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .png().toBuffer()
+    expect(await logoInkProfile(empty)).toBeNull()
+    expect(await logoInkProfile(Buffer.from("not an image"))).toBeNull()
+  }, 20000)
 })
 
 describe("logoContrast", () => {

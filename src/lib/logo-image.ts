@@ -7,14 +7,15 @@
  * che lo dice in ebraico.
  *
  * Qui la lingua resta decisa da `selectLogoTier` — lo stesso ordine del poster,
- * così le due superfici non mostrano loghi diversi — e la luminosità smette di
- * essere un criterio di scelta per diventare una trasformazione: dentro il
- * livello vince il più chiaro, e se anche quello è scuro viene ricolorato di
- * bianco. È il motivo per cui un logo ebraico scuro non costa mai l'ebraico.
+ * così le due superfici non mostrano loghi diversi — e dentro il livello vince
+ * il più chiaro. Se anche quello è scuro si ricolora di bianco, ma SOLO quando
+ * è una tinta piatta e nera: vedi `flatBlack` in `logo-contrast.ts`. Sbiancare
+ * un logo che è anche un disegno lo riduce a un blocco bianco, e allora è
+ * meglio il logo com'è.
  */
 
 import sharp, { type OverlayOptions } from "sharp"
-import { logoInkLuminance } from "./logo-contrast"
+import { logoInkProfile, type InkProfile } from "./logo-contrast"
 import { pickReadableLogo, selectLogoTier } from "./logo-selection"
 import { buildTitleTextSvg, titleStripHeight, titleTextFontSize, titleTextMaxW } from "./badge-svg-shared"
 import { renderSVG } from "./svg-badge"
@@ -26,18 +27,11 @@ export const LOGO_CANVAS_W = 500
 /** Spazio fra logo e titolo, come nel poster. */
 const TITLE_GAP = 6
 
-/**
- * Sotto questa luminanza dell'inchiostro il logo va ricolorato. 0.45 è a metà
- * strada: un wordmark bianco sta vicino a 1, uno nero vicino a 0, e i loghi
- * colorati (oro, rosso) restano com'erano quando si leggono già sullo scuro.
- */
-export const LOGO_LIGHT_MIN_LUMINANCE = 0.45
-
 export interface LogoChoice {
   readonly logo: TMDBImage
   /** Lingua del logo scelto, `null` per i loghi senza lingua. */
   readonly lang: string | null
-  /** Il logo era troppo scuro ed è stato ricolorato. */
+  /** Il logo era una tinta piatta nera ed è stato ricolorato di bianco. */
   readonly whitened: boolean
   /** Il titolo tradotto va reso sotto (il logo non è nella lingua preferita). */
   readonly needsTitle: boolean
@@ -45,8 +39,8 @@ export interface LogoChoice {
 
 /**
  * Sceglie il logo dentro il livello di lingua vincente, preferendo il più
- * chiaro: ricolorare perde il colore dell'originale, quindi un logo già chiaro
- * vale più di uno scuro da sistemare.
+ * chiaro: sbiancare è possibile solo per le tinte piatte nere, quindi un logo
+ * già chiaro vale più di uno scuro che forse non si potrà sistemare.
  *
  * `null` quando non c'è nessun logo: il chiamante risponde 404 e l'addon torna
  * al suo comportamento.
@@ -55,21 +49,23 @@ export async function chooseLogo(
   logos: readonly TMDBImage[],
   lang: string,
   origLang: string | null | undefined,
-  inkLuminance: (logo: TMDBImage) => Promise<number | null>,
+  inkProfile: (logo: TMDBImage) => Promise<InkProfile | null>,
 ): Promise<LogoChoice | null> {
   const tier = selectLogoTier([...logos], lang, origLang)
   if (tier.length === 0) return null
 
-  const chosen = await pickReadableLogo(tier, inkLuminance)
+  // Il ranking resta sulla luminanza: il più chiaro vince. Conta più di prima,
+  // perché ora molti loghi scuri non sono più recuperabili con lo sbiancamento.
+  const chosen = await pickReadableLogo(tier, async (l) => (await inkProfile(l))?.luminance ?? null)
   if (!chosen) return null
 
-  const ink = await inkLuminance(chosen)
+  const profile = await inkProfile(chosen)
   return {
     logo: chosen,
     lang: chosen.iso_639_1 ?? null,
     // Non misurabile → non si tocca: meglio il logo originale che uno
     // sbiancato per un errore di lettura.
-    whitened: ink !== null && ink < LOGO_LIGHT_MIN_LUMINANCE,
+    whitened: profile?.flatBlack === true,
     needsTitle: chosen.iso_639_1 !== lang,
   }
 }
@@ -78,6 +74,10 @@ export async function chooseLogo(
  * Ricolora il logo di bianco tenendone la forma: il suo canale alpha fa da
  * maschera su un campo bianco. Stessa tecnica di `buildLogoHalo`, che usa il
  * nero per l'alone.
+ *
+ * Distrugge qualunque cosa ci sia DENTRO la forma, quindi va chiamata solo sui
+ * loghi in tinta piatta nera — quelli che non hanno niente dentro da perdere.
+ * Chi decide è `chooseLogo`, via `flatBlack`.
  */
 export async function whitenLogo(logoBuf: Buffer): Promise<Buffer> {
   const { data, info } = await sharp(logoBuf).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
@@ -206,15 +206,15 @@ export async function composeLogoImage(input: {
   return { png, titleRendered: true }
 }
 
-/** Luminanza dell'inchiostro, memoizzata per path: `pickReadableLogo` richiama. */
-export function inkLuminanceScorer(
+/** Profilo dell'inchiostro, memoizzato per path: `chooseLogo` lo rilegge. */
+export function inkProfiler(
   fetchLogo: (path: string) => Promise<Buffer>,
-): (logo: TMDBImage) => Promise<number | null> {
-  const memo = new Map<string, Promise<number | null>>()
+): (logo: TMDBImage) => Promise<InkProfile | null> {
+  const memo = new Map<string, Promise<InkProfile | null>>()
   return (logo: TMDBImage) => {
     let p = memo.get(logo.file_path)
     if (!p) {
-      p = fetchLogo(logo.file_path).then(logoInkLuminance).catch(() => null)
+      p = fetchLogo(logo.file_path).then(logoInkProfile).catch(() => null)
       memo.set(logo.file_path, p)
     }
     return p
