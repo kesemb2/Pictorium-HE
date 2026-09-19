@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef, useMemo } from "react"
-import { X, Check, Copy, Download, ExternalLink, Tv, Sparkles, Film, Search } from "lucide-react"
+import { X, Check, Copy, Download, ExternalLink, Tv, Sparkles, Film, Search, Image as ImageIcon } from "lucide-react"
 import QRCode from "qrcode"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { copyText } from "@/lib/clipboard"
@@ -12,17 +12,20 @@ interface InstallModalProps {
   onClose: () => void
   manifestUrl?: string
   posterUrlPattern?: string
+  logoUrlPattern?: string
 }
 
-export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, posterUrlPattern }: InstallModalProps) {
+export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, posterUrlPattern, logoUrlPattern }: InstallModalProps) {
   const { t } = useT()
   const [hubMode, setHubMode] = useState<"all" | "catalogs" | "search">("all")
   const [copied, setCopied] = useState(false)
   const [copiedPosterUrl, setCopiedPosterUrl] = useState(false)
+  const [copiedLogoUrl, setCopiedLogoUrl] = useState(false)
   const [qrSvg, setQrSvg] = useState<string>("")
   const [baseManifestUrl, setBaseManifestUrl] = useState(propManifestUrl || "")
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const posterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const logoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (propManifestUrl) {
@@ -95,6 +98,7 @@ export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, po
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
       if (posterTimerRef.current) clearTimeout(posterTimerRef.current)
+      if (logoTimerRef.current) clearTimeout(logoTimerRef.current)
     }
   }, [])
 
@@ -113,6 +117,14 @@ export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, po
     setCopiedPosterUrl(true)
     if (posterTimerRef.current) clearTimeout(posterTimerRef.current)
     posterTimerRef.current = setTimeout(() => setCopiedPosterUrl(false), 2000)
+  }
+
+  const handleCopyLogoUrl = async () => {
+    if (!logoUrlPattern) return
+    if (!(await copyText(logoUrlPattern))) return
+    setCopiedLogoUrl(true)
+    if (logoTimerRef.current) clearTimeout(logoTimerRef.current)
+    logoTimerRef.current = setTimeout(() => setCopiedLogoUrl(false), 2000)
   }
 
   return (
@@ -287,6 +299,44 @@ export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, po
                 >
                   {copiedPosterUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-muted" />}
                   <span>{copiedPosterUrl ? t("ui.copied") : t("ui.copyUrl")}</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {logoUrlPattern && (
+            <div className="pt-3 border-t border-white/10 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-zinc-300 text-[11px] font-semibold">
+                  <ImageIcon className="w-3.5 h-3.5 text-accent-orange" />
+                  <span>{t("ui.logoLinkTitle") || "Logo URL"}</span>
+                </div>
+                <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-mono">Template URL</span>
+              </div>
+
+              <p className="text-[10px] text-zinc-400 leading-tight">
+                {t("ui.logoLinkDesc")}
+              </p>
+
+              <div className="flex items-center gap-1.5 p-1 bg-black/40 border border-white/10 rounded-xl">
+                <input
+                  type="text"
+                  readOnly
+                  value={logoUrlPattern}
+                  aria-label={t("ui.logoLinkTitle") || "Logo URL"}
+                  className="w-full bg-transparent px-2 py-1 text-[10px] font-mono text-zinc-300 truncate select-all focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleCopyLogoUrl}
+                  className={`shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-medium flex items-center gap-1 transition-all cursor-pointer ${
+                    copiedLogoUrl
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm"
+                      : "bg-white/10 hover:bg-white/15 text-zinc-200 border border-white/10 active:scale-95"
+                  }`}
+                >
+                  {copiedLogoUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-muted" />}
+                  <span>{copiedLogoUrl ? t("ui.copied") : t("ui.copyUrl")}</span>
                 </button>
               </div>
             </div>

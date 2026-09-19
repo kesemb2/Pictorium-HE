@@ -276,7 +276,9 @@ export async function POST(req: NextRequest) {
     const recorded = replayLimit > 0 ? await recordedPosterUrls(replayLimit) : []
     const replayTargets: WarmupTarget[] = []
     for (const path of recorded) {
-      const m = /^\/api\/poster\/(movie|series)\/(\d+)/.exec(path)
+      // Anche i loghi: sono un render cachato come gli altri, e la CDN li
+      // scalda con la stessa chiave esatta.
+      const m = /^\/api\/(?:poster|logo)\/(movie|series)\/(\d+)/.exec(path)
       if (!m) continue
       replayTargets.push({ type: m[1] as PosterRouteType, id: Number(m[2]), source: "recorded", path })
     }

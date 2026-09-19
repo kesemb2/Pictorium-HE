@@ -29,6 +29,7 @@ export function AppShell() {
 
   const showLangPicker = usePSelector((v) => v.showLangPicker)
   const urlPattern = usePSelector((v) => v.urlPattern)
+  const logoUrlPattern = usePSelector((v) => v.logoUrlPattern)
   const view = usePSelector((v) => v.view)
   const router = usePSelector((v) => v.router)
   const mappings = usePSelector((v) => v.mappings)
@@ -220,7 +221,7 @@ export function AppShell() {
         )}
 
         <ProxyModal isOpen={proxyOpen} onClose={() => setProxyOpen(false)} />
-        <InstallModal isOpen={installOpen} onClose={() => setInstallOpen(false)} posterUrlPattern={urlPattern} />
+        <InstallModal isOpen={installOpen} onClose={() => setInstallOpen(false)} posterUrlPattern={urlPattern} logoUrlPattern={logoUrlPattern} />
         <div key={view} className="animate-view-enter">
           {view === "search" ? <SearchView /> : view === "myposters" ? <MyPostersView /> : view === "cataloghi" ? <CataloghiView /> : <EditView />}
         </div>

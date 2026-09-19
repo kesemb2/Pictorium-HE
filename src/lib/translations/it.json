@@ -561,6 +561,8 @@
   "ui.copyUuid": "Copia UUID",
   "ui.aiomLinkTitle": "Link per AIO e custom URL:",
   "ui.aiomLinkDesc": "Usa questo template URL nei campi AIOMetadata o Custom URL della tua app o add-on per visualizzare i poster di Pictorium:",
+  "ui.logoLinkTitle": "Logo URL",
+  "ui.logoLinkDesc": "Same template for the logo: Hebrew when it exists, otherwise English with the Hebrew title beneath - always light, for a dark interface.",
   "ui.existingProfileUuid": "UUID Profilo Esistente",
   "ui.profileYourPassword": "La tua password",
   "ui.loadAndAccess": "Accedi & Carica Profilo",

@@ -561,6 +561,8 @@
   "ui.copyUuid": "Copy UUID",
   "ui.aiomLinkTitle": "Link for AIOMetadata & Stremio:",
   "ui.aiomLinkDesc": "השתמש בתבנית כתובת URL זו בשדות AIOMetadata או Custom URL באפליקציה או בתוסף שלך כדי להציג פוסטרים של Pictorium:",
+  "ui.logoLinkTitle": "כתובת לוגו",
+  "ui.logoLinkDesc": "אותה תבנית ללוגו: עברית כשיש, אחרת אנגלית עם השם בעברית מתחת - תמיד בהיר, בשביל ממשק כהה.",
   "ui.existingProfileUuid": "Existing Profile UUID",
   "ui.profileYourPassword": "Your password",
   "ui.loadAndAccess": "Unlock & Load Profile",

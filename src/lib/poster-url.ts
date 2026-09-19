@@ -173,6 +173,23 @@ export function buildUrlPattern(bp: BadgeParams & { tmdbKey: string; lang: strin
   return url
 }
 
+/**
+ * Pattern per il campo "logo" dell'addon di metadati, gemello di
+ * `buildUrlPattern`. Il logo non ha nessuna delle regolazioni del poster: la
+ * lingua decide tutto il resto (vedi `src/lib/logo-image.ts`), quindi qui
+ * viaggiano solo lingua e chiave.
+ */
+export function buildLogoUrlPattern(input: { lang: string; tmdbKey?: string }): string {
+  const url = `${getPosterPublicBaseUrl()}/api/logo/{type}/{imdb_id}`
+  const params = new URLSearchParams()
+  if (input.lang) params.set("lang", input.lang)
+  // Stessa ragione del pattern poster: Stremio non manda header custom, quindi
+  // la chiave viaggia in query su un template che l'utente copia per sé.
+  if (input.tmdbKey) params.set("api_key", input.tmdbKey)
+  const str = params.toString()
+  return str ? `${url}?${str}` : url
+}
+
 export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
   if (!ps.selected) return ""
   const params: string[] = [`rv=${RENDER_VERSION}`]

@@ -561,6 +561,8 @@
   "ui.copyUuid": "Kopírovat UUID",
   "ui.aiomLinkTitle": "Odkaz pro AIO a vlastní URL:",
   "ui.aiomLinkDesc": "Použij tuto šablonu URL v polích AIOMetadata nebo vlastní URL své aplikace či doplňku pro zobrazení plakátů Pictorium:",
+  "ui.logoLinkTitle": "Logo URL",
+  "ui.logoLinkDesc": "Same template for the logo: Hebrew when it exists, otherwise English with the Hebrew title beneath - always light, for a dark interface.",
   "ui.existingProfileUuid": "Existující UUID profilu",
   "ui.profileYourPassword": "Tvé heslo",
   "ui.loadAndAccess": "Odemknout a načíst profil",

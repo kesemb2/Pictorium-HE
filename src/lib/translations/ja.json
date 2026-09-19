@@ -434,6 +434,8 @@
   "ui.copyUuid": "UUIDをコピー",
   "ui.aiomLinkTitle": "AIO & Custom URL用リンク:",
   "ui.aiomLinkDesc": "Pictoriumポスターを表示するには、アプリまたはアドオンのAIOMetadataまたはCustom URLフィールドでこのURLテンプレートを使用します:",
+  "ui.logoLinkTitle": "Logo URL",
+  "ui.logoLinkDesc": "Same template for the logo: Hebrew when it exists, otherwise English with the Hebrew title beneath - always light, for a dark interface.",
   "ui.existingProfileUuid": "既存プロフィールUUID",
   "ui.profileYourPassword": "パスワード",
   "ui.loadAndAccess": "ロック解除 & プロフィール読み込み",

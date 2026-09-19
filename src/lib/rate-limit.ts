@@ -43,6 +43,9 @@ const limits: Record<string, BucketConfig> = {
   default: { maxTokens: 120, refillRate: 10, refillWindow: 1000 },
   tmdb:    { maxTokens: 60,  refillRate: 5,  refillWindow: 1000 },
   poster:  { maxTokens: POSTER_MAX_TOKENS, refillRate: 20, refillWindow: 1000 },
+  // Logo: stessa forma d'uso del poster (una griglia ne chiede molti insieme),
+  // ma il render è molto più leggero — nessun motivo per un tetto più basso.
+  logo:    { maxTokens: POSTER_MAX_TOKENS, refillRate: 20, refillWindow: 1000 },
   search:  { maxTokens: 30,  refillRate: 3,  refillWindow: 1000 },
   mappings: { maxTokens: 120, refillRate: 10, refillWindow: 1000 },
   catalog:  { maxTokens: 60,  refillRate: 5,  refillWindow: 1000 },

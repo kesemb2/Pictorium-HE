@@ -10,7 +10,7 @@ import type { EnrichedAnimeItem } from "./validation"
 import { http } from "./http"
 import { copyText } from "./clipboard"
 import { useRootColors } from "./useRootColors"
-import { buildUrlPattern, buildPreviewUrl } from "./poster-url"
+import { buildUrlPattern, buildLogoUrlPattern, buildPreviewUrl } from "./poster-url"
 import { selectBestLogo, autoLogoSelection, logoDefaultScale } from "./logo-selection"
 import { useTrending } from "./useTrending"
 import { useSearch } from "./useSearch"
@@ -74,6 +74,7 @@ export interface PictoriumCtx {
   posterActivePath: string | null
   previewUrl: string
   urlPattern: string
+  logoUrlPattern: string
   lang: string
   openSections: Record<string, boolean>
   toggleSection: (k: string) => void
@@ -415,6 +416,7 @@ export function usePictorium(): PictoriumCtx {
   } = editorCtx
 
   const [urlPattern, setUrlPattern] = useState("")
+  const [logoUrlPattern, setLogoUrlPattern] = useState("")
   const [copied, setCopied] = useState(false)
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
@@ -640,6 +642,7 @@ export function usePictorium(): PictoriumCtx {
       networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo,
       tmdbKey, lang, mdblistApiKey,
     }))
+    setLogoUrlPattern(buildLogoUrlPattern({ lang, tmdbKey }))
   }, [globalBadges, rankingBadges, badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources, networkLogo, preRelease, ribbonSide, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, tintStrength, badgeStyle, rankingBadgeStyle, topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale, genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo, tmdbKey, lang, mdblistApiKey]) // eslint-disable-line react-hooks/exhaustive-deps -- customBadge intentionally excluded to avoid loop
 
   // --- Preview URL ---
@@ -1036,7 +1039,7 @@ export function usePictorium(): PictoriumCtx {
     selectedLogo: navigation.selectedLogo, setSelectedLogo: navigation.setSelectedLogo,
     logos: navigation.logos,
     posterActivePath: posterActivePath ?? null,
-    previewUrl, urlPattern, lang,
+    previewUrl, urlPattern, logoUrlPattern, lang,
     openSections, toggleSection: (key: string) => setOpenSections((prev) => ({ ...prev, [key]: !(prev[key] ?? true) })),
     posterScrollRef, posterScrollInfo, setPosterScrollInfo,
     selectPoster, selectLogo, removeLogo,

@@ -434,6 +434,8 @@
   "ui.copyUuid": "UUID 복사",
   "ui.aiomLinkTitle": "AIO & Custom URL용 링크:",
   "ui.aiomLinkDesc": "Pictorium 포스터를 표시하려면 앱 또는 애드온의 AIOMetadata 또는 Custom URL 필드에서 이 URL 템플릿을 사용하세요:",
+  "ui.logoLinkTitle": "Logo URL",
+  "ui.logoLinkDesc": "Same template for the logo: Hebrew when it exists, otherwise English with the Hebrew title beneath - always light, for a dark interface.",
   "ui.existingProfileUuid": "기존 프로필 UUID",
   "ui.profileYourPassword": "비밀번호",
   "ui.loadAndAccess": "잠금 해제 & 프로필 불러오기",

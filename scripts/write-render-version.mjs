@@ -26,6 +26,7 @@ const RENDER_FILES = [
   "src/lib/image-utils.ts",
   "src/lib/justwatch.ts",
   "src/lib/logo-contrast.ts",
+  "src/lib/logo-image.ts",
   "src/lib/logo-layout.ts",
   "src/lib/logo-selection.ts",
   "src/lib/multi-rating-renderer.ts",
