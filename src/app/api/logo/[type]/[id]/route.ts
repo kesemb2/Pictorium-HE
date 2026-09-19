@@ -115,13 +115,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     const raw = await fetchLogo(choice.logo.file_path)
     const logoBuf = choice.whitened ? await whitenLogo(raw) : raw
     const title = choice.needsTitle ? (titleOverride?.trim() || localizedTitle(details)) : null
-    const composed = await composeLogoImage({ logoBuf, title })
+    // Il logo non è nella lingua preferita e nemmeno il titolo si è potuto
+    // risolvere (dettagli TMDB falliti, o titolo vuoto): l'utente resta con un
+    // logo inglese e basta, ed è bene che si veda nei log.
+    if (choice.needsTitle && !title) {
+      log.warn("Logo not in the preferred language and no title to render under it", {
+        mediaType, tmdbId, lang, logoLang: choice.lang, hasDetails: !!details,
+      })
+    }
+    const { png: composed, titleRendered } = await composeLogoImage({ logoBuf, title })
+    // Titolo chiesto ma non disegnato: quasi sempre resvg senza i file dei
+    // font, che non solleva e rende trasparente. Vedi outputFileTracingIncludes.
+    if (title && !titleRendered) {
+      log.error("Title requested but nothing was drawn — are the fonts in this lambda?", { mediaType, tmdbId, lang })
+    }
     const out = wantsWebp ? await sharp(composed).webp({ quality: 90 }).toBuffer() : composed
 
     cacheSet(cacheKey, out, ["logo"], LOGO_TTL_MS)
     log.info("Logo rendered", {
       mediaType, tmdbId, lang, logoLang: choice.lang,
-      whitened: choice.whitened, withTitle: !!title, bytes: out.byteLength,
+      whitened: choice.whitened, titleWanted: !!title, titleRendered, bytes: out.byteLength,
     })
     recordPosterUrl(req.nextUrl)
 

@@ -38,11 +38,22 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   allowedDevOrigins: ["127.0.0.1"],
   serverExternalPackages: ["@resvg/resvg-js", "sharp"],
+  // I font vivono su disco e resvg li carica per path assoluto
+  // (src/lib/fonts.ts). Ogni route che rasterizza testo SVG deve quindi
+  // tracciarseli nella PROPRIA lambda: su Vercel il filesystem è per-route.
+  // Dimenticarne una non rompe niente in modo visibile — resvg con i file dei
+  // font mancanti NON solleva, restituisce un PNG della misura giusta e del
+  // tutto trasparente — quindi il testo sparisce in silenzio. È successo:
+  // /api/logo rendeva il titolo ebraico sotto il logo inglese e in produzione
+  // non si vedeva nulla. `src/__tests__/font-tracing.test.ts` tiene questa
+  // mappa allineata alle route che arrivano a `src/lib/fonts.ts`.
   outputFileTracingIncludes: {
     "/api/poster/**/*": ["src/assets/fonts/**/*"],
+    "/api/logo/**/*": ["src/assets/fonts/**/*"],
   },
   outputFileTracingExcludes: {
     "/api/poster/**/*": ["next.config.ts"],
+    "/api/logo/**/*": ["next.config.ts"],
   },
   images: {
     remotePatterns: [

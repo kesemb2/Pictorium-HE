@@ -94,15 +94,73 @@ export async function whitenLogo(logoBuf: Buffer): Promise<Buffer> {
 }
 
 /**
- * Compone il logo e, quando serve, il titolo tradotto sotto: stesse proporzioni
- * del poster, su trasparenza. Il ritaglio finale toglie il margine morto, così
- * il client riceve l'immagine e non l'aria intorno.
+ * Soglia per MISURARE il riquadro d'inchiostro: solo il margine del tutto
+ * trasparente conta come margine. La soglia di default di sharp (10) mangia i
+ * bordi morbidi — un wordmark con bagliore perde fino a ~38px di larghezza —
+ * e qui serve sapere dove finisce la parola, non ritagliarla.
+ */
+const INK_THRESHOLD = 1
+
+export interface ComposedLogo {
+  readonly png: Buffer
+  /** Un titolo era richiesto ed è stato DAVVERO disegnato. */
+  readonly titleRendered: boolean
+}
+
+/** Riquadro dell'inchiostro dentro il logo, misurato senza buttare via niente. */
+async function inkBox(logo: Buffer, w: number, h: number) {
+  try {
+    const { info } = await sharp(logo).trim({ threshold: INK_THRESHOLD }).raw().toBuffer({ resolveWithObject: true })
+    return {
+      left: -(info.trimOffsetLeft ?? 0),
+      top: -(info.trimOffsetTop ?? 0),
+      width: info.width,
+      height: info.height,
+    }
+  } catch {
+    // Immagine uniforme: niente da misurare, vale tutta.
+    return { left: 0, top: 0, width: w, height: h }
+  }
+}
+
+/** Vero se l'immagine ha un solo pixel disegnato. */
+async function hasInk(png: Buffer): Promise<boolean> {
+  const stats = await sharp(png).stats()
+  if (stats.isOpaque) return true
+  return (stats.channels[stats.channels.length - 1]?.max ?? 0) > 0
+}
+
+/**
+ * La striscia del titolo, o `null` se non è stato disegnato niente.
+ *
+ * Il controllo sull'inchiostro non è pignoleria: resvg senza i file dei font
+ * NON solleva, restituisce un PNG della misura giusta e del tutto trasparente.
+ * In produzione i font non erano tracciati nella lambda di /api/logo e il
+ * titolo ebraico spariva senza una riga di log — riservare spazio al nulla è
+ * peggio che non riservarlo.
+ */
+async function renderTitleStrip(title: string, width: number) {
+  const built = buildTitleTextSvg(title, titleTextMaxW(width), titleTextFontSize(width), "#ffffff")
+  if (!built) return null
+  const png = await renderSVG(built.svg, built.w)
+  if (!(await hasInk(png))) return null
+  return { png, w: built.w, h: built.h }
+}
+
+/**
+ * Compone il logo e, quando serve, il titolo tradotto sotto.
+ *
+ * Il logo esce INTERO, con i suoi margini: ritagliarlo all'inchiostro toglieva
+ * l'aria che l'artwork si porta dietro, e il client la usa — la parola finiva a
+ * filo del bordo e l'ultima lettera sembrava tagliata. Quello che il ritaglio
+ * serviva a sapere — dove finisce davvero la parola — si misura senza tagliare,
+ * e serve solo ad appendere il titolo sotto l'inchiostro anziché sotto la tela.
  */
 export async function composeLogoImage(input: {
   readonly logoBuf: Buffer
   readonly title?: string | null
   readonly width?: number
-}): Promise<Buffer> {
+}): Promise<ComposedLogo> {
   const width = input.width ?? LOGO_CANVAS_W
   const logo = await sharp(input.logoBuf)
     .resize(width, null, { fit: "inside", withoutEnlargement: true })
@@ -113,40 +171,39 @@ export async function composeLogoImage(input: {
   const logoH = logoMeta.height ?? width
 
   const title = input.title?.trim()
-  const titleBadge = title
-    ? await (async () => {
-        const fs = titleTextFontSize(width)
-        const built = buildTitleTextSvg(title, titleTextMaxW(width), fs, "#ffffff")
-        if (!built) return null
-        return { png: await renderSVG(built.svg, built.w), w: built.w, h: built.h }
-      })().catch(() => null)
-    : null
+  // Senza titolo l'immagine È il logo: stessa geometria che il client riceveva
+  // prima di passare da noi, solo schiarita.
+  if (!title) return { png: logo, titleRendered: false }
 
-  const canvasW = Math.max(logoW, titleBadge?.w ?? 0)
-  const canvasH = logoH + (titleBadge ? TITLE_GAP + titleBadge.h : 0)
+  const strip = await renderTitleStrip(title, width).catch(() => null)
+  if (!strip) return { png: logo, titleRendered: false }
+
+  const ink = await inkBox(logo, logoW, logoH)
+  const canvasW = Math.max(logoW, strip.w)
+  const logoLeft = Math.round((canvasW - logoW) / 2)
+  const titleTop = ink.top + ink.height + TITLE_GAP
+  // Margine inferiore speculare a quello sopra il logo: il risultato resta
+  // bilanciato invece di finire a filo sotto.
+  const canvasH = Math.max(logoH, titleTop + strip.h + ink.top)
+
+  // Il titolo si centra sull'INCHIOSTRO, non sulla tela: un wordmark
+  // decentrato nella propria cornice lo porterebbe fuori asse.
+  const inkCenter = logoLeft + ink.left + ink.width / 2
+  const titleLeft = Math.max(0, Math.min(canvasW - strip.w, Math.round(inkCenter - strip.w / 2)))
 
   const layers: OverlayOptions[] = [
-    { input: logo, top: 0, left: Math.round((canvasW - logoW) / 2) },
+    { input: logo, top: 0, left: logoLeft },
+    { input: strip.png, top: titleTop, left: titleLeft },
   ]
-  if (titleBadge) {
-    layers.push({
-      input: titleBadge.png,
-      top: logoH + TITLE_GAP,
-      left: Math.round((canvasW - titleBadge.w) / 2),
-    })
-  }
 
-  const composed = await sharp({
+  const png = await sharp({
     create: { width: canvasW, height: canvasH, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
   })
     .composite(layers)
     .png()
     .toBuffer()
 
-  // Ritaglio in un passaggio SUO: sharp esegue le operazioni nel proprio
-  // ordine, non in quello di chiamata, e `trim` cade prima di `composite` —
-  // sulla tela ancora vuota non troverebbe niente da togliere.
-  return sharp(composed).trim().png().toBuffer().catch(() => composed)
+  return { png, titleRendered: true }
 }
 
 /** Luminanza dell'inchiostro, memoizzata per path: `pickReadableLogo` richiama. */

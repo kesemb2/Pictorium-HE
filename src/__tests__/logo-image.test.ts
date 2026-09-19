@@ -119,36 +119,100 @@ describe("whitenLogo", () => {
 })
 
 describe("composeLogoImage", () => {
-  it("returns the trimmed logo alone when no title is asked for", async () => {
-    const out = await composeLogoImage({ logoBuf: await wordmark("#ffffff"), title: null })
-    const meta = await sharp(out).metadata()
+  it("returns the logo whole, margins and all, when no title is asked for", async () => {
+    // Ritagliare all'inchiostro toglieva l'aria dell'artwork e il client la
+    // usa: la parola finiva a filo e l'ultima lettera sembrava tagliata.
+    const src = await wordmark("#ffffff", 300, 80)
+    const { png, titleRendered } = await composeLogoImage({ logoBuf: src, title: null })
+    const meta = await sharp(png).metadata()
+
+    expect(titleRendered).toBe(false)
+    expect(meta.width).toBe(300)
+    expect(meta.height).toBe(80)
     expect(meta.hasAlpha).toBe(true)
-    // Il ritaglio toglie il margine trasparente intorno alla barra.
-    expect(meta.height!).toBeLessThan(80)
   })
 
-  it("trims to the ink exactly, without eating any of it", async () => {
-    // La barra è 210x40 dentro una tela 300x80: il ritaglio deve restituire
-    // la barra, non un pixel di meno.
-    const out = await composeLogoImage({ logoBuf: await wordmark("#ffffff", 300, 80), title: null })
-    const meta = await sharp(out).metadata()
-    expect(meta.width).toBe(Math.round(300 * 0.7))
-    expect(meta.height).toBe(Math.round(80 * 0.5))
+  it("keeps the soft edge of a glowing wordmark", async () => {
+    // La soglia di default di sharp (10) mangia il bagliore: misurato, un
+    // wordmark con sigma 25 perdeva 38px di larghezza. Qui non si perde nulla.
+    const glow = await sharp(Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="160">`
+      + `<defs><filter id="g" x="-60%" y="-60%" width="220%" height="220%">`
+      + `<feGaussianBlur stdDeviation="14" result="b"/>`
+      + `<feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>`
+      + `</filter></defs>`
+      + `<text x="200" y="100" text-anchor="middle" font-family="sans-serif" font-size="60" fill="#fff" filter="url(#g)">PAPER</text></svg>`,
+    )).png().toBuffer()
+
+    const { png } = await composeLogoImage({ logoBuf: glow, title: null })
+    const meta = await sharp(png).metadata()
+    expect(meta.width).toBe(400)
+    expect(meta.height).toBe(160)
+
+    // E il bagliore c'è ancora, non solo la tela che lo conteneva.
+    const tight = await sharp(png).trim({ threshold: 1 }).png().toBuffer()
+    const loose = await sharp(png).trim({ threshold: 10 }).png().toBuffer()
+    const t = await sharp(tight).metadata()
+    const l = await sharp(loose).metadata()
+    expect(t.width!).toBeGreaterThan(l.width!)
   })
 
-  it("grows taller when the Hebrew title goes underneath", async () => {
+  it("grows downward when the Hebrew title goes underneath", async () => {
     const logo = await wordmark("#ffffff")
-    const alone = await sharp(await composeLogoImage({ logoBuf: logo, title: null })).metadata()
-    const titled = await sharp(await composeLogoImage({ logoBuf: logo, title: "מלחמת הכוכבים" })).metadata()
+    const alone = await sharp((await composeLogoImage({ logoBuf: logo, title: null })).png).metadata()
+    const { png, titleRendered } = await composeLogoImage({ logoBuf: logo, title: "מלחמת הכוכבים" })
+    const titled = await sharp(png).metadata()
 
+    expect(titleRendered).toBe(true)
     expect(titled.height!).toBeGreaterThan(alone.height!)
     expect(titled.hasAlpha).toBe(true)
   })
 
+  it("hangs the title off the ink, not off the canvas", async () => {
+    // Un logo con molta aria sotto non deve spingere il titolo lontano dalla
+    // parola: il distacco si misura dall'ultima riga di inchiostro.
+    const bar = await sharp({ create: { width: 200, height: 40, channels: 4, background: "#ffffff" } }).png().toBuffer()
+    const airy = await sharp({ create: { width: 300, height: 300, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .composite([{ input: bar, top: 20, left: 50 }])
+      .png().toBuffer()
+
+    const { png } = await composeLogoImage({ logoBuf: airy, title: "העיתון" })
+    const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    const rowHasInk = (y: number) => {
+      for (let x = 0; x < info.width; x++) if (data[(y * info.width + x) * 4 + 3] > 0) return true
+      return false
+    }
+    // La barra finisce a y=59; il titolo comincia poco sotto, non a y=300.
+    let firstTitleRow = -1
+    for (let y = 61; y < info.height; y++) if (rowHasInk(y)) { firstTitleRow = y; break }
+    expect(firstTitleRow).toBeGreaterThan(59)
+    expect(firstTitleRow).toBeLessThan(90)
+  })
+
+  it("centres the title on the ink of an off-centre wordmark", async () => {
+    const bar = await sharp({ create: { width: 120, height: 40, channels: 4, background: "#ffffff" } }).png().toBuffer()
+    const offCentre = await sharp({ create: { width: 400, height: 100, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .composite([{ input: bar, top: 30, left: 20 }])
+      .png().toBuffer()
+
+    const { png } = await composeLogoImage({ logoBuf: offCentre, title: "העיתון" })
+    const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    // Baricentro orizzontale dell'inchiostro sotto la barra (y > 75).
+    let sum = 0, n = 0
+    for (let y = 76; y < info.height; y++) {
+      for (let x = 0; x < info.width; x++) {
+        if (data[(y * info.width + x) * 4 + 3] > 0) { sum += x; n++ }
+      }
+    }
+    expect(n).toBeGreaterThan(0)
+    // L'inchiostro del logo è centrato su 80, non su 200.
+    expect(sum / n).toBeLessThan(info.width / 2)
+  })
+
   it("ignores a blank title", async () => {
     const logo = await wordmark("#ffffff")
-    const a = await sharp(await composeLogoImage({ logoBuf: logo, title: "   " })).metadata()
-    const b = await sharp(await composeLogoImage({ logoBuf: logo, title: null })).metadata()
+    const a = await sharp((await composeLogoImage({ logoBuf: logo, title: "   " })).png).metadata()
+    const b = await sharp((await composeLogoImage({ logoBuf: logo, title: null })).png).metadata()
     expect(a.height).toBe(b.height)
   })
 })
