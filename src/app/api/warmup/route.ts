@@ -203,7 +203,12 @@ export async function POST(req: NextRequest) {
   if (!isSameOrigin(req)) return originMismatchResponse()
 
   const apiKey = resolveRequestApiKey(req)
-  const concurrency = boundedInt({ value: req.nextUrl.searchParams.get("concurrency"), fallback: 3, min: 1, max: 8 })
+  // 6 e non 3: i posti di render sono 8, e con 3 una corsa reale finiva
+  // troncata dal deadline di 50s lasciando indietro un terzo della coda (e i
+  // batch tardivi andavano in timeout, perché la finestra per batch si
+  // accorcia man mano). Resta sotto gli 8 posti, così il warmup non affama
+  // una richiesta vera che arriva nel frattempo.
+  const concurrency = boundedInt({ value: req.nextUrl.searchParams.get("concurrency"), fallback: 6, min: 1, max: 8 })
   // C2: regione per le classifiche JW (prima hardcoded IT) — la cache key
   // include già `:r<CODE>`, quindi scaldare altre regioni non avvelena IT.
   // La lingua default resta "it" salvo regione esplicita (nessun cambio di

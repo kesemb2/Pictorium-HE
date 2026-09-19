@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest"
 import {
+  __WARM_URL_FLUSH_BATCH,
   __WARM_URL_MAX,
   __resetPosterUrlLogForTest,
   carriesCredential,
@@ -64,5 +65,18 @@ describe("poster URL log", () => {
     expect(process.env.KV_REST_API_URL).toBeUndefined()
     recordPosterUrl(url("/api/poster/series/99"))
     expect(await recordedPosterUrls()).toEqual(["/api/poster/series/99"])
+  })
+
+  it("batches rather than stranding entries behind the interval", async () => {
+    // Senza la soglia, su serverless sopravviveva una sola entry per istanza:
+    // il primo record scriveva e i successivi restavano in memoria fino al
+    // riciclo della lambda. La soglia deve essere piccola abbastanza da
+    // coprire una griglia normale.
+    expect(__WARM_URL_FLUSH_BATCH).toBeLessThanOrEqual(10)
+    for (let i = 0; i < __WARM_URL_FLUSH_BATCH * 2; i++) {
+      recordPosterUrl(url(`/api/poster/movie/${i}`))
+    }
+    // Senza KV resta tutto locale, e comunque nulla si perde.
+    expect(await recordedPosterUrls()).toHaveLength(__WARM_URL_FLUSH_BATCH * 2)
   })
 })

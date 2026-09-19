@@ -19,8 +19,18 @@ const log = createLogger("poster-url-log")
 
 const KV_KEY = "pictorium:warm-urls"
 const MAX_URLS = 300
-/** Intervallo minimo fra due flush, per istanza: il KV gratuito si conta a comandi. */
+/** Intervallo massimo fra due flush, per istanza: il KV gratuito si conta a comandi. */
 const FLUSH_INTERVAL_MS = 60_000
+/**
+ * Quante entry in attesa bastano a forzare un flush comunque.
+ *
+ * Col solo intervallo, su serverless sopravviveva UNA entry per istanza: il
+ * primo record scriveva, i successivi si accodavano in memoria e la lambda
+ * veniva riciclata molto prima che la finestra scadesse. Con la soglia una
+ * griglia da venti poster costa quattro scritture invece di perdere diciannove
+ * URL.
+ */
+const FLUSH_BATCH = 5
 const MAX_URL_LEN = 2048
 
 /**
@@ -65,25 +75,28 @@ export function recordPosterUrl(url: URL): void {
   }
 }
 
-async function maybeFlush(): Promise<void> {
+async function maybeFlush(force = false): Promise<void> {
   if (!useKv || pending.size === 0) return
-  const now = Date.now()
-  if (now - lastFlush < FLUSH_INTERVAL_MS) return
   if (flushing) return
-  lastFlush = now
+  const due = force || pending.size >= FLUSH_BATCH || Date.now() - lastFlush >= FLUSH_INTERVAL_MS
+  if (!due) return
+  lastFlush = Date.now()
+  // Istantanea: quello che si registra MENTRE la scrittura è in volo non deve
+  // sparire con una clear() cieca — resta in coda per il flush successivo.
+  const batch = [...pending]
   flushing = (async () => {
     try {
       const { kv } = await import("@vercel/kv")
       const stored = await kv.get<string[]>(KV_KEY)
       // Le altre istanze registrano le loro: si fondono, le nostre in coda.
       const merged = new Set<string>(Array.isArray(stored) ? stored : [])
-      for (const entry of pending) {
+      for (const entry of batch) {
         merged.delete(entry)
         merged.add(entry)
       }
       while (merged.size > MAX_URLS) merged.delete(merged.keys().next().value!)
       await kv.set(KV_KEY, [...merged])
-      pending.clear()
+      for (const entry of batch) pending.delete(entry)
     } catch (e) {
       log.debug("Warm-url flush failed", { error: e instanceof Error ? e.message : String(e) })
     } finally {
@@ -124,9 +137,9 @@ export function __resetPosterUrlLogForTest(): void {
 
 /** Solo per i test: forza il flush ignorando l'intervallo. */
 export async function __flushPosterUrlLogForTest(): Promise<void> {
-  lastFlush = 0
-  await maybeFlush()
+  await maybeFlush(true)
 }
 
 export const __WARM_URL_KV_KEY = KV_KEY
 export const __WARM_URL_MAX = MAX_URLS
+export const __WARM_URL_FLUSH_BATCH = FLUSH_BATCH
