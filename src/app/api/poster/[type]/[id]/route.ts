@@ -1,11 +1,13 @@
 import { NextRequest } from "next/server"
 import sharp from "sharp"
 import { initSharp } from "@/lib/sharp-config"
-import { getImages, getDetails, getExternalIds, getKeywords, getReleaseDates, resolveRequestApiKey, type TMDBImage, type TMDBCompany } from "@/lib/tmdb"
+import { getImages, getDetails, getDetailsWithExternalIds, getExternalIds, getKeywords, getReleaseDates, resolveRequestApiKey, type TMDBImage, type TMDBCompany } from "@/lib/tmdb"
 import { getJWRankings, hasJWOffers } from "@/lib/justwatch"
 import { extractDigitalReleaseDate, isDigitalPreRelease } from "@/lib/pre-release"
 import { getById } from "@/lib/store"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
+import { cachedImageBytes } from "@/lib/image-bytes-cache"
+import { recordPosterUrl } from "@/lib/poster-url-log"
 import { getServerDefaults } from "@/lib/server-defaults"
 import { getRegionDef, normalizeRegion, parseRegion, defaultRegionForLang } from "@/lib/regions"
 import { BEST_FIT_GLOBAL } from "@/lib/best-fit-config"
@@ -602,12 +604,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         extIds = sessionData.externalIds ?? { imdb_id: null, tvdb_id: null }
       } else {
         const baseLangs = `${preferredLanguage},en,null`
-        const [det, ext, imgs] = await Promise.all([
-          getDetails(mediaType, tmdbId, preferredLanguage, apiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS),
-          getExternalIds(mediaType, tmdbId, apiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => ({ imdb_id: null, tvdb_id: null })),
+        // Dettagli ed external_ids in una sola chiamata: erano due round trip
+        // separati per ogni poster freddo, ed è lo stesso append che il path
+        // cataloghi usa già.
+        const [det, imgs] = await Promise.all([
+          getDetailsWithExternalIds(mediaType, tmdbId, preferredLanguage, apiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS),
           getImages(mediaType, tmdbId, baseLangs, apiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS),
         ])
         details = det
+        const ext = {
+          imdb_id: det.external_ids?.imdb_id ?? null,
+          tvdb_id: det.external_ids?.tvdb_id ?? null,
+        }
         extIds = ext
         const origLang = det.original_language
         const needsOrigLang = origLang && origLang !== preferredLanguage && origLang !== "en"
@@ -747,21 +755,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
             const bestFit = await selectBestLogoFitPosterPath({
               posters: images.posters, logoPath,
               fetchImage: async (path: string) => {
+                // Byte-LRU come fetchImg: il best-fit scarica le stesse URL che
+                // il render poi rivorrà, e senza la cache le ripagava.
                 // B5: combina col watchdog — prima AbortSignal.timeout(5000)
                 // ignorava renderAbort: dopo la deadline i fetch continuavano
                 // come zombie (slot già liberato, lavoro buttato).
-                const res = await fetch(imgSrc(path), { signal: combineAbortSignals(renderAbort.signal, 5000) })
-                if (!res.ok) throw new Error(`HTTP ${res.status}`)
-                return Buffer.from(await res.arrayBuffer())
+                const url = imgSrc(path)
+                return cachedImageBytes(url, async () => {
+                  const res = await fetch(url, { signal: combineAbortSignals(renderAbort.signal, 5000) })
+                  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                  return Buffer.from(await res.arrayBuffer())
+                })
               },
               fetchCandidateImage: async (path: string) => {
                 if (path.startsWith("http") && !isAllowedImageUrl(path)) {
                   throw new Error("Blocked external URL in fetchCandidateImage")
                 }
                 const url = path.startsWith("http") ? path : `https://image.tmdb.org/t/p/w342${path}`
-                const res = await fetch(url, { signal: combineAbortSignals(renderAbort.signal, 5000) })
-                if (!res.ok) throw new Error(`HTTP ${res.status}`)
-                return Buffer.from(await res.arrayBuffer())
+                return cachedImageBytes(url, async () => {
+                  const res = await fetch(url, { signal: combineAbortSignals(renderAbort.signal, 5000) })
+                  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                  return Buffer.from(await res.arrayBuffer())
+                })
               },
               hasBadges: true,
               // La scelta deve tenere conto della fascia che la coprirà:
@@ -1473,6 +1488,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       return new Response(null, { status: 304, headers: posterNotModifiedHeaders(responseEtag, immutablePoster, dynamicPoster, dynamicTtlSec) })
     }
     log.info("Poster rendered", { mediaType, tmdbId, ms: Date.now() - startTime, bytes: composited.byteLength, cached: !!mappingTag, format: outputFormat })
+    // Registra l'URL ESATTA appena servita, così il warmup riscalda quello che
+    // i client chiedono davvero invece di ricostruirlo dai default. Solo qui:
+    // una richiesta che ha renderizzato è per definizione quella cara.
+    recordPosterUrl(req.nextUrl)
     // C3: il webp è variante di risposta (convertita + cachata), non un render.
     if (outputFormat === "webp") return serveWebpVariant(payload)
     const renderTiming = serverTimingValue([

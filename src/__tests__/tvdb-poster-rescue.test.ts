@@ -118,7 +118,15 @@ async function router(input: unknown): Promise<Response> {
     })
   }
   if (url.includes("/keywords")) return Response.json({ id, keywords: [] })
-  if (/\/3\/(?:movie|tv)\/\d+/.test(url)) return Response.json(tmdbDetails(id))
+  if (/\/3\/(?:movie|tv)\/\d+/.test(url)) {
+    // Come TMDB: con append_to_response=external_ids il blocco arriva DENTRO
+    // i details, che è il motivo per cui la route non fa più la seconda call.
+    const details: Record<string, unknown> = { ...tmdbDetails(id) }
+    if (url.includes("append_to_response=external_ids")) {
+      details.external_ids = { id, imdb_id: `tt${id}`, tvdb_id: 75710 }
+    }
+    return Response.json(details)
+  }
   throw new Error(`tvdb-rescue router: URL non gestito ${url.slice(0, 120)}`)
 }
 

@@ -322,6 +322,35 @@ export function directorBadgeLabel(
   return t("badge.director", { name: localized || name })
 }
 
+// Negativa in memoria per i fallimenti TRANSITORI (breaker, timeout, 5xx).
+// Senza, un outage SPARQL fa pagare la race da 2500ms a ogni singolo render, e
+// su una griglia fredda è il costo che domina. Mai in KV: durante un outage il
+// KV è l'ultima cosa da stressare. TTL 60s, così al recupero i premi tornano
+// entro un minuto.
+const WIKIDATA_NEGATIVE_TTL_MS = 60_000
+const WIKIDATA_NEGATIVE_MAX = 500
+const wikidataNegative = new Map<string, number>()
+
+function wikidataNegativeHit(cacheKey: string): boolean {
+  const at = wikidataNegative.get(cacheKey)
+  if (at === undefined) return false
+  if (Date.now() - at > WIKIDATA_NEGATIVE_TTL_MS) {
+    wikidataNegative.delete(cacheKey)
+    return false
+  }
+  return true
+}
+
+function wikidataNegativeSet(cacheKey: string): void {
+  if (wikidataNegative.size >= WIKIDATA_NEGATIVE_MAX) wikidataNegative.delete(wikidataNegative.keys().next().value!)
+  wikidataNegative.set(cacheKey, Date.now())
+}
+
+/** Solo per i test. */
+export function __resetWikidataNegativeForTest(): void {
+  wikidataNegative.clear()
+}
+
 const WIKIDATA_CACHE_TTL = 24 * 60 * 60 * 1000
 
 export async function fetchAllWikidata(
@@ -338,6 +367,9 @@ export async function fetchAllWikidata(
   // ritirava i dadi SPARQL per conto suo → lotteria badge multi-istanza).
   const cached = await cacheGetShared<WikidataResult>(cacheKey, ["wikidata"])
   if (cached) return cached
+  if (wikidataNegativeHit(cacheKey)) {
+    return { awards: [], nominations: [], studios: [], director: null, directorHe: null }
+  }
 
   const tmdbProp = mediaType === "movie" ? "P4947" : "P4983"
   const networkQuery = mediaType === "tv" ? `OPTIONAL { ?item wdt:P449 ?network . ?network rdfs:label ?networkLabel . FILTER(LANG(?networkLabel) = "en") }` : ""
@@ -356,7 +388,9 @@ export async function fetchAllWikidata(
   try {
     const bindings = await sparqlQuery(query, signal)
     if (bindings === null) {
-      // Fallimento transitorio (breaker, timeout, 5xx): non inquinare la cache 24h
+      // Fallimento transitorio (breaker, timeout, 5xx): non inquinare la cache
+      // 24h, ma nemmeno ripagarlo a ogni render per i prossimi 60 secondi.
+      wikidataNegativeSet(cacheKey)
       return { awards: [], nominations: [], studios: [], director: null, directorHe: null }
     }
 
@@ -410,6 +444,7 @@ export async function fetchAllWikidata(
     cacheSet(cacheKey, result, ["wikidata"], WIKIDATA_CACHE_TTL)
     return result
   } catch {
+    wikidataNegativeSet(cacheKey)
     return { awards: [], nominations: [], studios: [], director: null, directorHe: null }
   }
 }

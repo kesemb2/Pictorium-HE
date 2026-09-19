@@ -169,7 +169,14 @@ async function router(input: unknown, init?: { signal?: AbortSignal }): Promise<
   if (/\/3\/(?:movie|tv)\/\d+/.test(url)) {
     calls.tmdb++
     const m = /\/3\/(?:movie|tv)\/(\d+)/.exec(url)
-    return Response.json(tmdbDetails(Number(m?.[1] ?? 0)))
+    const id = Number(m?.[1] ?? 0)
+    // Come TMDB: con append_to_response=external_ids il blocco arriva dentro i
+    // details, ed è per questo che la route non paga più una seconda chiamata.
+    const details: Record<string, unknown> = { ...tmdbDetails(id) }
+    if (url.includes("append_to_response=external_ids")) {
+      details.external_ids = { id, imdb_id: `tt${m?.[1] ?? "1000000"}` }
+    }
+    return Response.json(details)
   }
   throw new Error(`chaos router: URL non gestito ${url.slice(0, 120)}`)
 }

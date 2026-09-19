@@ -6,7 +6,10 @@ process.env.POSTERIUM_RENDER_SLOT_WAIT_MS = "500"
 
 import { afterEach, describe, expect, it } from "vitest"
 
-const { acquirePosterRenderSlot, __resetPosterRenderLimiter } = await import("@/lib/poster-runtime-cache")
+const { acquirePosterRenderSlot, getPosterStats, __resetPosterRenderLimiter } = await import("@/lib/poster-runtime-cache")
+
+// Il limite viene letto dal modulo: il test verifica la coda, non il default.
+const LIMIT = getPosterStats().maxConcurrent
 
 describe("bounded render queue", () => {
   afterEach(() => {
@@ -15,7 +18,7 @@ describe("bounded render queue", () => {
 
   it("rejects waiters beyond the queue limit immediately", async () => {
     const releases: Array<() => void> = []
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < LIMIT; i++) {
       const release = await acquirePosterRenderSlot()
       expect(release).toBeTruthy()
       releases.push(release!)

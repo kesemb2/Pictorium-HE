@@ -78,13 +78,26 @@ vi.mock("@/lib/ratings", async (importOriginal) => {
   }
 })
 
-vi.mock("@/lib/tmdb", () => ({
-  getDetails: vi.fn(),
+vi.mock("@/lib/tmdb", () => {
+  // Il path poster chiama la variante con external_ids in append. È la STESSA
+  // fn del mock di getDetails, così gli stub dei test continuano a guidarla
+  // senza doverli duplicare.
+  const getDetails = vi.fn()
+  const getExternalIds = vi.fn(async () => ({ imdb_id: null }))
+  return ({
+  getDetails,
+  getExternalIds,
+  // Esattamente ciò che fa `append_to_response=external_ids` su TMDB: i test
+  // continuano a pilotare le due parti separatamente con i loro stub.
+  getDetailsWithExternalIds: vi.fn(async (mediaType: unknown, id: unknown, ...rest: unknown[]) => ({
+    ...(await (getDetails as (...a: unknown[]) => Promise<Record<string, unknown>>)(mediaType, id, ...rest)),
+    external_ids: await getExternalIds(),
+  })),
   getImages: vi.fn(),
-  getExternalIds: vi.fn(async () => ({ imdb_id: null })),
   getKeywords: vi.fn(async () => []),
   resolveRequestApiKey: vi.fn((req: { nextUrl?: { searchParams: URLSearchParams } }) => req.nextUrl?.searchParams.get("api_key") || undefined),
-}))
+  })
+})
 
 vi.mock("@/lib/imdb-resolver", () => ({
   resolveImdbToTmdb: vi.fn(async () => null),

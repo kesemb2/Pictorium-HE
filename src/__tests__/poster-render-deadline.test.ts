@@ -69,6 +69,7 @@ vi.mock("@/lib/ratings", async (importOriginal) => {
 
 vi.mock("@/lib/tmdb", () => ({
   getDetails: vi.fn(async () => ({ id: 42, title: "Test", genres: [], vote_average: 0, vote_count: 0 })),
+  getDetailsWithExternalIds: vi.fn(async () => ({ id: 42, title: "Test", genres: [], vote_average: 0, vote_count: 0, external_ids: { imdb_id: null, tvdb_id: null } })),
   getImages: vi.fn(async () => ({ id: 42, backdrops: [], posters: [], logos: [] })),
   getExternalIds: vi.fn(async () => ({ imdb_id: null })),
   getKeywords: vi.fn(async () => []),

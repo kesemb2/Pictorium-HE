@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest"
-import { acquirePosterRenderSlot, __resetPosterRenderLimiter } from "@/lib/poster-runtime-cache"
+import { acquirePosterRenderSlot, getPosterStats, __resetPosterRenderLimiter } from "@/lib/poster-runtime-cache"
+
+// Il limite viene letto dal modulo, non fissato qui: il test verifica il
+// MECCANISMO, e un cambio di default non deve romperlo.
+const LIMIT = getPosterStats().maxConcurrent
 
 describe("poster render concurrency limiter", () => {
   afterEach(() => {
@@ -8,8 +12,7 @@ describe("poster render concurrency limiter", () => {
 
   it("acquires up to the max concurrent slots immediately", async () => {
     const releases: Array<() => void> = []
-    // Il default è 4 (POSTERIUM_MAX_CONCURRENT_RENDERS); il test non lo cambia.
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < LIMIT; i++) {
       const release = await acquirePosterRenderSlot()
       expect(release).toBeTruthy()
       releases.push(release!)
@@ -19,7 +22,7 @@ describe("poster render concurrency limiter", () => {
 
   it("queues requests beyond the limit and resolves them when a slot frees", async () => {
     const releases: Array<() => void> = []
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < LIMIT; i++) {
       releases.push((await acquirePosterRenderSlot())!)
     }
     let fifthResolved = false
@@ -38,7 +41,7 @@ describe("poster render concurrency limiter", () => {
 
   it("handles multiple queued waiters in FIFO order", async () => {
     const releases: Array<() => void> = []
-    for (let i = 0; i < 4; i++) releases.push((await acquirePosterRenderSlot())!)
+    for (let i = 0; i < LIMIT; i++) releases.push((await acquirePosterRenderSlot())!)
     const order: number[] = []
     const waiters = [1, 2, 3].map((n) => acquirePosterRenderSlot().then((r) => { order.push(n); return r }))
     releases[0]()

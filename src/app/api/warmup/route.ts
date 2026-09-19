@@ -16,6 +16,7 @@ import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { checkAdminToken, adminAuthResponse, isSameOrigin, originMismatchResponse } from "@/lib/auth"
 import { createLogger } from "@/lib/logger"
 import { envWithFallback } from "@/lib/env-compat"
+import { recordedPosterUrls } from "@/lib/poster-url-log"
 
 const log = createLogger("warmup")
 
@@ -26,6 +27,12 @@ interface WarmupTarget {
   readonly type: PosterRouteType
   readonly id: number
   readonly source: string
+  /**
+   * Path+query ESATTI di una richiesta realmente servita. Quando c'è, si
+   * rigioca così com'è: le cache CDN sono chiavate sull'URL intera, e una
+   * ricostruita dai default di oggi non è la stessa che i client portano.
+   */
+  readonly path?: string
 }
 
 interface WarmupResult extends WarmupTarget {
@@ -47,6 +54,11 @@ interface BuildPosterUrlInput {
 }
 
 function boundedInt(input: BoundedIntInput): number {
+  // `searchParams.get()` torna null quando il parametro manca, e Number(null)
+  // è 0 — non NaN. Senza questo controllo OGNI default veniva schiacciato sul
+  // minimo: trending 20→0, mappings 50→0, concurrency 3→1. Il warmup non
+  // scaldava niente nemmeno quando veniva invocato.
+  if (input.value === null || input.value.trim() === "") return input.fallback
   const parsed = Number(input.value)
   if (!Number.isFinite(parsed)) return input.fallback
   return Math.min(Math.max(Math.floor(parsed), input.min), input.max)
@@ -73,6 +85,7 @@ function addTarget(targets: WarmupTarget[], target: WarmupTarget): void {
 }
 
 function buildPosterUrl(input: BuildPosterUrlInput): URL {
+  if (input.target.path) return new URL(input.target.path, selfFetchOrigin())
   // C2: origin self-fetch — MAI dalla richiesta (host header injection/SSRF).
   // Loopback per locale/VPS; su Vercel il loopback non instrada (istanze
   // effimere) → VERCEL_URL fornita dalla piattaforma; override esplicito via
@@ -119,15 +132,48 @@ function constantTimeEqual(a: string, b: string): boolean {
 function selfFetchOrigin(): string {
   const explicit = envWithFallback("WARMUP_ORIGIN")?.trim().replace(/\/+$/, "")
   if (explicit) return explicit
+  // La CDN è chiavata per host: VERCEL_URL è l'host DEL DEPLOY, quindi
+  // scaldarlo non tocca il dominio che i client chiedono. L'host di produzione
+  // viene prima; VERCEL_URL resta come ultima risorsa (preview deploy).
+  const production = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim()
+  if (production) return `https://${production}`
   const vercel = process.env.VERCEL_URL?.trim()
   if (vercel) return `https://${vercel}`
   return `http://127.0.0.1:${process.env.PORT || "3000"}`
 }
 
+/**
+ * Credenziale del cron di piattaforma. Vercel invoca i cron in GET con
+ * `Authorization: Bearer $CRON_SECRET`: senza questo ramo il cron notturno
+ * prende un 401 (e prima del GET qui sotto prendeva un 405, motivo per cui
+ * non ha mai scaldato niente).
+ */
+function hasCronSecret(req: NextRequest): boolean {
+  const secret = process.env.CRON_SECRET?.trim()
+  if (!secret) return false
+  const header = req.headers.get("authorization")
+  if (!header?.startsWith("Bearer ")) return false
+  return constantTimeEqual(header.slice(7), secret)
+}
+
+/**
+ * I cron di Vercel mandano GET, non POST. Stesso corpo, stessa auth: l'unico
+ * motivo per cui esistono due metodi è che la piattaforma ne impone uno.
+ */
+export async function GET(req: NextRequest) {
+  return POST(req)
+}
+
 export async function POST(req: NextRequest) {
   const warmupToken = envWithFallback("WARMUP_TOKEN")
   const isPublic = envWithFallback("PUBLIC_INSTANCE") === "1"
-  if (isPublic) {
+  // Il segreto del cron vale da solo, e prima di tutto il resto: è una
+  // credenziale che conoscono solo la piattaforma e chi ha configurato
+  // l'istanza, quindi vale anche su istanza pubblica — dove il ramo qui sotto
+  // esce subito se manca PICTORIUM_WARMUP_TOKEN e non arriverebbe mai a
+  // guardarlo.
+  const cronOk = hasCronSecret(req)
+  if (!cronOk && isPublic) {
     // Fix H3: su istanza pubblica il warmup è un amplificatore (1 req → 500
     // poster tentati) — PICTORIUM_WARMUP_TOKEN è obbligatorio. Senza token
     // l'endpoint non è utilizzabile (evita DoS su HF Spaces). Con token
@@ -140,7 +186,7 @@ export async function POST(req: NextRequest) {
     const header = req.headers.get("x-warmup-token")
     const ok = !!header && constantTimeEqual(header, warmupToken)
     if (!ok) return adminAuthResponse()
-  } else {
+  } else if (!cronOk) {
     // Istanza privata: auth coerente con le altre route admin (fail-closed con
     // token, fail-open solo se isPublic o dev loopback). Warmup token resta
     // opzionale: se configurato, richiede x-warmup-token O admin token.
@@ -169,6 +215,7 @@ export async function POST(req: NextRequest) {
   // C2: resume — offset nella coda dedup + nextOffset in risposta per
   // concatenare chiamate sotto deadline (Vercel Hobby 10s).
   const queueOffset = boundedInt({ value: req.nextUrl.searchParams.get("offset"), fallback: 0, min: 0, max: 10000 })
+  const replayLimit = boundedInt({ value: req.nextUrl.searchParams.get("replay"), fallback: 300, min: 0, max: 300 })
   // C2: warm dei cataloghi (default off — upstream costoso). Scalda gli 8
   // WARMUP_CATALOG_IDS così il primo browse non è freddo N+1; con C1 i body
   // finiscono anche in KV cross-istanza. Chiavi pass-through dalla richiesta.
@@ -218,7 +265,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const queue = dedupeTargets(targets)
+    // Prima ciò che è stato davvero richiesto: è l'unico insieme di URL che
+    // corrisponde per costruzione alle chiavi CDN che i client colpiranno. La
+    // ricostruzione dai trending resta come riserva (deploy nuovo, KV vuoto).
+    const recorded = replayLimit > 0 ? await recordedPosterUrls(replayLimit) : []
+    const replayTargets: WarmupTarget[] = []
+    for (const path of recorded) {
+      const m = /^\/api\/poster\/(movie|series)\/(\d+)/.exec(path)
+      if (!m) continue
+      replayTargets.push({ type: m[1] as PosterRouteType, id: Number(m[2]), source: "recorded", path })
+    }
+    const queue = [...replayTargets, ...dedupeTargets(targets).filter((t) => !replayTargets.some((r) => r.type === t.type && r.id === t.id))]
     const results: WarmupResult[] = []
 
     // Fix M14: deadline complessivo sotto maxDuration (60s). Prima i batch

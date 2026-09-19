@@ -115,6 +115,21 @@ export function calculateAverageRating(
   return avg(values)
 }
 
+/** TTL della negativa sui miss MDBList. Al recupero il rating torna entro un minuto. */
+const RATINGS_NULL_TTL_MS = 60_000
+const RATINGS_NULL_MAX = 500
+const ratingsNullAt = new Map<string, number>()
+
+function ratingsNullSet(cacheKey: string): void {
+  if (ratingsNullAt.size >= RATINGS_NULL_MAX) ratingsNullAt.delete(ratingsNullAt.keys().next().value!)
+  ratingsNullAt.set(cacheKey, Date.now())
+}
+
+/** Solo per i test. */
+export function __resetRatingsNullForTest(): void {
+  ratingsNullAt.clear()
+}
+
 export async function fetchAggregatedRating(
   imdbId: string,
   apiKey?: string,
@@ -130,6 +145,17 @@ export async function fetchAggregatedRating(
   const cacheKey = `mdb:ratings:${imdbId}:${keyHash}`
   const cached = cacheGet<AggregatedRatings>(cacheKey)
   if (cached) return cached
+
+  // Un miss non è cachabile nella cache tipizzata (null = assenza), quindi un
+  // titolo senza rating MDBList rifaceva rete a ogni render — su una griglia
+  // fredda è il costo che si sente di più. Negativa breve, solo in memoria
+  // (mai KV) e solo sui miss GENUINI: errori e abort restano al breaker, che
+  // deve continuare a contarli.
+  const nulledAt = ratingsNullAt.get(cacheKey)
+  if (nulledAt !== undefined) {
+    if (Date.now() - nulledAt < RATINGS_NULL_TTL_MS) return null
+    ratingsNullAt.delete(cacheKey)
+  }
 
   // Breaker aperto → fail-open immediato: niente rete, i caller usano il voto TMDB.
   if (mdblistBreaker.isOpen()) return null
@@ -165,7 +191,10 @@ export async function fetchAggregatedRating(
     }
     // Altri non-OK (404 miss genuina, 401 chiave invalida): fail veloce
     // senza far scattare il breaker per tutti i film.
-    if (!res.ok) return null
+    if (!res.ok) {
+      ratingsNullSet(cacheKey)
+      return null
+    }
     mdblistBreaker.recordSuccess()
     {
       const raw = await res.json()
@@ -236,7 +265,11 @@ export async function fetchAggregatedRating(
     // di rete invece sì.
     if (!signal?.aborted) mdblistBreaker.recordFailure()
     log.error("MDBList fetch failed", { error: e instanceof Error ? e.message : String(e) })
+    // Mai in negativa: un abort o un transiente appartengono al breaker.
+    return null
   }
 
+  // Qui si arriva solo dai miss genuini: risposta OK ma senza rating usabili.
+  ratingsNullSet(cacheKey)
   return null
 }

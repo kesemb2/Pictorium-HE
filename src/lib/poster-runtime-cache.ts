@@ -388,10 +388,16 @@ export function schedulePosterRefresh(req: NextRequest, isPreview: boolean = fal
 // serializza i render costosi: le richieste in eccesso attendono un posto per
 // un tempo limitato, poi ricevono 503 invece di accodarsi all'infinito.
 
+// Default 8, misurato: 16 render concorrenti di poster sintetici portano l'RSS
+// di picco a ~356MB contro ~286MB a 4, e il tempo per render MIGLIORA fino a 8
+// (67ms a 4, 42ms a 8, 37ms a 12) perché il pool di sharp viene riusato. Oltre
+// 8 il guadagno si appiattisce mentre la memoria continua a salire, e una
+// lambda che va in OOM è peggio di una che accoda. Con 4 posti una griglia da
+// 20 poster freddi erano cinque ondate; con 8 sono due e mezzo.
 const MAX_CONCURRENT_RENDERS = (() => {
   const raw = envWithFallback("MAX_CONCURRENT_RENDERS")
-  const n = raw ? parseInt(raw, 10) : 4
-  return Number.isFinite(n) && n > 0 && n <= 32 ? n : 4
+  const n = raw ? parseInt(raw, 10) : 8
+  return Number.isFinite(n) && n > 0 && n <= 32 ? n : 8
 })()
 // Attesa massima di un posto di render prima del 503 (F5). Lettura a module
 // level: un cambio env richiede restart, non hot-reload.

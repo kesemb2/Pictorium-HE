@@ -8,6 +8,7 @@ import * as cacheModule from "@/lib/cache"
 
 vi.mock("@/lib/tmdb", () => ({
   getDetails: vi.fn(),
+  getDetailsWithExternalIds: vi.fn(),
   getExternalIds: vi.fn(),
 }))
 vi.mock("@/lib/ratings", async (importOriginal) => {

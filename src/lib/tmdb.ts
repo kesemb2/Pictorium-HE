@@ -566,6 +566,9 @@ export interface TMDBDetails {
   }
   external_ids?: {
     imdb_id?: string | null
+    /** Stesso shape di tmdbExternalIdsSchema: lo schema details è passthrough,
+     *  quindi tvdb_id arriva già a runtime — qui solo il tipo lo ammette. */
+    tvdb_id?: number | null
   }
 }
 
