@@ -1,0 +1,90 @@
+name: Warm the poster cache
+
+# Il cron di Vercel su piano Hobby gira UNA volta al giorno, e /api/warmup
+# lavora a pagine: risponde con `nextOffset` quando la coda non è finita, e il
+# cron non prosegue. Qui si chiama finché `nextOffset` non è null, così la coda
+# viene scaldata tutta.
+#
+# I fetch NON partono dal runner: /api/warmup gira come funzione Vercel e
+# richiama il proprio host di produzione (selfFetchOrigin + preferCdn), quindi
+# il PoP che si scalda è quello vicino alla region del deploy. Il runner tira
+# solo il grilletto — la sua posizione geografica è irrilevante.
+
+on:
+  schedule:
+    # Ogni 6 ore. La CDN tiene un poster 24h (s-maxage=86400, vedi
+    # POSTER_CACHE_CONTROL in poster-runtime-cache.ts): quattro passate al
+    # giorno lasciano margine abbondante senza sprecare minuti di Actions.
+    # Minuto 17 e non 0: gli orari tondi sono i più congestionati su GitHub e
+    # i job schedulati partono in ritardo.
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: warmup
+  cancel-in-progress: false
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Warm every recorded URL
+        env:
+          HOST: ${{ secrets.WARMUP_HOST }}
+          SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${HOST:-}" ] || [ -z "${SECRET:-}" ]; then
+            echo "::error::Missing secret: set both WARMUP_HOST and CRON_SECRET"
+            exit 1
+          fi
+          HOST="${HOST%/}"
+
+          offset=0
+          total_ok=0
+          total_fail=0
+          passes=0
+
+          # Tetto alle pagine: la coda è al massimo MAX_URLS=300 voci e una
+          # passata ne fa decine, quindi 12 è irraggiungibile in pratica. Serve
+          # solo a non girare all'infinito se `nextOffset` smettesse di avanzare.
+          for i in $(seq 1 12); do
+            body=$(curl -sS --fail-with-body -m 300 \
+              -H "Authorization: Bearer $SECRET" \
+              "$HOST/api/warmup?offset=$offset")
+
+            ok=$(printf '%s' "$body" | jq -r '.ok // 0')
+            fail=$(printf '%s' "$body" | jq -r '.fail // 0')
+            next=$(printf '%s' "$body" | jq -r '.nextOffset // "null"')
+
+            total_ok=$((total_ok + ok))
+            total_fail=$((total_fail + fail))
+            passes=$i
+            echo "pass $i — offset=$offset ok=$ok fail=$fail next=$next"
+
+            if [ "$next" = "null" ]; then break; fi
+            # Un nextOffset che non avanza significa coda ferma: meglio uscire
+            # che rigiocare la stessa pagina undici volte.
+            if [ "$next" -le "$offset" ]; then
+              echo "::warning::nextOffset ($next) did not advance past $offset — stopping"
+              break
+            fi
+            offset="$next"
+          done
+
+          {
+            echo "### Warmup finished"
+            echo ""
+            echo "- passes: \`$passes\`"
+            echo "- warmed: \`$total_ok\`"
+            echo "- failed: \`$total_fail\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Un fallimento sparso è normale (un titolo senza artwork upstream);
+          # zero successi significa che il warmup non sta scaldando niente.
+          if [ "$total_ok" -eq 0 ]; then
+            echo "::error::Warmed nothing — is the recorded-URL list empty?"
+            exit 1
+          fi
