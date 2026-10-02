@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest"
-import { rewriteMetasPosters, rewriteSingleMetaPoster, type StremioItemMeta } from "@/lib/addon-proxy"
+import { rewriteMetasPosters, rewriteSingleMetaPoster, proxyDefaultsSignature, type StremioItemMeta } from "@/lib/addon-proxy"
+import type { ServerDefaults } from "@/lib/server-defaults"
 import { resolveImdbToTmdb } from "@/lib/imdb-resolver"
 import { isAllowedByAllowlist, isPrivateHost } from "@/app/api/proxy/[...path]/route"
 
@@ -28,9 +29,97 @@ describe("Addon Proxy Helpers", () => {
     expect(rewritten.poster).toContain("https://my-pictorium.koyeb.app/api/poster/movie/tt1375666")
   })
 
+  it("appends user token to poster URL when userUuid is provided", () => {
+    const userUuid = "12345678-1234-1234-1234-123456789abc"
+    const metas: StremioItemMeta[] = [
+      { id: "tt0111161", type: "movie", name: "The Shawshank Redemption" },
+    ]
+    const rewritten = rewriteMetasPosters(metas, "https://pictorium.app", userUuid)
+    expect(rewritten[0].poster).toContain(`&u=${userUuid}`)
+
+    const single = rewriteSingleMetaPoster(metas[0], "https://pictorium.app", userUuid)
+    expect(single.poster).toContain(`&u=${userUuid}`)
+  })
+
+  it("omits dv when not provided (backward compat)", () => {
+    const metas: StremioItemMeta[] = [{ id: "tt0111161", type: "movie" }]
+    expect(rewriteMetasPosters(metas, "https://pictorium.app")[0].poster).not.toContain("dv=")
+    expect(rewriteMetasPosters(metas, "https://pictorium.app", null, null)[0].poster).not.toContain("dv=")
+    expect(rewriteSingleMetaPoster(metas[0], "https://pictorium.app").poster).not.toContain("dv=")
+  })
+
+  it("appends dv cache-buster when provided (metas + single)", () => {
+    const dv = "a1b2c3d4"
+    const metas: StremioItemMeta[] = [{ id: "tt0111161", type: "movie" }]
+    expect(rewriteMetasPosters(metas, "https://pictorium.app", null, dv)[0].poster).toContain(`&dv=${dv}`)
+    expect(rewriteSingleMetaPoster(metas[0], "https://pictorium.app", null, dv).poster).toContain(`&dv=${dv}`)
+  })
+
+  it("proxy dv covers all visual defaults: deterministic and order-independent", () => {
+    const a: ServerDefaults = { badgeStyle: "pill", gradientHeight: 40, networkLogo: false }
+    const reordered: ServerDefaults = { networkLogo: false, gradientHeight: 40, badgeStyle: "pill" }
+    const dv = proxyDefaultsSignature(a)
+    expect(dv).toMatch(/^[0-9a-f]{8}$/)
+    expect(proxyDefaultsSignature(reordered)).toBe(dv)
+    expect(proxyDefaultsSignature(null)).toMatch(/^[0-9a-f]{8}$/)
+  })
+
+  it("proxy dv busts on style/toggle changes too, not just tuning", () => {
+    const base: ServerDefaults = { badgeStyle: "pill", gradientHeight: 40, globalBadges: true }
+    const dv = proxyDefaultsSignature(base)
+    // Cambio stile → firma diversa (il buco che il tuning-only lasciava aperto).
+    expect(proxyDefaultsSignature({ ...base, badgeStyle: "shadow" })).not.toBe(dv)
+    expect(proxyDefaultsSignature({ ...base, rankingBadgeStyle: "pill" })).not.toBe(dv)
+    expect(proxyDefaultsSignature({ ...base, globalBadges: false })).not.toBe(dv)
+    expect(proxyDefaultsSignature({ ...base, posterShape: "landscape" })).not.toBe(dv)
+    // Cambio tuning → firma diversa.
+    expect(proxyDefaultsSignature({ ...base, gradientHeight: 30 })).not.toBe(dv)
+    expect(proxyDefaultsSignature({ ...base, blurFade: 10 })).not.toBe(dv)
+  })
+
+  it("rewritten URLs carry the full-defaults dv", () => {
+    const dv = proxyDefaultsSignature({ badgeStyle: "pill" })
+    const metas: StremioItemMeta[] = [{ id: "tt0111161", type: "movie" }]
+    expect(rewriteMetasPosters(metas, "https://pictorium.app", null, dv)[0].poster).toContain(`&dv=${dv}`)
+  })
+
   it("resolveImdbToTmdb returns null for non-imdb IDs", async () => {
     const res = await resolveImdbToTmdb("12345", "movie")
     expect(res).toBeNull()
+  })
+
+  it("never touches background or logo (proxy conservativo: solo poster)", () => {
+    const metas: StremioItemMeta[] = [
+      {
+        id: "tt0111161",
+        type: "movie",
+        name: "The Shawshank Redemption",
+        poster: "https://original.poster/1.jpg",
+        background: "https://original.backdrop/1.jpg",
+        logo: "https://original.logo/1.png",
+      },
+    ]
+    const rewritten = rewriteMetasPosters(metas, "https://pictorium.app")
+    expect(rewritten[0].poster).toContain("https://pictorium.app/api/poster/movie/tt0111161")
+    expect(rewritten[0].background).toBe("https://original.backdrop/1.jpg")
+    expect(rewritten[0].logo).toBe("https://original.logo/1.png")
+
+    const single = rewriteSingleMetaPoster(metas[0], "https://pictorium.app")
+    expect(single.background).toBe("https://original.backdrop/1.jpg")
+    expect(single.logo).toBe("https://original.logo/1.png")
+  })
+
+  it("leaves third-party provider IDs untouched (no 400, no corrupt URLs)", () => {
+    const metas: StremioItemMeta[] = [
+      { id: "kitsu:123", type: "series", name: "Anime", poster: "https://original.poster/k.jpg" },
+      { id: "anidb:456", type: "series", name: "Anime 2", poster: "https://original.poster/a.jpg" },
+      { id: "tmdb:550", type: "movie", name: "TMDB prefixed", poster: "https://original.poster/t.jpg" },
+    ]
+    const rewritten = rewriteMetasPosters(metas, "https://pictorium.app")
+    expect(rewritten[0].poster).toBe("https://original.poster/k.jpg")
+    expect(rewritten[1].poster).toBe("https://original.poster/a.jpg")
+    // tmdb: prefisso risolvibile → parte numerica
+    expect(rewritten[2].poster).toContain("https://pictorium.app/api/poster/movie/550")
   })
 })
 
@@ -89,6 +178,20 @@ describe("isPrivateHost (S6 — prefissi IP solo su letterali)", () => {
     expect(isPrivateHost("127.0.0.1")).toBe(true)
     // Nome DNS con cifre in testa non è un letterale IPv4 → non bloccare
     expect(isPrivateHost("10.example.com")).toBe(false)
+  })
+
+  it("blocca i range IANA riservati (v1.23.0: CGNAT, benchmarking, TEST-NET)", () => {
+    expect(isPrivateHost("100.64.0.1")).toBe(true)
+    expect(isPrivateHost("100.127.255.255")).toBe(true)
+    expect(isPrivateHost("100.63.255.255")).toBe(false)
+    expect(isPrivateHost("100.128.0.1")).toBe(false)
+    expect(isPrivateHost("198.18.0.1")).toBe(true)
+    expect(isPrivateHost("198.19.255.255")).toBe(true)
+    expect(isPrivateHost("198.20.0.1")).toBe(false)
+    expect(isPrivateHost("192.0.2.1")).toBe(true)
+    expect(isPrivateHost("198.51.100.1")).toBe(true)
+    expect(isPrivateHost("203.0.113.1")).toBe(true)
+    expect(isPrivateHost("8.8.8.8")).toBe(false)
   })
 
   it("blocca localhost e suffissi privati, lascia passare domini pubblici", () => {

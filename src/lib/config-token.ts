@@ -10,7 +10,7 @@ import { z } from "zod"
 // Batch B: clamp condiviso da image-utils.ts (semantica standard, senza round)
 import { clamp } from "@/lib/image-utils"
 import { envWithFallback } from "@/lib/env-compat"
-import { BADGE_STYLES, RANKING_BADGE_STYLES } from "@/lib/badge-styles"
+import { BADGE_STYLES, RANKING_BADGE_STYLES, QUALITY_BADGE_STYLES } from "@/lib/badge-styles"
 
 // ---- Zod schema (Batch C: sostituisce validazione manuale) ----
 
@@ -24,6 +24,7 @@ const customCatalogSchema = z.object({
   type: z.enum(["movie", "series", "mixed"]),
   url: z.string().max(500),
   enabled: z.boolean().optional(),
+  datasetId: z.string().max(64).optional(),
 })
 
 export const configTokenSchema = z.object({
@@ -35,13 +36,17 @@ export const configTokenSchema = z.object({
   badgeQuality: z.boolean().optional(),
   customRatings: z.boolean().optional(),
   ratingSources: z.array(z.string().max(20)).optional(),
+  separateRatings: z.boolean().optional(),
   badgeStyle: badgeStyleSchema,
   rankingBadgeStyle: rankingBadgeStyleSchema,
+  // Stile icone qualità: opzionale+nullable (token vecchi senza campo restano validi).
+  qualityBadgeStyle: z.enum(QUALITY_BADGE_STYLES).nullable().optional(),
   blurEnabled: z.boolean(),
   blurIntensity: z.number().finite(),
   blurFade: z.number().finite(),
   blurDarkness: z.number().finite(),
   tintStrength: z.number().finite().optional(),
+  topShade: z.number().finite().optional(),
   gradientHeight: z.number().finite(),
   // Scala/offset del badge superiore: opzionali per back-compat (i token
   // generati prima non devono fallire il safeParse — vedi logoFitEnabled).
@@ -73,7 +78,9 @@ export const configTokenSchema = z.object({
   badgeTopOffset: z.number().finite().optional(),
   badgeBottomOffset: z.number().finite().optional(),
   logoBottomOffset: z.number().finite().optional(),
+  networkLogoPosition: z.enum(["auto", "top"]).optional(),
   preRelease: z.boolean().optional(),
+  posterShape: z.enum(["poster", "landscape"]).optional(),
   autoRotateClean: z.boolean(),
   // Opzionale (finding 13): i token generati prima dell'aggiunta del campo
   // (best-fit) non devono fallire il safeParse — il render usa il default del
@@ -83,6 +90,7 @@ export const configTokenSchema = z.object({
   // gonfierebbe il token firmato (URL condivise) e la label SVG del badge.
   customBadge: z.string().max(40).optional(),
   ribbonSide: ribbonSideSchema.optional(),
+  ribbonEnabled: z.boolean().optional(),
   catalogOrder: z.array(z.string().max(80)).optional(),
   catalogRenames: z.record(z.string().max(80), z.string().max(100)).optional(),
   customCatalogs: z.array(customCatalogSchema).optional(),
@@ -190,6 +198,14 @@ export function decodeConfig(token: string): PictoriumUserConfig | null {
 
     const parsed = JSON.parse(json)
 
+    // Back-compat barra ranking rimossa: i token firmati prima della rimozione
+    // possono contenere rankingBadgeStyle "bar" — senza pre-map l'intero token
+    // fallirebbe safeParse e l'utente perderebbe TUTTA la config (non solo lo
+    // stile). Degrada a "default", come fa la query ?rs=bar.
+    if ((parsed as Record<string, unknown>)?.rankingBadgeStyle === "bar") {
+      (parsed as Record<string, unknown>).rankingBadgeStyle = "default"
+    }
+
     // Batch C: validazione via Zod — sostituisce la validazione manuale
     // con type narrowing automatico e messaggi di errore strutturati.
     const result = configTokenSchema.safeParse(parsed)
@@ -202,6 +218,7 @@ export function decodeConfig(token: string): PictoriumUserConfig | null {
       ...result.data,
       blurIntensity: clamp(Math.round(result.data.blurIntensity), 1, 100),
       tintStrength: result.data.tintStrength !== undefined ? clamp(Math.round(result.data.tintStrength), 0, 100) : undefined,
+      topShade: result.data.topShade !== undefined ? clamp(Math.round(result.data.topShade), 0, 100) : undefined,
       blurFade: clamp(Math.round(result.data.blurFade), 0, 100),
       blurDarkness: clamp(Math.round(result.data.blurDarkness), 0, 100),
       gradientHeight: clamp(Math.round(result.data.gradientHeight), 5, 100),

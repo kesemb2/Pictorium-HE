@@ -3,6 +3,11 @@ import { FONT_FILES } from "./fonts"
 import { buildTitleTextSvg, textShadowBox, type TextStyle, estimateTextWidth, fontFamilyFor, genreBadgeSafePad, genreBadgeSvgDims, genrePillMaxW, buildGenreBarSvg, buildGenrePillSvg, buildGenreTextSvg, buildGenreBorderedSvg, buildGenreGlassSvg, buildRankingBarSvg, buildRankingDefaultSvg, buildRankingPillSvg, buildRankingGlassSvg, buildRankingBorderedSvg, buildExtraBarSvg, buildExtraDefaultSvg, buildExtraPillSvg, buildExtraGlassSvg, buildExtraBorderedSvg, buildQualityBadgeSvg, escSvg, satinPillStops } from "./badge-svg-shared"
 import type { GenreParts } from "./badge-svg-shared"
 import type { BadgeStyle, RankingBadgeStyle, ExtraBadgeStyle } from "./badge-styles"
+// Renderer di upstream, solo per i tipi di badge che il fork non ha costruito
+// da sé (preset house/custom, nastro `netflix-color`): vedi badge-svg-upstream.ts.
+import { buildCustomBadgeSvg, buildHousePresetSvg, buildHouseRankingSvg, buildQualityBadgeSvg as buildQualityBadgeSvgUpstream, type HousePresetScene } from "./badge-svg-upstream"
+import { resolveBadgeText, type BadgeVariableContext } from "./badge-variables"
+import { scaleBadgeDesign, type BadgePreset } from "./badge-preset"
 
 /**
  * Polo chiaro del testo sui badge traslucidi (l'altro è rgba(0,0,0,0.80)).
@@ -326,7 +331,11 @@ export async function buildRankingBadgeSVG(
       : (topLight ? "rgba(255,255,255,0.80)" : "rgba(0,0,0,0.80)")
 
   let result: { svg: string; w: number; h: number }
-  if (isNetflix) {
+  if (s === "netflix-color") {
+    // Stile nuovo di upstream: lo disegna il suo renderer, nastro senza
+    // dicitura come tutti i nastri di upstream.
+    result = buildHouseRankingSvg({ rank, label: "", pw, topLight: !!topLight, style: s, accentColor, side, isAnime })
+  } else if (isNetflix) {
     // Il nastro mostra l'etichetta sotto il numero: per gli anime è "anime",
     // per film/serie è il periodo del rank (es. "Oggi") — stesso sistema.
     result = buildNetflixRankBadgeSVG(rank, pw, !!topLight, side, isAnime, periodText)
@@ -464,3 +473,61 @@ export async function renderQualityBadge(
   return { png, w: result.w, h: result.h }
 }
 
+// --- Preset badge di upstream (Badge Lab → poster Stremio: stesso SVG) ---
+
+/**
+ * Rende un preset dichiarativo alla larghezza poster `pw` (fattore pw/380
+ * come gli altri badge: a 380px è identità col preview Lab). Variabili
+ * risolte dal contesto, testo vuoto → null (il chiamante degrada sullo
+ * stile standard, mai 500).
+ */
+export async function buildCustomPresetBadgeSVG(
+  preset: BadgePreset,
+  context: BadgeVariableContext,
+  pw: number,
+): Promise<{ png: Buffer; w: number; h: number } | null> {
+  if (preset.variant !== "custom" || !preset.design) return null
+  const design = scaleBadgeDesign(preset.design, pw / 380)
+  const text = resolveBadgeText(design.text.template, context)
+  if (!text) return null
+  const result = buildCustomBadgeSvg(design, text)
+  const png = await renderSVG(result.svg, result.w)
+  return { png, w: result.w, h: result.h }
+}
+
+/**
+ * Rende un preset house con i builder di upstream (stessa ricetta del Badge
+ * Lab). Testo vuoto o rank assente → null (il chiamante degrada sullo stile
+ * standard, mai 500).
+ */
+export async function buildHousePresetBadgeSVG(
+  preset: BadgePreset,
+  context: BadgeVariableContext,
+  pw: number,
+  scene: HousePresetScene,
+): Promise<{ png: Buffer; w: number; h: number } | null> {
+  const result = buildHousePresetSvg(preset, context, pw, scene)
+  if (!result) return null
+  const png = await renderSVG(result.svg, result.w)
+  return { png, w: result.w, h: result.h }
+}
+
+/**
+ * Badge qualità col renderer di upstream. Lo usa SOLO la colonna qualità +
+ * formati A/V (`renderQualityBadgeGroup`), che è una funzione nuova di upstream
+ * costruita sul suo box model: le icone A/V portano il suo padding d'ombra e il
+ * badge di risoluzione deve portare lo stesso, o la colonna esce disallineata.
+ * Senza formati il poster usa `renderQualityBadge` del fork.
+ */
+export async function renderQualityBadgeUpstream(
+  quality: string,
+  pw: number,
+  topLight?: boolean,
+): Promise<{ png: Buffer; w: number; h: number }> {
+  const fs = Math.round(Math.max(17 * pw / 380, 10))
+  const bg = topLight ? "rgba(0,0,0,0.80)" : "rgba(255,255,255,0.80)"
+  const fg = topLight ? "rgba(255,255,255,0.80)" : "rgba(0,0,0,0.80)"
+  const result = buildQualityBadgeSvgUpstream(quality, fs, fg, bg, !!topLight)
+  const png = await renderSVG(result.svg, result.w)
+  return { png, w: result.w, h: result.h }
+}

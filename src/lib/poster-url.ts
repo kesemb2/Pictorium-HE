@@ -4,16 +4,27 @@ import { getPosterPublicBaseUrl } from "./poster-public-url"
 import { buildStremioPosterSearchParams } from "./stremio-poster-params"
 import { containsHebrew } from "./badge-svg-shared"
 import { RENDER_VERSION } from "./render-version"
+import { isValidWikidataQid } from "./badge-labels"
 import { TOP_LIGHT_LUMINANCE } from "./constants"
+import { hexLuminance, computeBottomLight } from "./accent-color"
+import { normalizeGenreName } from "./genre-normalize"
 import type { SearchResult, TMDBImage } from "./types"
 import type { EnrichedAnimeItem } from "./validation"
-import type { BadgeStyle, RankingBadgeStyle } from "./badge-styles"
+import type { BadgeStyle, RankingBadgeStyle, QualityBadgeStyle } from "./badge-styles"
+import type { VideoFormat } from "./av-specs"
+import type { PosterShape, NetworkLogoPosition } from "./types"
+import { BADGE_PRESET_ID_RE, BADGE_PRESET_REV_RE } from "./badge-preset"
+import type { DateFormat } from "./release-badge"
 
 interface BadgeParams {
   globalBadges: boolean
   rankingBadges: boolean
   badgeStyle: BadgeStyle
   rankingBadgeStyle: RankingBadgeStyle
+  /** Stile icone del badge qualità (default "standard"). */
+  qualityBadgeStyle?: QualityBadgeStyle | null
+  /** Formati A/V abilitati (dv, atmos, imax, hdr, hdr10plus). */
+  videoFormats?: VideoFormat[] | null
   /** Componenti del badge genere/rating: `false` emette `bg/by/br=0`. */
   badgeGenre?: boolean
   badgeYear?: boolean
@@ -22,7 +33,13 @@ interface BadgeParams {
   /** Riga rating custom provider (display). `false` emette `cr=0`. */
   customRatings?: boolean
   ratingSources?: string[]
+  /** Colonna rating separati. Emessa sempre esplicita in preview (`sep=0/1`, WYSIWYG). */
+  separateRatings?: boolean
   customBadge: string | null
+  badgePresetId?: string | null
+  badgePresetRev?: string | null
+  /** Formato data badge "in uscita" (default `locale` = segue la lingua). */
+  dateFormat?: DateFormat | null
   gradientHeight: number
   blurIntensity: number
   blurFade: number
@@ -30,6 +47,8 @@ interface BadgeParams {
   blurEnabled: boolean
   /** Intensità tinta di scena 0-100 (default 20 quando omesso). */
   tintStrength?: number
+  /** Ombra lineare superiore 0-100 (default 0 = spenta). */
+  topShade?: number
   /** Scala % + offset px del badge superiore (solo stili centrati per gli offset). */
   topBadgeScale: number
   topBadgeOffsetX: number
@@ -63,9 +82,17 @@ interface BadgeParams {
   badgeTopOffset?: number
   badgeBottomOffset?: number
   logoBottomOffset?: number
+  /** Ancoraggio orizzontale del logo network (preview WYSIWYG, sempre esplicito). */
+  networkLogoPosition?: NetworkLogoPosition
   /** Effetto pre-digitale (darken + Coming Soon, solo film). Default OFF. */
   preRelease?: boolean
   ribbonSide?: "left" | "right"
+  /** Nastro stile Netflix all'angolo (false = badge classifica centrato). */
+  ribbonEnabled?: boolean
+  /** Formato canvas del poster in editing (preview WYSIWYG). */
+  posterShape?: PosterShape
+  /** Allineamento blocco logo/metadati in editing (preview WYSIWYG). */
+  logoAlign?: "left" | "center"
 }
 
 interface PosterState {
@@ -93,29 +120,45 @@ interface PosterState {
     type?: string
     status?: string
     imdb_id?: string | null
+    /** QID Wikidata dai details (fast-path REST awards in preview). */
+    wikidata_id?: string | null
   }
   trendRank: number | null
   mdblistAnimeList: EnrichedAnimeItem[]
   topEdgeColor: string | null
+  bottomEdgeColor?: string | null
   accentColor?: string | null
-  /**
-   * Accent estratto automaticamente dal poster (client-side). Serve solo come
-   * termine di paragone: `ac` è un override MANUALE e va emesso soltanto quando
-   * l'utente ha scelto un colore diverso da quello auto. Emetterlo sempre
-   * cortocircuitava `resolveBadgeColors` sul server, così `accentDominant` non
-   * girava mai nell'editor e anche il tint della fascia ereditava il colore
-   * complementare del client.
-   */
+  /** Colore auto-rilevato dal thumb client: se coincide con accentColor, `ac=` non si emette. */
   autoAccentColor?: string | null
   lang: string
   region?: string
+  /** Formato data badge "in uscita" (preview sempre esplicita, WYSIWYG). */
+  dateFormat?: DateFormat | null
   tmdbKey: string
+  /** Namespace utente (multi-user): emesso come `u=` così la preview rende il mapping del namespace. */
+  userId?: string | null
 }
 
-export function buildUrlPattern(bp: BadgeParams & { tmdbKey: string; lang: string; mdblistApiKey?: string }): string {
-  let url = `${getPosterPublicBaseUrl()}/api/poster/{type}/{imdb_id}`
+export function buildUrlPattern(bp: BadgeParams & {
+  tmdbKey: string
+  lang: string
+  mdblistApiKey?: string
+  /** Namespace utente (multi-user): emesso come `u=` nel template. */
+  userId?: string | null
+  /** Namespace con chiavi server-side: omette le chiavi dal template (il
+   *  server le risolve da namespace via `u=`) invece di incollarle in chiaro. */
+  omitApiKey?: boolean
+  omitMdblistKey?: boolean
+  /** Placeholder id nel path: `{tmdb_id}` (primario, esatto: niente /find),
+   *  `{imdb_id}` (fallback universale) o `{tmdb_id|imdb_id}` (auto: il
+   *  consumer — es. Nuvio — sostituisce quello disponibile per la vista,
+   *  altrimenti tiene il poster originale). Default `{imdb_id}` (invariato). */
+  idPlaceholder?: "{imdb_id}" | "{tmdb_id}" | "{tmdb_id|imdb_id}"
+}): string {
+  let url = `${getPosterPublicBaseUrl()}/api/poster/{type}/${bp.idPlaceholder ?? "{imdb_id}"}`
   const params = buildStremioPosterSearchParams({
     lang: bp.lang,
+    user: bp.userId ?? undefined,
     globalBadges: bp.globalBadges,
     rankingBadges: bp.rankingBadges,
     badgeGenre: bp.badgeGenre,
@@ -124,15 +167,19 @@ export function buildUrlPattern(bp: BadgeParams & { tmdbKey: string; lang: strin
     badgeQuality: bp.badgeQuality,
     customRatings: bp.customRatings,
     ratingSources: bp.ratingSources,
+    separateRatings: bp.separateRatings,
     badgeStyle: bp.badgeStyle,
     rankingBadgeStyle: bp.rankingBadgeStyle,
+    qualityBadgeStyle: bp.qualityBadgeStyle,
     gradientHeight: bp.gradientHeight,
     blurIntensity: bp.blurIntensity,
     blurFade: bp.blurFade,
     blurDarkness: bp.blurDarkness,
     blurEnabled: bp.blurEnabled,
     tintStrength: bp.tintStrength,
+    topShade: bp.topShade,
     networkLogo: bp.networkLogo,
+    networkLogoPosition: bp.networkLogoPosition,
     accentDominant: bp.accentDominant,
     badgeTopScale: bp.badgeTopScale,
     badgeBottomScale: bp.badgeBottomScale,
@@ -149,6 +196,9 @@ export function buildUrlPattern(bp: BadgeParams & { tmdbKey: string; lang: strin
 
     preRelease: bp.preRelease,
     ribbonSide: bp.ribbonSide,
+    ribbonEnabled: bp.ribbonEnabled,
+    posterShape: bp.posterShape,
+    logoAlign: bp.logoAlign,
     topBadgeScale: bp.topBadgeScale,
     topBadgeOffsetX: bp.topBadgeOffsetX,
     topBadgeOffsetY: bp.topBadgeOffsetY,
@@ -161,13 +211,15 @@ export function buildUrlPattern(bp: BadgeParams & { tmdbKey: string; lang: strin
     networkLogoScale: bp.networkLogoScale,
     networkLogoOffsetX: bp.networkLogoOffsetX,
     networkLogoOffsetY: bp.networkLogoOffsetY,
+    dateFormat: bp.dateFormat ?? undefined,
   })
   // Template che l'utente copia per sé (come la manifest URL con chiavi):
   // qui le chiavi sono volute — Stremio non invia header custom, quindi il
   // server le legge dalla query al momento del render. Mai nei poster URL
-  // serviti (vedi stremio-poster-params.ts).
-  if (bp.tmdbKey) params.set("api_key", bp.tmdbKey)
-  if (bp.mdblistApiKey) params.set("mdblist_key", bp.mdblistApiKey)
+  // serviti (vedi stremio-poster-params.ts). Con namespace multi-user che ha
+  // chiavi server-side, `u=` basta e le chiavi restano fuori dal DB di terzi.
+  if (!bp.omitApiKey && bp.tmdbKey) params.set("api_key", bp.tmdbKey)
+  if (!bp.omitMdblistKey && bp.mdblistApiKey) params.set("mdblist_key", bp.mdblistApiKey)
   const str = params.toString()
   if (str) url += "?" + str
   return url
@@ -193,6 +245,9 @@ export function buildLogoUrlPattern(input: { lang: string; tmdbKey?: string }): 
 export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
   if (!ps.selected) return ""
   const params: string[] = [`rv=${RENDER_VERSION}`]
+  // Namespace utente: la preview WYSIWYG deve leggere il mapping del
+  // namespace, altrimenti mostra il poster globale (desync).
+  if (ps.userId) params.push(`u=${ps.userId}`)
   if (ps.tmdbKey) params.push(`api_key=${encodeURIComponent(ps.tmdbKey)}`)
   params.push(`badges=${bp.globalBadges ? "1" : "0"}`)
   params.push(`ranking=${bp.rankingBadges ? "1" : "0"}`)
@@ -203,10 +258,11 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
   // cr SEMPRE esplicito in preview (ON e OFF): senza, un mapping salvato con
   // customRatings=false scavalcerebbe il toggle editor (desync WYSIWYG).
   params.push(`cr=${bp.customRatings === false ? "0" : "1"}`)
+  params.push(`sep=${bp.separateRatings ? "1" : "0"}`)
   if (bp.ratingSources && bp.ratingSources.length > 0) params.push(`rsrc=${encodeURIComponent(bp.ratingSources.join(","))}`)
   if (ps.previewPoster) {
     params.push(`poster=${encodeURIComponent(ps.previewPoster.file_path)}`)
-    const genre = ps.metaInfo.genres[0]?.name
+    const genre = normalizeGenreName(ps.metaInfo.genres[0]?.name, ps.lang)
     if (genre) params.push(`genreName=${encodeURIComponent(genre)}`)
     // Un decimale come il badge (`toFixed(1)` nel renderer): la media grezza
     // può essere un float lungo (es. 7.080000000000001) che supera il bound
@@ -228,13 +284,21 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
     if (/^\d{4}-\d{2}-\d{2}$/.test(fullFad || "")) params.push(`fad=${fullFad}`)
     const imdbId = ps.metaInfo.imdb_id || ps.selected.imdb_id
     if (imdbId) params.push(`imdbId=${encodeURIComponent(imdbId)}`)
+    // QID Wikidata per il fast-path REST awards: il client lo ha già dai
+    // details (zero RTT extra). Validato qui e di nuovo sul server: senza,
+    // la preview cade nella lotteria SPARQL (Dexter: Emmy a intermittenza).
+    const wikidataId = ps.metaInfo.wikidata_id
+    if (isValidWikidataQid(wikidataId)) params.push(`wikidata_id=${wikidataId}`)
     // Titolo per il match JustWatch (rilevamento pre-digitale + qualità):
     // senza, il server ripiega su genreName ("Avventura") e il match per
     // tmdbId fallisce sempre.
     const title = ps.selected?.title || ps.selected?.name
     if (title) params.push(`title=${encodeURIComponent(title)}`)
   }
-  if (ps.selectedLogo && ps.previewPoster?.iso_639_1 === null) {
+  // Logo sopra il clean; in landscape la base è il backdrop (senza testo),
+  // quindi il logo resta anche se il poster verticale non è clean. In
+  // portrait invariato: mai logo sopra un poster con testo incorporato.
+  if (ps.selectedLogo && (ps.previewPoster?.iso_639_1 === null || bp.posterShape === "landscape")) {
     params.push(`logo=${encodeURIComponent(ps.selectedLogo.file_path)}`)
     params.push(`scale=${ps.logoScale}`)
     params.push(`ox=${ps.logoOffsetX}`)
@@ -248,7 +312,8 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
       && ps.selectedLogo.iso_639_1 !== ps.lang
       && containsHebrew(title)
     ) {
-      params.push(`title=${encodeURIComponent(title)}`)
+      // Il titolo può essere già in query (match JustWatch, sopra).
+      if (!params.some((p) => p.startsWith("title="))) params.push(`title=${encodeURIComponent(title)}`)
       params.push("tul=1")
     }
   }
@@ -260,13 +325,23 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
   }
   if (ps.lang) params.push(`lang=${ps.lang}`)
   if (ps.region) params.push(`region=${encodeURIComponent(ps.region)}`)
+  // SEMPRE esplicito in preview (come badges/ranking/cr): senza, un default
+  // salvato diverso scavalcerebbe la scelta editor (desync WYSIWYG).
+  params.push(`df=${ps.dateFormat ?? "locale"}`)
   params.push(`gradHeight=${bp.gradientHeight}`)
   params.push(`blur=${bp.blurIntensity}`)
   params.push(`bf=${bp.blurFade}`)
   params.push(`bd=${bp.blurDarkness}`)
   params.push(`tint=${bp.tintStrength ?? 20}`)
+  params.push(`ts=${bp.topShade ?? 50}`)
   params.push(`bs=${bp.badgeStyle}`)
   params.push(`rs=${bp.rankingBadgeStyle}`)
+  // Stile icone qualità SEMPRE esplicito in preview (come bs/rs): senza, un
+  // mapping salvato con stile diverso scavalcerebbe la scelta editor (desync).
+  params.push(`qbs=${bp.qualityBadgeStyle === "mono" || bp.qualityBadgeStyle === "color" ? bp.qualityBadgeStyle : "standard"}`)
+  if (bp.videoFormats !== undefined && bp.videoFormats !== null) {
+    params.push(`formats=${bp.videoFormats.length === 0 ? "none" : bp.videoFormats.join(",")}`)
+  }
   params.push(`tscale=${bp.topBadgeScale}`)
   params.push(`tox=${bp.topBadgeOffsetX}`)
   params.push(`toy=${bp.topBadgeOffsetY}`)
@@ -279,7 +354,9 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
   params.push(`netscale=${bp.networkLogoScale}`)
   params.push(`nox=${bp.networkLogoOffsetX}`)
   params.push(`noy=${bp.networkLogoOffsetY}`)
-  if (!bp.blurEnabled) params.push("be=0")
+  // SEMPRE esplicito in preview (come badges/ranking/cr): senza, un mapping
+  // salvato con blurEnabled=false scavalcerebbe il toggle editor (desync WYSIWYG).
+  params.push(`be=${bp.blurEnabled ? "1" : "0"}`)
   params.push(`netLogo=${bp.networkLogo !== false ? "1" : "0"}`)
   params.push(`ad=${bp.accentDominant !== false ? "1" : "0"}`)
   params.push(`bts=${bp.badgeTopScale ?? 100}`)
@@ -294,18 +371,42 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
   params.push(`bto=${bp.badgeTopOffset ?? 0}`)
   params.push(`bbo=${bp.badgeBottomOffset ?? 0}`)
   params.push(`lbo=${bp.logoBottomOffset ?? 0}`)
+  // SEMPRE esplicito (come ribbon/side): senza, un mapping salvato con
+  // posizione forzata scavalcerebbe lo stato editor (desync WYSIWYG).
+  params.push(`netPos=${bp.networkLogoPosition === "top" ? "top" : "auto"}`)
   if (bp.preRelease) params.push("pre=1")
   // Fix M2: side viene emesso SEMPRE (left|right) — prima soltanto "right";
   // senza il parametro il server risolve dal mapping/config salvati (di
   // default right in modalità Stremio) e la preview rendeva a destra anche
   // quando l'editor mostra lo stato sinistra.
   if (bp.ribbonSide) params.push(`side=${bp.ribbonSide}`)
-  if (isManualAccent(ps.accentColor, ps.autoAccentColor)) params.push(`ac=${encodeURIComponent(ps.accentColor!)}`)
+  // SEMPRE esplicito (come badges/ranking/cr): senza, un mapping salvato con
+  // ribbonEnabled=false scavalcerebbe il toggle editor (desync WYSIWYG).
+  params.push(`ribbon=${bp.ribbonEnabled === false ? "0" : "1"}`)
+  // Shape SEMPRE esplicito in preview (come badges/ranking/cr): senza, un
+  // mapping salvato con shape diversa scavalcerebbe il toggle editor (desync
+  // WYSIWYG) — vedi catena query > mapping > config > defaults.
+  params.push(`shape=${bp.posterShape === "landscape" ? "landscape" : "poster"}`)
+  // Align in preview: rilevante solo per il layout landscape (i portrait
+  // restano sempre centrati per contratto).
+  if (bp.posterShape === "landscape") {
+    params.push(`align=${bp.logoAlign === "left" ? "left" : "center"}`)
+  }
+  // `ac=` solo su scelta manuale: l'auto-rilevamento scrive lo stesso valore
+  // in accentColor a ogni cambio poster, e un override sempre presente
+  // scavalcerebbe il calcolo server (tinta di scena) nella preview.
+  const manualAccent = isManualAccent(ps.accentColor, ps.autoAccentColor) ? ps.accentColor : null
+  if (manualAccent) params.push(`ac=${encodeURIComponent(manualAccent)}`)
   // Fix M16: tl è inviato SOLO a calcolo completato: con topEdgeColor null
   // (colore non ancora campionato) la preview forzava tl=1 (testo chiaro)
   // anche quando il server avrebbe calcolato scuro — ora il server decide.
   const topLight = computeTopLight(ps.topEdgeColor)
   if (topLight !== null) params.push(`tl=${topLight ? "1" : "0"}`)
+  // bl come tl (regola M16): solo a calcolo completato, altrimenti decide il
+  // server. Senza, la preview forzava la polarità del badge genere sul top
+  // anche con fondo scuro. La correzione blur viaggia nei stessi bp del render.
+  const bottomLight = computeBottomLight(hexLuminance(ps.bottomEdgeColor ?? null), bp.blurDarkness, bp.blurEnabled)
+  if (bottomLight !== null) params.push(`bl=${bottomLight ? "1" : "0"}`)
   if (bp.rankingBadges) {
     const badgeParams = computeBadgeParams(ps, bp)
     params.push(...badgeParams)
@@ -320,6 +421,12 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
   } else if (bp.customBadge) {
     const badgeParams = computeBadgeParams(ps, bp)
     params.push(...badgeParams)
+  }
+  if (bp.badgePresetId && BADGE_PRESET_ID_RE.test(bp.badgePresetId)) {
+    params.push(`badgePreset=${encodeURIComponent(bp.badgePresetId)}`)
+    if (bp.badgePresetRev && BADGE_PRESET_REV_RE.test(bp.badgePresetRev)) {
+      params.push(`prv=${encodeURIComponent(bp.badgePresetRev)}`)
+    }
   }
   params.push("preview=1")
   const qs = "?" + params.join("&")

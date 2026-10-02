@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { getJWRankings } from "@/lib/justwatch"
-import { getDetails, getImages } from "@/lib/tmdb"
+import { getDetails, getImages, resolveRouteApiKey } from "@/lib/tmdb"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { getServerDefaults } from "@/lib/server-defaults"
 import { getRegionDef, normalizeRegion, parseRegion } from "@/lib/regions"
@@ -38,7 +38,7 @@ interface TrendingItem {
 export async function GET(req: NextRequest) {
   const rl = await rateLimit(rateLimitKey(req), "tmdb")
   if (!rl.ok) return rateLimitResponse(rl.retAfter)
-  const apiKey = req.nextUrl.searchParams.get("api_key") || undefined
+  const apiKey = await resolveRouteApiKey(req)
   // Regione classifica: `?country=` > default server > IT (fail-closed su IT).
   const region = getRegionDef(parseRegion(req.nextUrl.searchParams.get("country")) ?? normalizeRegion(getServerDefaults().region))
   const country = region.code

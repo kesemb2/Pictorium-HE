@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import EditView from "@/components/EditView"
@@ -74,4 +74,131 @@ describe("EditView", () => {
     const title = screen.getByRole("heading", { level: 1 })
     expect(title.textContent).toContain("ui.heroTitleLead")
   })
-})
+
+  it("switches mobile section to preview when a logo is clicked on mobile", async () => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes("max-width: 1023.5px"),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+
+    try {
+      const u = userEvent.setup()
+      const selectLogo = vi.fn().mockResolvedValue(undefined)
+      const { container } = renderWithCtx(<EditView />, {
+        selected: mockSelected,
+        posters: [{ file_path: "/clean.jpg", iso_639_1: null, vote_average: 0, width: 1000, height: 1500 }],
+        previewPoster: { file_path: "/clean.jpg", iso_639_1: null, vote_average: 0, width: 1000, height: 1500 },
+        logos: [{ file_path: "/logo.png", iso_639_1: "en", vote_average: 0, width: 200, height: 100 }],
+        selectLogo,
+      })
+
+      // Switch to customize section
+      const customizeButton = screen.getByRole("button", { name: "ui.customize" })
+      await u.click(customizeButton)
+      expect(customizeButton).toHaveClass("text-white")
+
+      // Find the logo button tile
+      const logoImg = container.querySelector('img[src*="/logo.png"]')
+      expect(logoImg).toBeInTheDocument()
+      const logoTile = logoImg!.closest("button")
+      expect(logoTile).toBeInTheDocument()
+
+      await u.click(logoTile!)
+
+      expect(selectLogo).toHaveBeenCalledWith(
+        expect.objectContaining({ file_path: "/logo.png" })
+      )
+
+      // Mobile section should have switched back to "preview"
+      const previewButton = screen.getByRole("button", { name: "ui.preview" })
+      expect(previewButton).toHaveClass("text-white")
+    } finally {
+      window.matchMedia = originalMatchMedia
+    }
+  })
+
+  it("applies global Orizzontale badge defaults when switching to landscape without a saved profile", async () => {
+    // Regressione: gli slider badge dell'editor ignoravano i default
+    // Orizzontale (mostravano i valori portrait) al primo ingresso in
+    // landscape senza stash né mapping salvato.
+    localStorage.setItem("badgeDefaults", JSON.stringify({ landscape: { topBadgeScale: 150 } }))
+    try {
+      const u = userEvent.setup()
+      renderWithCtx(
+        <EditView />,
+        {
+          selected: mockSelected,
+          posters: [{ file_path: "/p1.jpg", iso_639_1: null, vote_average: 0, width: 1000, height: 1500 }],
+          previewPoster: { file_path: "/p1.jpg", iso_639_1: null, vote_average: 0, width: 1000, height: 1500 },
+        }
+      )
+      await u.click(screen.getByRole("tab", { name: "ui.transform" }))
+      await u.click(screen.getByRole("button", { name: "ui.posterShapeLandscape" }))
+      const scales = screen.getAllByRole("slider", { name: "ui.scale" })
+      expect(scales.some((s) => s.getAttribute("aria-valuetext") === "150%")).toBe(true)
+    } finally {
+      localStorage.removeItem("badgeDefaults")
+    }
+  })
+
+  it("displays backdrops label and count in mobile switcher when shape is landscape", async () => {
+    const u = userEvent.setup()
+    const { container } = renderWithCtx(
+      <EditView />,
+      {
+        selected: mockSelected,
+        posters: [{ file_path: "/p1.jpg", iso_639_1: null, vote_average: 0, width: 1000, height: 1500 }],
+        previewPoster: { file_path: "/p1.jpg", iso_639_1: null, vote_average: 0, width: 1000, height: 1500 },
+      }
+    )
+
+    // The sticky mobile header container must be present
+    const stickyHeader = container.querySelector(".sticky.top-0.z-30")
+    expect(stickyHeader).toBeInTheDocument()
+
+    // Initially in portrait, shows poster label
+    expect(screen.getByText("ui.poster")).toBeInTheDocument()
+
+    // Click landscape button
+    const landscapeBtn = screen.getByRole("button", { name: "ui.posterShapeLandscape" })
+    await u.click(landscapeBtn)
+
+    // The first mobile switcher button should now show backdrops
+    expect(screen.getByText("Sfondi")).toBeInTheDocument()
+  })
+  it("shows saved state when mapping matches current state, and unsaved when modified", () => {
+    const mapping = {
+      tmdbId: 550,
+      mediaType: "movie" as const,
+      title: "Fight Club",
+      posterPath: "/fc.jpg",
+      logoPath: null,
+      originalPosterPath: null,
+      language: null,
+      updatedAt: "2026-01-01",
+      posterShape: "poster" as const,
+    }
+    const mappingsMap = new Map([["movie:550", mapping]])
+
+    // Without edits, matching saved mapping
+    renderWithCtx(
+      <EditView />,
+      {
+        selected: mockSelected,
+        posters: [{ file_path: "/fc.jpg", iso_639_1: null, vote_average: 0, width: 1000, height: 1500 }],
+        previewPoster: { file_path: "/fc.jpg", iso_639_1: null, vote_average: 0, width: 1000, height: 1500 },
+        mappingsMap,
+      }
+    )
+
+    // Should indicate saved
+    expect(screen.getAllByText("ui.savedShort").length).toBeGreaterThan(0)
+  })
+});

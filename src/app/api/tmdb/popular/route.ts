@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { getPopularMovies, getPopularTV, type TMDBMediaResult } from "@/lib/tmdb"
+import { getPopularMovies, getPopularTV, resolveRouteApiKey, type TMDBMediaResult } from "@/lib/tmdb"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { cacheGet, cacheSet } from "@/lib/cache"
 
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const cached = cacheGet<{ results: (TMDBMediaResult & { media_type: "movie" | "tv" })[]; page: number; totalPages: number }>(cacheKey)
   if (cached) return Response.json(cached)
   try {
-    const apiKey = req.nextUrl.searchParams.get("api_key") || undefined
+    const apiKey = await resolveRouteApiKey(req)
     const [movies, tv] = await Promise.all([getPopularMovies(page, language, apiKey), getPopularTV(page, language, apiKey)])
     const movieResults = (movies.results || [])
       .filter((r: TMDBMediaResult) => r.poster_path)

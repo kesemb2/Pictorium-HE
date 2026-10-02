@@ -67,6 +67,7 @@ yarn-error.log*
 
 # dev server logs
 dev-server*.log
+.next-dev-ui.log
 
 # claude / misc
 .claude/

@@ -5,7 +5,8 @@ import { PICTORIUM_CATALOGS, PICTORIUM_PEOPLE_SEARCH_CATALOGS, regionJwName } fr
 import { getOriginFromRequest } from "@/lib/poster-public-url"
 import { decodeConfig, type PictoriumUserConfig } from "@/lib/config-token"
 import { normalizeCatalogIdKeys, normalizeCatalogIdList } from "@/lib/catalog-definitions"
-import { getServerDefaults } from "@/lib/server-defaults"
+import { getServerDefaults, getServerDefaultsForUser } from "@/lib/server-defaults"
+import { getScopedUserId } from "@/lib/user-auth"
 import { getRegionDef, normalizeRegion, parseRegion } from "@/lib/regions"
 
 const MOVIE_GENRES = [
@@ -44,14 +45,35 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
   if (config) {
     userConfig = decodeConfig(config)
   }
+  // Namespace manifest (multi-user): null con flag OFF → globale invariato.
+  const scopedManifestUser = getScopedUserId(user)
+  // Base namespace (una sola lettura): i defaults dell'utente, mai i globali
+  // — altrimenti i cataloghi di B seguono i default di A. Con flag OFF o
+  // senza uuid → globali invariati (byte-identico).
+  const namespaceDefaults = scopedManifestUser ? await getServerDefaultsForUser(scopedManifestUser) : getServerDefaults()
   if (!userConfig) {
-    const serverDefaults = getServerDefaults()
+    // Cataloghi personali (multi-user): i defaults del namespace.
     userConfig = {
-      disabledCatalogIds: serverDefaults.disabledCatalogIds,
-      homeDisabledCatalogIds: serverDefaults.homeDisabledCatalogIds,
-      customCatalogs: serverDefaults.customCatalogs,
-      catalogRenames: serverDefaults.catalogRenames,
-      catalogOrder: serverDefaults.catalogOrder,
+      disabledCatalogIds: namespaceDefaults.disabledCatalogIds,
+      homeDisabledCatalogIds: namespaceDefaults.homeDisabledCatalogIds,
+      customCatalogs: namespaceDefaults.customCatalogs,
+      catalogRenames: namespaceDefaults.catalogRenames,
+      catalogOrder: namespaceDefaults.catalogOrder,
+    }
+  } else {
+    // Config-token + namespace composti (stile AIO): il namespace è la base
+    // (regione, cataloghi, chiavi server-side), il token è l'override UI.
+    // Prima il token oscurava tutto il namespace (regione/cataloghi di A
+    // ignorati quando `?config=` presente). Campi impostati nel token
+    // vincono, il resto resta del namespace.
+    userConfig = {
+      disabledCatalogIds: userConfig.disabledCatalogIds ?? namespaceDefaults.disabledCatalogIds,
+      homeDisabledCatalogIds: userConfig.homeDisabledCatalogIds ?? namespaceDefaults.homeDisabledCatalogIds,
+      customCatalogs: userConfig.customCatalogs ?? namespaceDefaults.customCatalogs,
+      catalogRenames: userConfig.catalogRenames ?? namespaceDefaults.catalogRenames,
+      catalogOrder: userConfig.catalogOrder ?? namespaceDefaults.catalogOrder,
+      region: userConfig.region ?? namespaceDefaults.region,
+      hubMode: userConfig.hubMode,
     }
   }
 
@@ -96,9 +118,10 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
     }
   }
 
-  // Regione manifest: config-token > default server > IT. I cataloghi Top 20
+  // Regione manifest: config-token > default del namespace > IT. I cataloghi Top 20
   // JustWatch mostrano bandiera/nome del paese attivo (le rinomine utente vincono).
-  const manifestRegion = getRegionDef(parseRegion(userConfig?.region) ?? normalizeRegion(getServerDefaults().region))
+  // (namespaceDefaults già risolto sopra: nessuna seconda lettura.)
+  const manifestRegion = getRegionDef(parseRegion(userConfig?.region) ?? normalizeRegion(namespaceDefaults.region))
 
   // Applica rinomine personalizzate dei cataloghi + nomi regione per i Top 20 JW
   catalogs = catalogs.map((cat) => {
@@ -189,7 +212,7 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
     "tvdbc:",
   ]
 
-  const TYPES = ["movie", "series", "anime.movie", "anime.series", "anime", "Trakt", "collection"]
+  const TYPES = ["movie", "series", "anime.movie", "anime.series", "anime"]
 
   let manifestName = safeConfig ? `Pictorium (${safeConfig})` : "Pictorium"
   if (hubMode === "search") {
@@ -205,7 +228,6 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
     description: "Custom poster manager for Stremio — loghi, badge trend, premi e rating",
     resources: [
       "catalog",
-      "poster",
       {
         name: "meta",
         types: TYPES,

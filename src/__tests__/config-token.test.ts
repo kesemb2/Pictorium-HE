@@ -21,7 +21,7 @@ const MINIMAL_CONFIG: PictoriumUserConfig = {
   globalBadges: false,
   rankingBadges: false,
   badgeStyle: "pill",
-  rankingBadgeStyle: "bar",
+  rankingBadgeStyle: "pill",
   blurEnabled: false,
   blurIntensity: 3,
   blurFade: 50,
@@ -91,6 +91,17 @@ describe("encodeConfig / decodeConfig round-trip", () => {
     const { encodeConfig, decodeConfig } = await importConfigToken()
     const token = encodeConfig(config)
     expect(decodeConfig(token)).toEqual(config)
+  })
+
+  it("degrades legacy rankingBadgeStyle 'bar' to 'default' instead of rejecting the token", async () => {
+    const { decodeConfig } = await importConfigToken()
+    // Token firmato prima della rimozione della barra: bypassa i tipi con un
+    // cast e verifica che solo lo stile venga normalizzato, non tutto il token.
+    const legacy = { ...SAMPLE_CONFIG, rankingBadgeStyle: "bar" } as unknown as PictoriumUserConfig
+    const raw = Buffer.from(JSON.stringify(legacy), "utf-8").toString("base64url")
+    const decoded = decodeConfig(raw)
+    expect(decoded).not.toBeNull()
+    expect(decoded).toEqual({ ...SAMPLE_CONFIG, rankingBadgeStyle: "default" })
   })
 })
 

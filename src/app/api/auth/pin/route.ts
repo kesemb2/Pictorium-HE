@@ -16,7 +16,11 @@ import { readJsonBody, BodyTooLargeError, DEFAULT_MAX_BODY_BYTES } from "@/lib/r
 export async function GET(req: NextRequest) {
   const hasPin = await hasPinConfigured()
   const authenticated = hasPin ? await verifySessionFromRequest(req) : true
-  return Response.json({ hasPin, authenticated })
+  // Flag pubblico (solo booleano, come hasInstanceKeys in /api/defaults): dice
+  // al client se mostrare lo sblocco "Token admin" in Impostazioni. Il valore
+  // resta dietro requireAdminToken/checkAdminToken — un booleano non espone
+  // alcun segreto (e lo stato 401/aperto delle route lo rivela già da sé).
+  return Response.json({ hasPin, authenticated, hasAdminToken: hasAdminTokenConfigured() })
 }
 
 export async function POST(req: NextRequest) {
@@ -83,21 +87,23 @@ export async function PUT(req: NextRequest) {
   }
 
   const hasPin = await hasPinConfigured()
+  const currentPin = typeof body?.currentPin === "string" ? body.currentPin.trim() : ""
+  const isCurrentValid = currentPin ? await verifyPin(currentPin) : false
+  const isAdmin = checkAdminToken(req)
   if (hasPin) {
-    const currentPin = typeof body?.currentPin === "string" ? body.currentPin.trim() : ""
-    const isCurrentValid = currentPin ? await verifyPin(currentPin) : false
-    const isAdmin = checkAdminToken(req)
     if (!isCurrentValid && !isAdmin) {
       return Response.json({ error: "PIN attuale non corretto" }, { status: 401 })
     }
-  } else if (hasAdminTokenConfigured() && !checkAdminToken(req)) {
+  } else if (hasAdminTokenConfigured() && !isAdmin) {
     // Primo set con ADMIN_TOKEN configurato: chi non ha il token non può
     // impossessarsi dell'istanza impostando un PIN prima del proprietario.
     // (Senza ADMIN_TOKEN il primo set resta libero per l'onboarding wizard.)
     return Response.json({ error: "Unauthorized. Set x-admin-token or Authorization: Bearer header." }, { status: 401 })
   }
 
-  const success = await setPin(newPin)
+  // Binding rotazione (v1.23.0): impostato via token (non via PIN) → il PIN
+  // muore con la rotazione dell'env. Via PIN o senza token: nessun binding.
+  const success = await setPin(newPin, { viaAdminToken: isAdmin && !isCurrentValid })
   if (!success) {
     return Response.json({ error: "Impossibile salvare il PIN" }, { status: 500 })
   }

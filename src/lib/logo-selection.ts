@@ -111,15 +111,26 @@ export function autoLogoSelection(
 }
 
 /**
- * Scala di default del logo (in %) data la sua proporzione: altezza target =
- * 25% dell'altezza poster nominale (1500px), scala finale asintotica a 75%.
+ * Scala di default del logo (in %) data la sua proporzione: curva sublineare
+ * `37.5 * aspect^(2/3)` con cap a 75%. La vecchia lineare `37.5 * aspect`
+ * saturava al cap per QUALSIASI logo più largo di 2:1 (tutti i wordmark
+ * panoramici uscivano identici a 75); la potenza differenzia i larghi tra loro
+ * (2:1 → 60, 2.5:1 → 69, 3:1+ al cap) lasciando quadrati/stretti invariati
+ * (`1^p` è sempre 1). Esponente 2/3 (non 1/2): con la sqrt un 2:1 usciva 53,
+ * troppo piccolo per i wordmark pieni.
  * Ritorna null quando il logo non ha dimensioni (nessuna scala calcolabile);
  * i call site usano `?? 75` come default. Deduplica la formula che ricorreva
  * in context.tsx (2×), TransformControls e usePosterSave.
+ * SINGLE SOURCE OF TRUTH (Golden Rule): poster-service.ts, poster-auto-fit.ts
+ * e scripts/backfill-wide-logo-scale.mjs DEVONO usare
+ * `logoDefaultScaleFromAspect`, mai ricopiare la formula.
  */
+export function logoDefaultScaleFromAspect(width: number, height: number): number | null {
+  if (!width || !height || width <= 0 || height <= 0) return null
+  return Math.min(Math.round(37.5 * Math.pow(width / height, 2 / 3)), 75)
+}
+
 export function logoDefaultScale(logo: TMDBImage): number | null {
   if (!logo.width || !logo.height) return null
-  const maxH = Math.round(1500 * 0.25)
-  const effW = Math.round(maxH * logo.width / logo.height)
-  return Math.min(Math.round(effW / 1000 * 100), 75)
+  return logoDefaultScaleFromAspect(logo.width, logo.height)
 }

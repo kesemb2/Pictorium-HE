@@ -2,6 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { NextRequest } from "next/server"
 import { POST } from "@/app/api/validate-key/route"
 
+// Il bucket validate-key (10 token) si esaurirebbe tra i test: qui si testa la
+// logica di validazione provider, il rate limiting ha i suoi file dedicati.
+vi.mock("@/lib/rate-limit", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/lib/rate-limit")>()
+  return { ...mod, rateLimit: vi.fn(async () => ({ ok: true, retAfter: 0 })) }
+})
+
 describe("POST /api/validate-key", () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -144,27 +151,32 @@ describe("POST /api/validate-key", () => {
     const json = await res.json()
     expect(json.valid).toBe(false)
   })
-  it("rejects cross-origin requests (C6)", async () => {
+
+  it("validates valid Simkl key (301 + Location)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: "https://api.simkl.com/movies/123" } })
+    )
+
     const req = new NextRequest("http://localhost:3000/api/validate-key", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Origin: "https://evil.example",
-        Host: "localhost:3000",
-      },
-      body: JSON.stringify({ provider: "tmdb", key: "some-key" }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "simkl", key: "valid-simkl-key" }),
     })
     const res = await POST(req)
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.valid).toBe(true)
   })
 
-  it("merges upstream errors into the generic invalid response, never 502 (C6)", async () => {
-    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("connection reset"))
+  it("validates invalid Simkl key", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "Invalid client id" }), { status: 401 })
+    )
 
     const req = new NextRequest("http://localhost:3000/api/validate-key", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-real-ip": "10.0.0.9" },
-      body: JSON.stringify({ provider: "tmdb", key: "any-key" }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "simkl", key: "bad-simkl-key" }),
     })
     const res = await POST(req)
     expect(res.status).toBe(200)
@@ -172,4 +184,48 @@ describe("POST /api/validate-key", () => {
     expect(json.valid).toBe(false)
   })
 
+  it("validates valid Fanart.tv key (200 on a known title)", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      Response.json({ tmdb_id: "550" })
+    )
+
+    const req = new NextRequest("http://localhost:3000/api/validate-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "fanart", key: "valid-fanart-key" }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.valid).toBe(true)
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain("webservice.fanart.tv/v3/movies/550")
+  })
+
+  it("validates invalid Fanart.tv key (401)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ status: "error" }), { status: 401 })
+    )
+
+    const req = new NextRequest("http://localhost:3000/api/validate-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "fanart", key: "bad-fanart-key" }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.valid).toBe(false)
+  })
+
+  it("rejects oversized bodies with 413 before buffering (anti-OOM v1.23.0)", async () => {
+    const req = new NextRequest("http://localhost:3000/api/validate-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "tmdb", key: "x".repeat(8192) }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(413)
+    const json = await res.json()
+    expect(json.valid).toBe(false)
+  })
 })

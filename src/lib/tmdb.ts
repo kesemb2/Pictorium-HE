@@ -1,7 +1,10 @@
 import { z } from "zod"
+import { createHash } from "node:crypto"
 import { createLogger } from "@/lib/logger"
 import { envWithFallback } from "@/lib/env-compat"
-import { combineAbortSignals } from "./abort-signal"
+import { isMultiUserEnabled } from "@/lib/user-auth"
+import { combineAbortSignals, raceWithAbort } from "./abort-signal"
+import { timedFetch } from "./outbound-stats"
 
 const log = createLogger("tmdb")
 
@@ -71,6 +74,7 @@ const tmdbExternalIdsSchema = z.object({
   id: z.number().int().positive(),
   imdb_id: z.string().nullable().optional(),
   tvdb_id: z.number().nullable().optional(),
+  wikidata_id: z.string().nullable().optional(),
 }).passthrough()
 
 const tmdbKeywordItemSchema = z.object({
@@ -255,7 +259,201 @@ export function resolveRequestApiKey(req: { headers: Headers | { get: (name: str
   return undefined
 }
 
+export type ApiKeyKind = "tmdb" | "mdblist" | "tvdb" | "simkl" | "fanart"
+export type ApiKeySource = "header" | "query" | "namespace" | "env" | "none"
+
+export interface ResolvedApiKey {
+  key: string | undefined
+  source: ApiKeySource
+}
+
+export interface ResolvedUserApiKeys {
+  tmdb: ResolvedApiKey
+  mdblist: ResolvedApiKey
+  tvdb: ResolvedApiKey
+  simkl: ResolvedApiKey
+  fanart: ResolvedApiKey
+}
+
+type KeyRequest = {
+  headers: Headers | { get: (name: string) => string | null }
+  nextUrl?: { searchParams: URLSearchParams }
+  url?: string
+}
+
+function searchParamsOf(req: KeyRequest): URLSearchParams | undefined {
+  if (req.nextUrl?.searchParams) return req.nextUrl.searchParams
+  if (req.url) {
+    try {
+      return new URL(req.url, "http://localhost").searchParams
+    } catch {
+      return undefined
+    }
+  }
+  return undefined
+}
+
+/**
+ * Chiave API effettiva per kind (multi-user):
+ * esplicita della richiesta > namespace utente (solo con `userId`) > env
+ * globale d'istanza (opt-in). Con `userId` null il risultato è identico a
+ * oggi (header/query/env, catene env invariate per kind).
+ *
+ * Su istanza pubblica multi-user (flag ON) il fallback env è DISABILITATO
+ * solo per le richieste scoped (`userId` presente): altrimenti ogni `?u=`
+ * senza chiave brucia la quota dell'operatore (open-proxy sulla chiave
+ * d'istanza). Le richieste globali senza uuid tengono il fallback storico;
+ * opt-in esplicito con `PICTORIUM_MULTI_USER_ALLOW_ENV_FALLBACK=1` per gli
+ * operatori che lo vogliono anche sugli scoped. Con flag OFF tutto è
+ * byte-identico a oggi.
+ *
+ * - tmdb: header `x-api-key` > query `api_key` > namespace.tmdb > env TMDB.
+ * - mdblist: query `mdblist_key` > namespace.mdblist > env MDBLIST.
+ * - tvdb: header `x-tvdb-key` > query `tvdb_key` > namespace.tvdb > env TVDB.
+ * - simkl: query `simkl_key` > header `x-simkl-key`/`simkl-api-key` > namespace.simkl > env SIMKL_CLIENT_ID/SIMKL_API_KEY.
+ * - fanart: query `fanart_key` > header `x-fanart-key` > namespace.fanart > env FANART (chiave progetto: spazio vince sull'istanza).
+ */
+export async function resolveUserApiKeys(
+  req: KeyRequest,
+  userId: string | null | undefined,
+): Promise<ResolvedUserApiKeys> {
+  const out: ResolvedUserApiKeys = {
+    tmdb: { key: undefined, source: "none" },
+    mdblist: { key: undefined, source: "none" },
+    tvdb: { key: undefined, source: "none" },
+    simkl: { key: undefined, source: "none" },
+    fanart: { key: undefined, source: "none" },
+  }
+  // 1. Richiesta esplicita (ogni kind indipendente: l'header TMDB non deve
+  // oscurare le query mdblist_key/tvdb_key/simkl_key).
+  const headerTmdb = req.headers.get("x-api-key")
+  if (headerTmdb) out.tmdb = { key: headerTmdb, source: "header" }
+  const sp = searchParamsOf(req)
+  if (!out.tmdb.key) {
+    const queryTmdb = sp?.get("api_key")
+    if (queryTmdb) out.tmdb = { key: queryTmdb, source: "query" }
+  }
+  const queryMdblist = sp?.get("mdblist_key")
+  if (queryMdblist) out.mdblist = { key: queryMdblist, source: "query" }
+  const queryTvdb = sp?.get("tvdb_key")
+  if (queryTvdb) out.tvdb = { key: queryTvdb, source: "query" }
+  else {
+    const headerTvdb = req.headers.get("x-tvdb-key")
+    if (headerTvdb) out.tvdb = { key: headerTvdb, source: "header" }
+  }
+  const querySimkl = sp?.get("simkl_key")
+  if (querySimkl) out.simkl = { key: querySimkl, source: "query" }
+  else {
+    const headerSimkl = req.headers.get("x-simkl-key") || req.headers.get("simkl-api-key")
+    if (headerSimkl) out.simkl = { key: headerSimkl, source: "header" }
+  }
+  const queryFanart = sp?.get("fanart_key")
+  if (queryFanart) out.fanart = { key: queryFanart, source: "query" }
+  else {
+    const headerFanart = req.headers.get("x-fanart-key")
+    if (headerFanart) out.fanart = { key: headerFanart, source: "header" }
+  }
+  // 2. Namespace utente (una sola lettura per tutte le kind).
+  if (userId && (!out.tmdb.key || !out.mdblist.key || !out.tvdb.key || !out.simkl.key || !out.fanart.key)) {
+    try {
+      const { getUserKeys } = await import("@/lib/user-keys")
+      const scoped = await getUserKeys(userId)
+      if (!out.tmdb.key && scoped.tmdb) out.tmdb = { key: scoped.tmdb, source: "namespace" }
+      if (!out.mdblist.key && scoped.mdblist) out.mdblist = { key: scoped.mdblist, source: "namespace" }
+      if (!out.tvdb.key && scoped.tvdb) out.tvdb = { key: scoped.tvdb, source: "namespace" }
+      if (!out.simkl.key && scoped.simkl) out.simkl = { key: scoped.simkl, source: "namespace" }
+      if (!out.fanart.key && scoped.fanart) out.fanart = { key: scoped.fanart, source: "namespace" }
+    } catch {
+      // getUserKeys logga già: qui fallback all'env sotto (degraded, mai throw).
+    }
+  }
+  // 3. Fallback d'istanza (stesse catene env di oggi, invariate).
+  // Con flag multi-user ON è disabilitato SOLO per le richieste scoped
+  // (`userId` presente): altrimenti ogni `?u=` senza chiave brucia la quota
+  // dell'operatore (open-proxy sulla chiave d'istanza). Le richieste globali
+  // (senza uuid, path legacy) tengono il fallback invariato; opt-in esplicito
+  // con `PICTORIUM_MULTI_USER_ALLOW_ENV_FALLBACK=1` per gli operatori che lo
+  // vogliono anche sugli scoped.
+  const allowEnvFallback = !userId
+    || !isMultiUserEnabled()
+    || process.env.PICTORIUM_MULTI_USER_ALLOW_ENV_FALLBACK === "1"
+    || process.env.POSTERIUM_MULTI_USER_ALLOW_ENV_FALLBACK === "1"
+  if (allowEnvFallback && !out.tmdb.key) {
+    const env = envWithFallback("TMDB_KEY") || process.env.TMDB_KEY || process.env.TMDB_API_KEY
+    if (env) out.tmdb = { key: env, source: "env" }
+  }
+  if (allowEnvFallback && !out.mdblist.key) {
+    const env = envWithFallback("MDBLIST_KEY")
+    if (env) out.mdblist = { key: env, source: "env" }
+  }
+  if (allowEnvFallback && !out.tvdb.key) {
+    const env = envWithFallback("TVDB_API_KEY") || process.env.TVDB_API_KEY
+    if (env) out.tvdb = { key: env, source: "env" }
+  }
+  if (allowEnvFallback && !out.simkl.key) {
+    const env = envWithFallback("SIMKL_CLIENT_ID") || process.env.SIMKL_CLIENT_ID || process.env.SIMKL_API_KEY
+    if (env) out.simkl = { key: env, source: "env" }
+  }
+  if (allowEnvFallback && !out.fanart.key) {
+    const env = envWithFallback("FANART_KEY")
+    if (env) out.fanart = { key: env, source: "env" }
+  }
+  return out
+}
+
+/** Singola kind sopra la risoluzione unificata (una lettura namespace). */
+export async function resolveUserApiKey(
+  req: KeyRequest,
+  userId: string | null | undefined,
+  kind: ApiKeyKind,
+): Promise<ResolvedApiKey> {
+  return (await resolveUserApiKeys(req, userId))[kind]
+}
+
+/**
+ * Chiave effettiva per le route proxy upstream: esplicita della richiesta >
+ * namespace (`?u=`) > env d'istanza. Sostituisce le letture dirette di
+ * `api_key`/env nelle route, che ignoravano le chiavi salvate nel profilo
+ * (chiave salvata ma poster vuoti su profilo fresco).
+ */
+export async function resolveRouteApiKey(req: KeyRequest, kind: ApiKeyKind = "tmdb"): Promise<string | undefined> {
+  const { getScopedUserId, extractUserParam } = await import("@/lib/user-auth")
+  return (await resolveUserApiKeys(req, getScopedUserId(extractUserParam(req))))[kind].key
+}
+
 const inflight = new Map<string, Promise<unknown>>()
+
+// Negative cache per chiavi 401 (v1.23.0): un 401 TMDB significa chiave
+// invalida (deterministico, non transient) — senza, un catalogo con chiave
+// errata spara decine di fetch condannati. Keyed per hash della chiave (mai
+// in chiaro), TTL breve: una chiave corretta nel frattempo si riprende.
+const KEY_401_TTL_MS = 5 * 60 * 1000
+const KEY_401_CAP = 500
+const key401At = new Map<string, number>()
+
+function key401Hash(key: string): string {
+  return createHash("sha256").update(key, "utf-8").digest("hex").slice(0, 16)
+}
+
+function isKey401(key: string): boolean {
+  const at = key401At.get(key401Hash(key))
+  if (at === undefined) return false
+  if (Date.now() - at > KEY_401_TTL_MS) {
+    key401At.delete(key401Hash(key))
+    return false
+  }
+  return true
+}
+
+function markKey401(key: string): void {
+  if (key401At.size >= KEY_401_CAP) key401At.delete(key401At.keys().next().value!)
+  key401At.set(key401Hash(key), Date.now())
+}
+
+/** Solo per i test: azzera la negative cache 401. */
+export function __resetKey401Cache(): void {
+  key401At.clear()
+}
 
 interface TMDBStats {
   totalCalls: number
@@ -284,10 +482,24 @@ export function getTMDBStats() {
   }
 }
 
+/**
+ * Profondità dell'inflight dedup TMDB: early warning per /api/status. Se sale
+ * e non scende, un upstream è appeso e i waiter si accumulano.
+ */
+export function getTmdbInflightSize(): number {
+  return inflight.size
+}
+
 async function tmdbFetch(path: string, apiKey?: string, signal?: AbortSignal, timeoutMs = 30000): Promise<unknown> {
   tmdbStats.totalCalls++
-  const key = apiKey || (process.env.TMDB_BASE_URL ? "mock-key" : undefined)
+  // mock-key solo fuori produzione (v1.23.0): con TMDB_BASE_URL impostato
+  // (caching proxy frontale) una prod senza chiave usciva keyless verso la
+  // rete. Test/e2e girano con NODE_ENV=test e restano funzionanti.
+  const mockKey = process.env.TMDB_BASE_URL && process.env.NODE_ENV !== "production" ? "mock-key" : undefined
+  const key = apiKey || mockKey
   if (!key) throw new Error("TMDB API key is missing")
+  // Chiave già marchiata 401: fallisci subito senza rete (anti-amplificazione).
+  if (isKey401(key)) throw new Error("TMDB fetch failed: 401")
 
   // Cache key is the URL WITHOUT the api_key so that:
   //   1. The per-endpoint cache is shared across users (not fragmented by key).
@@ -307,7 +519,9 @@ async function tmdbFetch(path: string, apiKey?: string, signal?: AbortSignal, ti
 
   // Deduplicate concurrent requests for the same URL
   const existing = inflight.get(cacheKey)
-  if (existing) return existing
+  // Il waiter gareggia col proprio signal invece di ereditare il deadline del
+  // primo: senza, una fetch da 30s appende anche chi aveva 2.5s di tetto.
+  if (existing) return raceWithAbort(existing, signal)
 
   // Actual fetch URL includes the api_key (kept separate from cacheKey)
   const fetchUrl = new URL(neutralUrl.toString())
@@ -322,7 +536,8 @@ async function tmdbFetch(path: string, apiKey?: string, signal?: AbortSignal, ti
     tmdbStats.lastCallTime = new Date().toISOString()
     // D5: tetto interno combinato col signal esterno (default 30s). Il path
     // poster passa 8s: un TMDB appeso non deve tenere uno slot di render.
-    const res = await fetch(fetchUrl.toString(), { signal: combineAbortSignals(signal, timeoutMs) })
+    const res = await timedFetch(fetchUrl.toString(), { signal: combineAbortSignals(signal, timeoutMs) })
+    if (res.status === 401) markKey401(key)
     if (!res.ok) throw new Error(`TMDB fetch failed: ${res.status}`)
     const data = await res.json()
     // Evict LRU (first key = least-recently-used) when at capacity
@@ -349,7 +564,7 @@ export async function checkTmdbEndpoint(path: string, apiKey?: string): Promise<
   try {
     const url = new URL(`${TMDB_BASE}${path}`)
     url.searchParams.set("api_key", key)
-    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(8000) })
+    const res = await timedFetch(url.toString(), { signal: AbortSignal.timeout(8000) })
     return { ok: res.ok, status: res.status, time: Math.round(performance.now() - start) }
   } catch {
     return { ok: false, status: 0, time: Math.round(performance.now() - start) }
@@ -499,6 +714,7 @@ export interface TMDBReleaseDatesResponse {
 export interface TMDBExternalIds {
   imdb_id: string | null
   tvdb_id?: number | null
+  wikidata_id?: string | null
 }
 
 export async function getExternalIds(mediaType: "movie" | "tv", id: number, apiKey?: string, signal?: AbortSignal, timeoutMs = 30000): Promise<TMDBExternalIds> {
@@ -566,9 +782,11 @@ export interface TMDBDetails {
   }
   external_ids?: {
     imdb_id?: string | null
-    /** Stesso shape di tmdbExternalIdsSchema: lo schema details è passthrough,
-     *  quindi tvdb_id arriva già a runtime — qui solo il tipo lo ammette. */
+    // Stesso shape di tmdbExternalIdsSchema: lo schema details è passthrough,
+    // quindi tvdb_id/wikidata_id arrivano già a runtime — qui solo il tipo
+    // li ammette.
     tvdb_id?: number | null
+    wikidata_id?: string | null
   }
 }
 
@@ -725,6 +943,7 @@ export async function personTvCredits(personId: number, language = "it-IT", apiK
 /** Fix L26: svuota la cache TMDB condivisa (per /api/cache/clear). */
 export function __clearTMDBCache(): void {
   fetchCache.clear()
+  key401At.clear()
 }
 
 /**

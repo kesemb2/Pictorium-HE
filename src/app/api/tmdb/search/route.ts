@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { searchMulti, type TMDBMediaResult } from "@/lib/tmdb"
+import { resolveRouteApiKey, searchMulti, type TMDBMediaResult } from "@/lib/tmdb"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { cacheGet, cacheSet } from "@/lib/cache"
 import { jsonGzip } from "@/lib/json-response"
@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const rawQuery = req.nextUrl.searchParams.get("q")
   const query = rawQuery ? rawQuery.trim().slice(0, 100) : null
   const language = req.nextUrl.searchParams.get("language") || "it-IT"
-  const apiKey = req.nextUrl.searchParams.get("api_key") || undefined
+  const apiKey = await resolveRouteApiKey(req)
   const page = parseInt(req.nextUrl.searchParams.get("page") || "1", 10)
   const acceptEncoding = req.headers.get("accept-encoding")
   if (!query || query.length < 2) {

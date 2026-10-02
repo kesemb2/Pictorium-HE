@@ -1,27 +1,37 @@
 "use client"
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo, useSyncExternalStore } from "react"
-import type { SearchResult, TMDBImage, Mapping, CustomCatalogConfig } from "./types"
-import { posterUrl, titleOf, yearOf, STREAMING_PLATFORMS } from "./utils"
-import { matchTMDBStudios } from "./awards"
+import type { SearchResult, TMDBImage, Mapping, CustomCatalogConfig, NetworkLogoPosition, PosterShape } from "./types"
+import { effectiveMappingForShape } from "./types"
+import type { BadgeStyle, RankingBadgeStyle, QualityBadgeStyle } from "./badge-styles"
+import type { RibbonSide } from "./useDefaults"
+type LogoAlign = "left" | "center"
+import { posterUrl, titleOf, yearOf, STREAMING_PLATFORMS, mergeImageLists, isCustomPosterUrl, type ImageLists } from "./utils"
+export { mergeImageLists, type ImageLists } from "./utils"
+import { matchTMDBStudios } from "./badge-labels"
 import { setLang as setI18nLang, createT } from "./i18n"
 import { isSupportedUiLang, getRegionDef, defaultRegionForLang } from "./regions"
 import type { EnrichedAnimeItem } from "./validation"
-import { http } from "./http"
+import { http, userFetch } from "./http"
+import { currentPathUuid, fetchWithUserAuthRetry, userAuthHeaders, USER_UNLOCK_EVENT } from "./user-token"
 import { copyText } from "./clipboard"
 import { useRootColors } from "./useRootColors"
+import { normalizeGenreName } from "./genre-normalize"
 import { buildUrlPattern, buildLogoUrlPattern, buildPreviewUrl } from "./poster-url"
 import { selectBestLogo, autoLogoSelection, logoDefaultScale } from "./logo-selection"
 import { useTrending } from "./useTrending"
 import { useSearch } from "./useSearch"
 import { useNavigation } from "./useNavigation"
 import { useMappingsStore } from "./useMappingsStore"
-import { usePosterEditor, PosterEditorProvider } from "./contexts/PosterEditorContext"
+import { usePosterEditor, PosterEditorProvider, type LandscapeBlurState } from "./contexts/PosterEditorContext"
 import { usePosterSave } from "./usePosterSave"
-import { defaultGradientHeightForPoster } from "./gradient-defaults"
-import { computeLogoOffsetBounds } from "./logo-layout"
+import { usePrefetchTitle } from "./usePrefetchTitle"
+import { defaultHeightForPoster, defaultFadeForPoster, adjustGradientForPosterChange } from "./gradient-presets"
+import { computeLogoOffsetBounds, PORTRAIT_LOGO_MAX_HEIGHT_PCT, PORTRAIT_LOGO_TOP_OFFSET, LANDSCAPE_LOGO_MAX_WIDTH_PCT, LANDSCAPE_LOGO_MAX_HEIGHT_PCT, LANDSCAPE_LOGO_BOTTOM_MARGIN_PCT, LANDSCAPE_LOGO_TOP_OFFSET } from "./logo-layout"
+import { LAND_W, LAND_H } from "./constants"
 import { useOutsideDismiss } from "./useOutsideDismiss"
-import { calculateAverageRating, type AggregatedRatings } from "./ratings"
+import { type AggregatedRatings } from "./ratings"
+import { computeVote } from "./rating-weights"
 import { SearchProvider } from "./contexts/SearchContext"
 import { SettingsProvider } from "./contexts/SettingsContext"
 import { TranslationProvider } from "./contexts/TranslationContext"
@@ -52,6 +62,9 @@ export interface MetaInfo {
   director?: string | null
   keywords?: string[]
   imdb_id?: string | null
+  /** QID Wikidata (es. "Q23577") da TMDB external_ids: alimenta il param
+   * wikidata_id della preview (fast-path REST awards, niente SPARQL). */
+  wikidata_id?: string | null
   /** Dettaglio reti/produzioni con logo_path TMDB per fallback network logo (SVG → TMDB). */
   networksDetailed?: { name: string; logo_path: string | null; origin_country?: string }[]
   productionCompaniesDetailed?: { name: string; logo_path: string | null; origin_country?: string }[]
@@ -73,7 +86,18 @@ export interface PictoriumCtx {
   logos: TMDBImage[]
   posterActivePath: string | null
   previewUrl: string
+  /** Anteprima Stremio: invece dell'URL editor mostra l'URL esatto servito
+   *  a Stremio (stesso builder dei cataloghi, via /meta). Solo lettura. */
+  stremioPreview: boolean
+  setStremioPreview: React.Dispatch<React.SetStateAction<boolean>>
+  /** URL Stremio risolto (null in caricamento o se il meta non risolve). */
+  stremioPreviewUrl: string | null
   urlPattern: string
+  /** Template secondario con `{imdb_id}` (fallback universale). */
+  urlPatternImdb: string
+  /** Template auto con `{tmdb_id|imdb_id}` (Nuvio: usa l'id disponibile per la vista). */
+  urlPatternAuto: string
+  /** Fork: template dell'endpoint logo (titolo ebraico sotto il logo inglese). */
   logoUrlPattern: string
   lang: string
   openSections: Record<string, boolean>
@@ -94,7 +118,7 @@ export interface PictoriumCtx {
   metaInfo: MetaInfo
   previewId: string | null
   setPreviewId: React.Dispatch<React.SetStateAction<string | null>>
-  saveConfig: () => Promise<void>
+  saveConfig: () => Promise<boolean | void>
   removeMapping: (m: Mapping) => Promise<void>
   mappingsMap: Map<string, Mapping>
   goHome: () => void
@@ -144,6 +168,10 @@ export interface PictoriumCtx {
   setTmdbKey: (v: string) => void
   /** True se l'istanza ha una chiave TMDB env (booleano pubblico /api/defaults). */
   serverHasTmdbKey: boolean
+  /** Presenza chiavi server-side del namespace (solo booleani, mai valori). */
+  serverKeyStatus: { tmdb: boolean; mdblist: boolean; tvdb: boolean } | null
+  /** UUID del namespace su path /u/<uuid> (o ?u=), null altrove. */
+  currentUserId: string | null
   mdblistApiKey: string
   setMdblistApiKey: (v: string) => void
   tvdbApiKey: string
@@ -156,7 +184,11 @@ export interface PictoriumCtx {
   autoAccentColor: string | null
   setAccentColor: (v: string | null) => void
   topEdgeColor: string | null
+  bottomEdgeColor: string | null
   autoSaveExcludedPosters: (nextExcluded: string[], nextRotationPosters?: string[], nextPreviewPoster?: TMDBImage) => Promise<void>
+  autoSaveExcludedBackdrops: (nextExcluded: string[], nextRotationBackdrops?: string[], nextBackdrop?: import("@/lib/types").TMDBImage | null) => Promise<void>
+  /** Scalda le cache details/images per un titolo (hover risultati). */
+  prefetchTitle: (item: SearchResult) => void
   theme: "dark" | "light"
   setTheme: React.Dispatch<React.SetStateAction<"dark" | "light">>
   uiAccent: boolean
@@ -290,6 +322,68 @@ export function usePictorium(): PictoriumCtx {
   // True se l'istanza ha una chiave TMDB env (booleano pubblico da
   // /api/defaults): la home funziona anche senza chiave nel browser.
   const [serverHasTmdbKey, setServerHasTmdbKey] = useState(false)
+  // Chiave TMDB env d'istanza (booleano pubblico da /api/defaults), separata
+  // da quella del namespace: l'effettivo è l'OR dei due (vedi sotto) così la
+  // rimozione della chiave profilo riazzera il flag invece di restare latchato.
+  const [instanceHasTmdbKey, setInstanceHasTmdbKey] = useState(false)
+  // Namespace utente (multi-user): uuid dal path /u/<uuid> (o ?u=). Mai
+  // catturato una volta sola: back/forward e navigazioni SPA che riusano
+  // l'albero lascerebbero lo stato stantio (listener post-unlock mai
+  // riattaccati, template AIO sull'uuid sbagliato) — si risincronizza a ogni
+  // unlock e a ogni popstate.
+  const [currentUserId, setCurrentUserId] = useState<string | null>(() => currentPathUuid())
+  useEffect(() => {
+    const syncPathUser = () => {
+      const id = currentPathUuid()
+      setCurrentUserId((prev) => (prev === id ? prev : id))
+    }
+    syncPathUser()
+    window.addEventListener(USER_UNLOCK_EVENT, syncPathUser)
+    window.addEventListener("popstate", syncPathUser)
+    return () => {
+      window.removeEventListener(USER_UNLOCK_EVENT, syncPathUser)
+      window.removeEventListener("popstate", syncPathUser)
+    }
+  }, [])
+  // Presenza chiavi server-side del namespace (solo booleani, mai valori):
+  // con token valido, il template AIO omette le chiavi (le risolve il server).
+  const [serverKeyStatus, setServerKeyStatus] = useState<{ tmdb: boolean; mdblist: boolean; tvdb: boolean } | null>(null)
+  useEffect(() => {
+    if (!currentUserId) return
+    let cancelled = false
+    const load = () => {
+      // Secret oppure password (di memoria): senza credenziale niente status.
+      const headers = userAuthHeaders(currentUserId)
+      if (Object.keys(headers).length === 0) {
+        if (!cancelled) setServerKeyStatus(null)
+        return
+      }
+      // Retry anti secret-stantio: un secret marcio in storage oscurerebbe la
+      // password fresca e il gate poster (serverHasTmdbKey) resterebbe chiuso
+      // fino al refresh — mentre gli altri loader (chiavi, identity) si
+      // riprendevano da soli. Stesso idioma di UserKeysSection.
+      fetchWithUserAuthRetry(currentUserId, `/api/users/${currentUserId}/keys`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (cancelled || !d) return
+          setServerKeyStatus({ tmdb: d.tmdb === true, mdblist: d.mdblist === true, tvdb: d.tvdb === true })
+        })
+        .catch(() => null)
+    }
+    load()
+    window.addEventListener(USER_UNLOCK_EVENT, load)
+    return () => {
+      cancelled = true
+      window.removeEventListener(USER_UNLOCK_EVENT, load)
+    }
+  }, [currentUserId])
+  // Chiave TMDB di sessione = env d'istanza OPPURE namespace: con una
+  // chiave profilo salvata, ricerca/trending/hero partono anche senza chiave
+  // nel browser (il server la risolve da `?u=`). Derivato (non latchato) così
+  // rimozione chiave / forget dello spazio spengono davvero i gate.
+  useEffect(() => {
+    setServerHasTmdbKey(instanceHasTmdbKey || serverKeyStatus?.tmdb === true)
+  }, [instanceHasTmdbKey, serverKeyStatus])
   const [mdblistApiKey, setMdblistApiKey] = useState("")
   const [tvdbApiKey, setTvdbApiKey] = useState("")
   const [tmdbKeyInput, setTmdbKeyInput] = useState("")
@@ -324,11 +418,15 @@ export function usePictorium(): PictoriumCtx {
     badgeRating, setBadgeRating,
     badgeQuality, setBadgeQuality,
     customRatings, setCustomRatings,
-    ratingSources,
+    ratingSources, setRatingSources,
+    separateRatings, setSeparateRatings,
     badgeStyle, setBadgeStyle,
     rankingBadgeStyle, setRankingBadgeStyle,
+    qualityBadgeStyle, setQualityBadgeStyle,
+    videoFormats, setVideoFormats,
     customBadge, setCustomBadge,
     networkLogo, setNetworkLogo,
+    networkLogoPosition, setNetworkLogoPosition,
     preRelease,
     accentDominant, setAccentDominant,
     badgeTopScale, setBadgeTopScale,
@@ -338,9 +436,14 @@ export function usePictorium(): PictoriumCtx {
     logoBottomOffset,
     textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo,
     ribbonSide,
+    ribbonEnabled, setRibbonEnabled,
+    posterShape, setPosterShape,
+    logoAlign, setLogoAlign,
     // Defaults
     defaultBadgeStyle,
     defaultRankingBadgeStyle,
+    defaultQualityBadgeStyle,
+    defaultVideoFormats,
     defaultGlobalBadges,
     defaultRankingBadges,
     defaultBadgeGenre,
@@ -348,14 +451,24 @@ export function usePictorium(): PictoriumCtx {
     defaultBadgeRating,
     defaultBadgeQuality,
     defaultCustomRatings,
+    defaultRatingSources,
+    defaultSeparateRatings,
+    defaultSashOrder,
     defaultRibbonSide,
+    defaultRibbonEnabled,
+    defaultPosterShape,
+    defaultLogoAlign,
     setRibbonSide,
     defaultBlurEnabled,
     defaultBlurIntensity,
     defaultTintStrength,
+    defaultTopShade,
     defaultBlurFade,
     defaultBlurDarkness,
     defaultGradientHeight,
+    defaultLogoScale,
+    defaultLogoOffsetX,
+    defaultLogoOffsetY,
     defaultTopBadgeScale,
     defaultTopBadgeOffsetX,
     defaultTopBadgeOffsetY,
@@ -363,17 +476,25 @@ export function usePictorium(): PictoriumCtx {
     defaultGenreBadgeOffsetX, defaultGenreBadgeOffsetY, defaultQualityBadgeOffsetX, defaultQualityBadgeOffsetY,
     defaultNetworkLogoOffsetX, defaultNetworkLogoOffsetY,
     defaultAutoRotateClean,
+    defaultAutoRotateBackdrop,
+    defaultDisableCleanPosters,
     defaultNetworkLogo,
+    defaultNetworkLogoPosition,
+    defaultPreRelease,
     defaultAccentDominant,
     defaultBadgeTopScale,
     defaultBadgeBottomScale,
     defaultBadgeTopOffset,
     defaultBadgeBottomOffset,
+    defaultDateFormat,
     loadDefaultsToState,
     // Blur
     blurEnabled, setBlurEnabled,
+    landscapeBlur, resetLandscapeBlur, setLandscapeBlur, landscapeBlurDirty,
+    landscape: landscapeDefaults,
     blurIntensity, setBlurIntensity,
     tintStrength, setTintStrength,
+    topShade, setTopShade,
     blurFade, setBlurFade,
     blurDarkness, setBlurDarkness,
     // Gradient
@@ -401,7 +522,7 @@ export function usePictorium(): PictoriumCtx {
     logoOffsetY, setLogoOffsetY,
     logoDisabled, setLogoDisabled,
     // Backdrop
-    setBackdrops,
+    backdrops, setBackdrops,
     selectedBackdrop, setSelectedBackdrop,
     backdropScale, setBackdropScale,
     backdropOffsetX, setBackdropOffsetX,
@@ -411,11 +532,16 @@ export function usePictorium(): PictoriumCtx {
     rotationPosters, setRotationPosters,
     autoRotateClean, setAutoRotateClean,
     excludedPosters, setExcludedPosters,
+    rotationBackdrops, setRotationBackdrops,
+    autoRotateBackdrop, setAutoRotateBackdrop,
+    excludedBackdrops, setExcludedBackdrops,
     // Episode Group
     episodeGroupId, setEpisodeGroupId,
   } = editorCtx
 
   const [urlPattern, setUrlPattern] = useState("")
+  const [urlPatternImdb, setUrlPatternImdb] = useState("")
+  const [urlPatternAuto, setUrlPatternAuto] = useState("")
   const [logoUrlPattern, setLogoUrlPattern] = useState("")
   const [copied, setCopied] = useState(false)
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -432,6 +558,10 @@ export function usePictorium(): PictoriumCtx {
   const [mdblistMatch, setMdblistMatch] = useState<{ key: string; rank: number } | null>(null)
   const [showLangPicker, setShowLangPicker] = useState(false)
   const [previewUrl, setPreviewUrl] = useState("")
+  // URL poster esattamente come lo serve Stremio (via /meta, stesso builder
+  // dei cataloghi): risolto on-demand quando il toggle è attivo.
+  const [stremioPreview, setStremioPreview] = useState(false)
+  const [stremioPreviewUrl, setStremioPreviewUrl] = useState<string | null>(null)
   const [imdbTop250, setImdbTop250] = useState(false)
   const [accentColor, setAccentColor] = useState<string | null>(null)
   const [autoAccentColor, setAutoAccentColor] = useState<string | null>(null)
@@ -445,6 +575,7 @@ export function usePictorium(): PictoriumCtx {
     else root.style.removeProperty("--color-accent")
   }, [uiAccent, accentColor])
   const [topEdgeColor, setTopEdgeColor] = useState<string | null>(null)
+  const [bottomEdgeColor, setBottomEdgeColor] = useState<string | null>(null)
   const [serviceErrors, setServiceErrors] = useState<Record<string, boolean>>({})
 
   const [loadingImages, setLoadingImages] = useState(false)
@@ -492,15 +623,26 @@ export function usePictorium(): PictoriumCtx {
 
   const logoBounds = useMemo(() => {
     if (!navigation.previewPoster || !navigation.selectedLogo) return { minX: -500, maxX: 500, minY: -500, maxY: 500 }
+    // Stessi vincoli del server (poster-service): in landscape il canvas è
+    // 16:9 col fondo logo in linea col badge genere (vedi costanti in
+    // logo-layout.ts), con l'allineamento corrente.
+    const isLandscapeShape = posterShape === "landscape"
     return computeLogoOffsetBounds({
-      posterW: navigation.previewPoster.width || 1000,
-      posterH: navigation.previewPoster.height || 1500,
+      posterW: isLandscapeShape ? LAND_W : (navigation.previewPoster.width || 1000),
+      posterH: isLandscapeShape ? LAND_H : (navigation.previewPoster.height || 1500),
       logoW: navigation.selectedLogo.width || 1,
       logoH: navigation.selectedLogo.height || 1,
       logoScale,
       hasBadges,
+      align: isLandscapeShape ? logoAlign : "center",
+      // Stessi vincoli del server: margine 12% col badge genere (0.10 storico
+      // senza), altrimenti i bound degli slider mentono sul render finale.
+      ...(hasBadges ? { bottomMarginPct: 12 } : {}),
+      ...(isLandscapeShape
+        ? { maxWidthPct: LANDSCAPE_LOGO_MAX_WIDTH_PCT, maxHeightPct: LANDSCAPE_LOGO_MAX_HEIGHT_PCT, bottomMarginPct: LANDSCAPE_LOGO_BOTTOM_MARGIN_PCT, topOffset: LANDSCAPE_LOGO_TOP_OFFSET }
+        : { maxHeightPct: PORTRAIT_LOGO_MAX_HEIGHT_PCT, topOffset: PORTRAIT_LOGO_TOP_OFFSET }),
     })
-  }, [navigation.previewPoster, navigation.selectedLogo, logoScale, hasBadges])
+  }, [navigation.previewPoster, navigation.selectedLogo, logoScale, hasBadges, posterShape, logoAlign])
 
   // --- Custom Catalogs & Profile Auth Hooks ---
   const {
@@ -555,11 +697,12 @@ export function usePictorium(): PictoriumCtx {
     if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme)
 
     // Se sul dispositivo corrente alcune chiavi sono vuote, interroga /api/defaults
-    // per prelevare le chiavi configurate sul server e pre-popolare il client
-    fetch("/api/defaults")
+    // per prelevare le chiavi configurate sul server e pre-popolare il client.
+    // userFetch: su path /u/<uuid> legge i defaults del namespace (token da storage).
+    userFetch("/api/defaults")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data?.hasInstanceKeys?.tmdbKey) setServerHasTmdbKey(true)
+        if (data?.hasInstanceKeys?.tmdbKey) setInstanceHasTmdbKey(true)
         if (!data?.serverKeys) return
         const { tmdbKey, mdblistApiKey: mdblistKey, tvdbApiKey: tvdbKey } = data.serverKeys
         if (!savedTmdb && tmdbKey) {
@@ -589,8 +732,8 @@ export function usePictorium(): PictoriumCtx {
     if (langInit.current) return
     langInit.current = true
     const saved = safeGetItem("preferred_lang")
-    // Solo le lingue delle 12 nazionalità supportate; un valore legacy
-    // (zh/ru/ar/nl del vecchio picker) rimostra la scelta.
+    // Solo le lingue delle 16 nazionalità supportate; un valore legacy
+    // (zh/ru del vecchio picker) rimostra la scelta.
     if (saved && isSupportedUiLang(saved)) {
       setLang(saved.toLowerCase())
       setI18nLang(saved.toLowerCase())
@@ -631,22 +774,260 @@ export function usePictorium(): PictoriumCtx {
     onDismiss: dismissLang,
   })
 
-  // --- URL Pattern ---
+  // --- URL Pattern (TMDB primario + IMDb fallback, stessi parametri) ---
+  // Senza titolo aperto (previewId null: home / Impostazioni) il template
+  // copiabile in InstallModal deve seguire i default live, non l'ultimo stato
+  // per-titolo (stale). Con titolo aperto resta lo stato corrente (tweak
+  // per-titolo inclusi).
   useEffect(() => {
-    setUrlPattern(buildUrlPattern({
-      globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle,
-      badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources,
-      customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, tintStrength, networkLogo, preRelease, ribbonSide,
-      topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale,
-      genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY,
-      networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo,
+    const noPreview = !navigation.previewId
+    // Template WYSIWYG: a titolo aperto la sfumatura segue il profilo del
+    // formato in editing (landscapeBlur in orizzontale), come la preview.
+    const tmplLandscape = !noPreview && posterShape === "landscape"
+    const base = {
+      globalBadges: noPreview ? defaultGlobalBadges : globalBadges,
+      rankingBadges: noPreview ? defaultRankingBadges : rankingBadges,
+      badgeStyle: noPreview ? defaultBadgeStyle : badgeStyle,
+      rankingBadgeStyle: noPreview ? defaultRankingBadgeStyle : rankingBadgeStyle,
+      qualityBadgeStyle: noPreview ? defaultQualityBadgeStyle : qualityBadgeStyle,
+      videoFormats: noPreview ? defaultVideoFormats : (videoFormats ?? defaultVideoFormats),
+      badgeGenre: noPreview ? defaultBadgeGenre : badgeGenre,
+      badgeYear: noPreview ? defaultBadgeYear : badgeYear,
+      badgeRating: noPreview ? defaultBadgeRating : badgeRating,
+      badgeQuality: noPreview ? defaultBadgeQuality : badgeQuality,
+      customRatings: noPreview ? defaultCustomRatings : customRatings,
+      ratingSources: noPreview ? defaultRatingSources : ratingSources,
+      separateRatings: noPreview ? defaultSeparateRatings : separateRatings,
+      customBadge,
+      gradientHeight: noPreview ? defaultGradientHeight : tmplLandscape ? landscapeBlur.gradientHeight : gradientHeight,
+      blurIntensity: noPreview ? defaultBlurIntensity : tmplLandscape ? landscapeBlur.blurIntensity : blurIntensity,
+      blurFade: noPreview ? defaultBlurFade : tmplLandscape ? landscapeBlur.blurFade : blurFade,
+      blurDarkness: noPreview ? defaultBlurDarkness : tmplLandscape ? landscapeBlur.blurDarkness : blurDarkness,
+      blurEnabled: noPreview ? defaultBlurEnabled : tmplLandscape ? landscapeBlur.blurEnabled : blurEnabled,
+      tintStrength: noPreview ? defaultTintStrength : tmplLandscape ? landscapeBlur.tintStrength : tintStrength,
+      topShade: noPreview ? defaultTopShade : tmplLandscape ? landscapeBlur.topShade : topShade,
+      networkLogo: noPreview ? defaultNetworkLogo : networkLogo,
+      networkLogoPosition: noPreview ? defaultNetworkLogoPosition : networkLogoPosition,
+      preRelease: noPreview ? defaultPreRelease : preRelease,
+      ribbonSide: noPreview ? defaultRibbonSide : ribbonSide,
+      ribbonEnabled: noPreview ? defaultRibbonEnabled : ribbonEnabled,
+      posterShape: noPreview ? defaultPosterShape : posterShape,
+      logoAlign: noPreview ? (defaultLogoAlign ?? undefined) : logoAlign,
+      topBadgeScale: noPreview ? defaultTopBadgeScale : topBadgeScale,
+      topBadgeOffsetX: noPreview ? defaultTopBadgeOffsetX : topBadgeOffsetX,
+      topBadgeOffsetY: noPreview ? defaultTopBadgeOffsetY : topBadgeOffsetY,
+      genreBadgeScale: noPreview ? defaultGenreBadgeScale : genreBadgeScale,
+      qualityBadgeScale: noPreview ? defaultQualityBadgeScale : qualityBadgeScale,
+      networkLogoScale: noPreview ? defaultNetworkLogoScale : networkLogoScale,
+      genreBadgeOffsetX: noPreview ? defaultGenreBadgeOffsetX : genreBadgeOffsetX,
+      genreBadgeOffsetY: noPreview ? defaultGenreBadgeOffsetY : genreBadgeOffsetY,
+      qualityBadgeOffsetX: noPreview ? defaultQualityBadgeOffsetX : qualityBadgeOffsetX,
+      qualityBadgeOffsetY: noPreview ? defaultQualityBadgeOffsetY : qualityBadgeOffsetY,
+      networkLogoOffsetX: noPreview ? defaultNetworkLogoOffsetX : networkLogoOffsetX,
+      networkLogoOffsetY: noPreview ? defaultNetworkLogoOffsetY : networkLogoOffsetY,
+      accentDominant: noPreview ? defaultAccentDominant : accentDominant,
+      badgeTopScale: noPreview ? defaultBadgeTopScale : badgeTopScale,
+      badgeBottomScale: noPreview ? defaultBadgeBottomScale : badgeBottomScale,
+      badgeTopOffset: noPreview ? defaultBadgeTopOffset : badgeTopOffset,
+      badgeBottomOffset: noPreview ? defaultBadgeBottomOffset : badgeBottomOffset,
+      logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo,
       tmdbKey, lang, mdblistApiKey,
-    }))
+      dateFormat: defaultDateFormat,
+      // AIO multi-user: `u=` nel template + niente chiavi in chiaro quando il
+      // namespace le ha server-side (il server risolve da namespace).
+      userId: currentUserId,
+      omitApiKey: serverKeyStatus?.tmdb === true,
+      omitMdblistKey: serverKeyStatus?.mdblist === true,
+    }
+    setUrlPattern(buildUrlPattern({ ...base, idPlaceholder: "{tmdb_id}" }))
+    setUrlPatternImdb(buildUrlPattern({ ...base, idPlaceholder: "{imdb_id}" }))
+    setUrlPatternAuto(buildUrlPattern({ ...base, idPlaceholder: "{tmdb_id|imdb_id}" }))
     setLogoUrlPattern(buildLogoUrlPattern({ lang, tmdbKey }))
-  }, [globalBadges, rankingBadges, badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources, networkLogo, preRelease, ribbonSide, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, tintStrength, badgeStyle, rankingBadgeStyle, topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale, genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo, tmdbKey, lang, mdblistApiKey]) // eslint-disable-line react-hooks/exhaustive-deps -- customBadge intentionally excluded to avoid loop
+    }, [accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo, defaultAccentDominant, defaultBadgeTopScale, defaultBadgeBottomScale, defaultBadgeTopOffset, defaultBadgeBottomOffset, globalBadges, rankingBadges, badgeGenre, badgeYear, badgeRating, badgeQuality, qualityBadgeStyle, customRatings, ratingSources, separateRatings, networkLogo, networkLogoPosition, preRelease, ribbonSide, ribbonEnabled, posterShape, logoAlign, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, landscapeBlur, tintStrength, topShade, badgeStyle, rankingBadgeStyle, topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale, genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY, tmdbKey, lang, mdblistApiKey, currentUserId, serverKeyStatus, navigation.previewId, defaultGlobalBadges, defaultRankingBadges, defaultBadgeStyle, defaultRankingBadgeStyle, defaultQualityBadgeStyle, defaultBadgeGenre, defaultBadgeYear, defaultBadgeRating, defaultBadgeQuality, defaultCustomRatings, defaultRatingSources, defaultSeparateRatings, defaultGradientHeight, defaultBlurIntensity, defaultBlurFade, defaultBlurDarkness, defaultBlurEnabled, defaultTintStrength, defaultTopShade, defaultNetworkLogo, defaultNetworkLogoPosition, defaultPreRelease, defaultDateFormat, defaultRibbonSide, defaultRibbonEnabled, defaultPosterShape, defaultLogoAlign, defaultTopBadgeScale, defaultTopBadgeOffsetX, defaultTopBadgeOffsetY, defaultGenreBadgeScale, defaultQualityBadgeScale, defaultNetworkLogoScale, defaultGenreBadgeOffsetX, defaultGenreBadgeOffsetY, defaultQualityBadgeOffsetX, defaultQualityBadgeOffsetY, defaultNetworkLogoOffsetX, defaultNetworkLogoOffsetY]) // eslint-disable-line react-hooks/exhaustive-deps -- customBadge intentionally excluded to avoid loop
+
+  // --- Default live sul titolo corrente ---
+  // Una modifica ai default (barra Impostazioni) si riflette subito sulla
+  // preview del titolo aperto SOLO se non ha mapping salvato (mai clobberare
+  // lavoro salvato). Si propaga solo il default effettivamente cambiato
+  // (compare via ref), così i tweak per-titolo sugli altri campi sopravvivono.
+  // Senza deps array (gira a ogni render, agisce solo sui delta): niente
+  // stale closure, niente loop (dopo il set il compare torna uguale).
+  const prevDefaultsRef = useRef<string | null>(null)
+  useEffect(() => {
+    const snap = JSON.stringify({
+      badgeStyle: defaultBadgeStyle, rankingBadgeStyle: defaultRankingBadgeStyle, qualityBadgeStyle: defaultQualityBadgeStyle, videoFormats: defaultVideoFormats, globalBadges: defaultGlobalBadges,
+      rankingBadges: defaultRankingBadges, badgeGenre: defaultBadgeGenre, badgeYear: defaultBadgeYear,
+      badgeRating: defaultBadgeRating, badgeQuality: defaultBadgeQuality, customRatings: defaultCustomRatings,
+      ratingSources: defaultRatingSources, separateRatings: defaultSeparateRatings,
+      networkLogo: defaultNetworkLogo, networkLogoPosition: defaultNetworkLogoPosition, ribbonSide: defaultRibbonSide, ribbonEnabled: defaultRibbonEnabled, posterShape: defaultPosterShape,
+      logoAlign: defaultLogoAlign, gradientHeight: defaultGradientHeight, blurIntensity: defaultBlurIntensity,
+      tintStrength: defaultTintStrength, topShade: defaultTopShade, blurFade: defaultBlurFade, blurDarkness: defaultBlurDarkness,
+      blurEnabled: defaultBlurEnabled, topBadgeScale: defaultTopBadgeScale, topBadgeOffsetX: defaultTopBadgeOffsetX,
+      topBadgeOffsetY: defaultTopBadgeOffsetY, genreBadgeScale: defaultGenreBadgeScale,
+      qualityBadgeScale: defaultQualityBadgeScale, networkLogoScale: defaultNetworkLogoScale,
+      genreBadgeOffsetX: defaultGenreBadgeOffsetX, genreBadgeOffsetY: defaultGenreBadgeOffsetY,
+      qualityBadgeOffsetX: defaultQualityBadgeOffsetX, qualityBadgeOffsetY: defaultQualityBadgeOffsetY,
+      networkLogoOffsetX: defaultNetworkLogoOffsetX, networkLogoOffsetY: defaultNetworkLogoOffsetY,
+      // Default logo globali (flat + override Orizzontale): propagazione live sotto.
+      logoScaleDefault: defaultLogoScale, logoOffsetXDefault: defaultLogoOffsetX, logoOffsetYDefault: defaultLogoOffsetY,
+      // Profilo Orizzontale: senza, cambiare le Impostazioni · Orizzontale a
+      // poster aperto non muove mai la preview landscape (resta standard).
+      landscape: landscapeDefaults ?? {},
+    })
+    const prevRaw = prevDefaultsRef.current
+    prevDefaultsRef.current = snap
+    if (prevRaw === null || prevRaw === snap) return
+    const prev = JSON.parse(prevRaw) as Record<string, unknown>
+    const cur = JSON.parse(snap) as Record<string, unknown>
+    const pid = navigation.previewId
+    if (!pid || mappingsMap.has(pid)) return
+    const changed = (k: string) => JSON.stringify(prev[k]) !== JSON.stringify(cur[k])
+    if (changed("badgeStyle")) setBadgeStyle(cur.badgeStyle as BadgeStyle)
+    if (changed("rankingBadgeStyle")) setRankingBadgeStyle(cur.rankingBadgeStyle as RankingBadgeStyle)
+    if (changed("qualityBadgeStyle")) setQualityBadgeStyle(cur.qualityBadgeStyle as QualityBadgeStyle)
+    if (changed("videoFormats")) setVideoFormats(null)
+    if (changed("globalBadges")) setGlobalBadges(cur.globalBadges as boolean)
+    if (changed("rankingBadges")) setRankingBadges(cur.rankingBadges as boolean)
+    if (changed("badgeGenre")) setBadgeGenre(cur.badgeGenre as boolean)
+    if (changed("badgeYear")) setBadgeYear(cur.badgeYear as boolean)
+    if (changed("badgeRating")) setBadgeRating(cur.badgeRating as boolean)
+    if (changed("badgeQuality")) setBadgeQuality(cur.badgeQuality as boolean)
+    if (changed("customRatings")) setCustomRatings(cur.customRatings as boolean)
+    if (changed("ratingSources")) setRatingSources(cur.ratingSources as string[])
+    if (changed("separateRatings")) setSeparateRatings(cur.separateRatings as boolean)
+    if (changed("networkLogo")) setNetworkLogo(cur.networkLogo as boolean)
+    if (changed("networkLogoPosition")) setNetworkLogoPosition(cur.networkLogoPosition as NetworkLogoPosition)
+    if (changed("ribbonSide")) setRibbonSide(cur.ribbonSide as RibbonSide)
+    if (changed("ribbonEnabled")) setRibbonEnabled(cur.ribbonEnabled as boolean)
+    if (changed("posterShape") || changed("logoAlign")) {
+      if (changed("posterShape")) setPosterShape(cur.posterShape as PosterShape)
+      setLogoAlign((cur.posterShape as string) === "landscape" ? ((cur.logoAlign as string) ?? "left") as LogoAlign : "center")
+    }
+    if (changed("gradientHeight")) setGradientHeight(cur.gradientHeight as number)
+    if (changed("blurIntensity")) setBlurIntensity(cur.blurIntensity as number)
+    if (changed("tintStrength")) setTintStrength(cur.tintStrength as number)
+    if (changed("topShade")) setTopShade(cur.topShade as number)
+    if (changed("blurFade")) setBlurFade(cur.blurFade as number)
+    if (changed("blurDarkness")) setBlurDarkness(cur.blurDarkness as number)
+    if (changed("blurEnabled")) setBlurEnabled(cur.blurEnabled as boolean)
+    if (changed("topBadgeScale")) setTopBadgeScale(cur.topBadgeScale as number)
+    if (changed("topBadgeOffsetX")) setTopBadgeOffsetX(cur.topBadgeOffsetX as number)
+    if (changed("topBadgeOffsetY")) setTopBadgeOffsetY(cur.topBadgeOffsetY as number)
+    if (changed("genreBadgeScale")) setGenreBadgeScale(cur.genreBadgeScale as number)
+    if (changed("qualityBadgeScale")) setQualityBadgeScale(cur.qualityBadgeScale as number)
+    if (changed("networkLogoScale")) setNetworkLogoScale(cur.networkLogoScale as number)
+    if (changed("genreBadgeOffsetX")) setGenreBadgeOffsetX(cur.genreBadgeOffsetX as number)
+    if (changed("genreBadgeOffsetY")) setGenreBadgeOffsetY(cur.genreBadgeOffsetY as number)
+    if (changed("qualityBadgeOffsetX")) setQualityBadgeOffsetX(cur.qualityBadgeOffsetX as number)
+    if (changed("qualityBadgeOffsetY")) setQualityBadgeOffsetY(cur.qualityBadgeOffsetY as number)
+    if (changed("networkLogoOffsetX")) setNetworkLogoOffsetX(cur.networkLogoOffsetX as number)
+    if (changed("networkLogoOffsetY")) setNetworkLogoOffsetY(cur.networkLogoOffsetY as number)
+    // Profilo Orizzontale: come i flat, si propaga al poster aperto solo senza
+    // mapping salvato — per singola chiave (le altre sopravvivono, come i flat).
+    // Chiavi landscape assenti = segui i flat (coerente con l'init
+    // all'apertura: mapping.landscape > globali Orizzontale > flat).
+    // resetLandscapeBlur (non setLandscapeBlur): la propagazione dai default
+    // NON è un edit esplicito, quindi non alza il dirty — altrimenti un save
+    // portrait congelerebbe il profilo dai default invece di preservarlo.
+    if (changed("landscape")) {
+      const prevLand = (prev.landscape ?? {}) as Record<string, unknown>
+      const curLand = (cur.landscape ?? {}) as Record<string, unknown>
+      const landKeyChanged = (k: string) => JSON.stringify(prevLand[k]) !== JSON.stringify(curLand[k])
+      const eff = (k: string, fb: unknown) => (curLand[k] !== undefined ? curLand[k] : fb)
+      const patch: Partial<LandscapeBlurState> = {}
+      if (landKeyChanged("gradientHeight")) patch.gradientHeight = eff("gradientHeight", gradientHeight) as number
+      if (landKeyChanged("blurEnabled")) patch.blurEnabled = eff("blurEnabled", blurEnabled) as boolean
+      if (landKeyChanged("blurIntensity")) patch.blurIntensity = eff("blurIntensity", blurIntensity) as number
+      if (landKeyChanged("blurFade")) patch.blurFade = eff("blurFade", blurFade) as number
+      if (landKeyChanged("blurDarkness")) patch.blurDarkness = eff("blurDarkness", blurDarkness) as number
+      if (landKeyChanged("tintStrength")) patch.tintStrength = eff("tintStrength", tintStrength) as number
+      if (landKeyChanged("topShade")) patch.topShade = eff("topShade", topShade) as number
+      if (Object.keys(patch).length > 0) resetLandscapeBlur({ ...landscapeBlur, ...patch })
+      // Scale/offset badge in landscape: gli slider condividono lo stato flat,
+      // che in landscape mostra il profilo Orizzontale — i default globali
+      // Orizzontale si propagano qui (solo in landscape: in portrait i flat
+      // mostrano il profilo Verticale e non si toccano). Chiavi assenti =
+      // segui i default flat (come il server).
+      if (posterShape === "landscape") {
+        if (landKeyChanged("topBadgeScale")) setTopBadgeScale(eff("topBadgeScale", defaultTopBadgeScale) as number)
+        if (landKeyChanged("topBadgeOffsetX")) setTopBadgeOffsetX(eff("topBadgeOffsetX", defaultTopBadgeOffsetX) as number)
+        if (landKeyChanged("topBadgeOffsetY")) setTopBadgeOffsetY(eff("topBadgeOffsetY", defaultTopBadgeOffsetY) as number)
+        if (landKeyChanged("genreBadgeScale")) setGenreBadgeScale(eff("genreBadgeScale", defaultGenreBadgeScale) as number)
+        if (landKeyChanged("genreBadgeOffsetX")) setGenreBadgeOffsetX(eff("genreBadgeOffsetX", defaultGenreBadgeOffsetX) as number)
+        if (landKeyChanged("genreBadgeOffsetY")) setGenreBadgeOffsetY(eff("genreBadgeOffsetY", defaultGenreBadgeOffsetY) as number)
+        if (landKeyChanged("qualityBadgeScale")) setQualityBadgeScale(eff("qualityBadgeScale", defaultQualityBadgeScale) as number)
+        if (landKeyChanged("qualityBadgeOffsetX")) setQualityBadgeOffsetX(eff("qualityBadgeOffsetX", defaultQualityBadgeOffsetX) as number)
+        if (landKeyChanged("qualityBadgeOffsetY")) setQualityBadgeOffsetY(eff("qualityBadgeOffsetY", defaultQualityBadgeOffsetY) as number)
+        if (landKeyChanged("networkLogoScale")) setNetworkLogoScale(eff("networkLogoScale", defaultNetworkLogoScale) as number)
+        if (landKeyChanged("networkLogoOffsetX")) setNetworkLogoOffsetX(eff("networkLogoOffsetX", defaultNetworkLogoOffsetX) as number)
+        if (landKeyChanged("networkLogoOffsetY")) setNetworkLogoOffsetY(eff("networkLogoOffsetY", defaultNetworkLogoOffsetY) as number)
+      }
+    }
+    // Default logo globali: come gli altri default, si propagano al poster
+    // aperto senza mapping (formato corrente: override Orizzontale in
+    // landscape, flat altrove). Solo valori espliciti: null = auto-fit/0,
+    // niente da propagare (la scala resta quella fittata sul logo).
+    {
+      const openIsLand = posterShape === "landscape"
+      const prevLand = (prev.landscape ?? {}) as Record<string, unknown>
+      const curLand = (cur.landscape ?? {}) as Record<string, unknown>
+      const effLogoScale = (land: Record<string, unknown>, flat: unknown): number | null =>
+        (openIsLand ? ((land.logoScale as number | null | undefined) ?? (flat as number | null)) : (flat as number | null)) ?? null
+      const prevLogoScale = effLogoScale(prevLand, prev.logoScaleDefault)
+      const curLogoScale = effLogoScale(curLand, cur.logoScaleDefault)
+      if (JSON.stringify(prevLogoScale) !== JSON.stringify(curLogoScale) && typeof curLogoScale === "number") {
+        setLogoScale(curLogoScale)
+      }
+      const effLogoOff = (land: Record<string, unknown>, flat: unknown, axis: "logoOffsetX" | "logoOffsetY"): number =>
+        (openIsLand ? ((land[axis] as number | null | undefined) ?? (flat as number | null)) : (flat as number | null)) ?? 0
+      for (const axis of ["logoOffsetX", "logoOffsetY"] as const) {
+        const prevOff = effLogoOff(prevLand, (prev as Record<string, unknown>)[axis === "logoOffsetX" ? "logoOffsetXDefault" : "logoOffsetYDefault"], axis)
+        const curOff = effLogoOff(curLand, (cur as Record<string, unknown>)[axis === "logoOffsetX" ? "logoOffsetXDefault" : "logoOffsetYDefault"], axis)
+        if (prevOff !== curOff) {
+          if (axis === "logoOffsetX") setLogoOffsetX(curOff)
+          else setLogoOffsetY(curOff)
+        }
+      }
+    }
+  })
 
   // --- Preview URL ---
+  // Modalità Stremio: risolve l'URL esatto servito a Stremio per il titolo
+  // (meta → stesso builder dei cataloghi: mapping/auto, default, mv). Chiave
+  // browser in query (come le altre preview autenticate) + namespace `u`:
+  // se il server non risolve i metadati, si resta sull'editor senza rumore.
+  useEffect(() => {
+    if (!stremioPreview || !navigation.selected) { setStremioPreviewUrl(null); return }
+    const sel = navigation.selected
+    const stype = sel.media_type === "movie" ? "movie" : "series"
+    const params = new URLSearchParams()
+    if (currentUserId) params.set("u", currentUserId)
+    if (tmdbKey) params.set("api_key", tmdbKey)
+    const qs = params.toString() ? `?${params.toString()}` : ""
+    let live = true
+    // no-store: /meta risponde `max-age=300` per Stremio, ma qui serve
+    // l'URL fresco post-save (il `mv` cambia a ogni salvataggio).
+    http<{ meta?: { poster?: string | null } }>(`/meta/${stype}/tmdb:${sel.id}${qs}`, { timeout: 15000, cache: "no-store" })
+      .then((d) => { if (live) setStremioPreviewUrl(d?.meta?.poster || null) })
+      // Fallimento = modalità non attiva (niente stato bugiardo): si torna
+      // all'editor e il modale, se aperto, si chiude da solo.
+      .catch(() => { if (live) { setStremioPreviewUrl(null); setStremioPreview(false) } })
+    return () => { live = false }
+    // mappingsMap: dopo un save il mapping (e il suo `mv`) cambia — l'URL va
+    // ririsolta o il modale mostra l'artefatto pre-save (stale).
+  }, [stremioPreview, navigation.selected, currentUserId, tmdbKey, mappingsMap])
+
   const buildPreviewUrlCb = useCallback(() => {
+    // Toggle Stremio attivo e URL risolto: mostra l'artefatto finale vero.
+    // In caricamento (null) resta l'editor: niente flash vuoto.
+    if (stremioPreview && stremioPreviewUrl) {
+      setPreviewUrl(stremioPreviewUrl)
+      return
+    }
+    // Profili sfumatura per formato: in landscape la preview mostra i valori
+    // live della sezione Orizzontale (quelli salvati nel profilo), in
+    // portrait i flat. Tinta e ombra superiore restano condivise (flat).
+    const isLandscapePreview = posterShape === "landscape"
     const url = buildPreviewUrl(
       {
         selected: navigation.selected,
@@ -656,17 +1037,24 @@ export function usePictorium(): PictoriumCtx {
         logoScale, logoOffsetX, logoOffsetY,
         backdropScale, backdropOffsetX, backdropOffsetY,
         metaInfo, trendRank, mdblistAnimeList: trending.mdblistAnimeList,
-        topEdgeColor, accentColor, autoAccentColor, lang, tmdbKey,
+        topEdgeColor, bottomEdgeColor, accentColor, autoAccentColor, lang, tmdbKey,
         region: editorCtx.defaultRegion,
+        dateFormat: editorCtx.defaultDateFormat,
+        // Preview WYSIWYG nel namespace (altrimenti mostra il globale).
+        userId: currentUserId,
       },
-      { globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources, customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, tintStrength, networkLogo, preRelease, ribbonSide, topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale, genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo }
+      { globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle, qualityBadgeStyle, videoFormats, badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources, separateRatings, customBadge, gradientHeight: isLandscapePreview ? landscapeBlur.gradientHeight : gradientHeight, blurIntensity: isLandscapePreview ? landscapeBlur.blurIntensity : blurIntensity, blurFade: isLandscapePreview ? landscapeBlur.blurFade : blurFade, blurDarkness: isLandscapePreview ? landscapeBlur.blurDarkness : blurDarkness, blurEnabled: isLandscapePreview ? landscapeBlur.blurEnabled : blurEnabled, tintStrength: isLandscapePreview ? landscapeBlur.tintStrength : tintStrength, topShade: isLandscapePreview ? landscapeBlur.topShade : topShade, networkLogo, networkLogoPosition, preRelease, ribbonSide, ribbonEnabled, posterShape, logoAlign, topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale, genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY,
+        accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset,
+        textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo }
     )
     setPreviewUrl(url)
-  }, [navigation.selected, navigation.previewPoster, navigation.selectedLogo, selectedBackdrop,
+  }, [stremioPreview, stremioPreviewUrl, navigation.selected, navigation.previewPoster, navigation.selectedLogo, selectedBackdrop,
     logoScale, logoOffsetX, logoOffsetY, backdropScale, backdropOffsetX, backdropOffsetY,
-    metaInfo, trendRank, trending.mdblistAnimeList, topEdgeColor, accentColor, autoAccentColor, lang, tmdbKey,
-    editorCtx.defaultRegion,
-    globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources, customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, tintStrength, networkLogo, preRelease, ribbonSide, topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale, genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY, accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo])
+    metaInfo, trendRank, trending.mdblistAnimeList, topEdgeColor, bottomEdgeColor, accentColor, autoAccentColor, lang, tmdbKey,
+    editorCtx.defaultRegion, editorCtx.defaultDateFormat, currentUserId,
+    globalBadges, rankingBadges, badgeStyle, rankingBadgeStyle, qualityBadgeStyle, videoFormats, badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources, separateRatings, customBadge, gradientHeight, blurIntensity, blurFade, blurDarkness, blurEnabled, landscapeBlur, tintStrength, topShade, networkLogo, networkLogoPosition, preRelease, ribbonSide, ribbonEnabled, posterShape, logoAlign, topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale, genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY,
+    accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset,
+    textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo])
 
   // A1: trailing debounce della preview URL (200ms). Ogni tick di slider
   // cambia l'identità di buildPreviewUrlCb → senza debounce ogni pixel di
@@ -687,28 +1075,61 @@ export function usePictorium(): PictoriumCtx {
   }, [navigation.selected, buildPreviewUrlCb])
 
   // --- Color detection ---
-  useRootColors(navigation.previewPoster, metaInfo.genres[0]?.name, posterUrl, { setAccentColor, setAutoAccentColor, setTopEdgeColor }, accentDominant !== false, blurEnabled ? gradientHeight / 100 : undefined)
+  // In landscape la base è il backdrop: accent/topLight auto si campionano
+  // da lì (w780, tier backdrop), come fa il server sulla stessa immagine —
+  // altrimenti `ac=`/`tl=` in preview contraddicono il render.
+  const landscapePreview = posterShape === "landscape"
+  useRootColors(
+    landscapePreview ? (selectedBackdrop ?? navigation.previewPoster) : navigation.previewPoster,
+    normalizeGenreName(metaInfo.genres[0]?.name, lang) || undefined,
+    posterUrl,
+    { setAccentColor, setAutoAccentColor, setTopEdgeColor, setBottomEdgeColor },
+    landscapePreview ? "w780" : "w342",
+    // Fork: accent dominante e campionamento dalla sola fascia sfocata (portrait).
+    {
+      accentDominant: accentDominant !== false,
+      bandFraction: !landscapePreview && blurEnabled ? gradientHeight / 100 : undefined,
+    },
+  )
 
   // --- Caricamento dati item corrente (M16) ---
   // Condiviso tra openPosterBrowser e l'effetto cambio lingua: ricarica
   // dettagli + rank + awards + immagini, aggiornando metaInfo (generi/voto/badge),
   // trendRank, mdblistMatch, posters/logos/backdrops e titolo. La guardia
   // fetchIdRef evita che una risposta stale sovrascriva la selezione corrente.
-  async function loadCurrentItemData(item: SearchResult, fetchId: number) {
+  async function loadCurrentItemData(item: SearchResult, fetchId: number, sourcesOverride?: string[]) {
     const itemId = item.id
     const itemType = item.media_type
     const mdblistParam = mdblistApiKey ? "&mdblist_key=" + encodeURIComponent(mdblistApiKey) : ""
-    const rsrcParam = ratingSources && ratingSources.length > 0 ? "&rsrc=" + encodeURIComponent(ratingSources.join(",")) : ""
+    // Fonti esplicite all'apertura titolo (mapping salvato): la closure
+    // `ratingSources` vale ancora la sessione precedente finché setRatingSources
+    // non committa — senza override il voto congelato in metaInfo userebbe le
+    // fonti vecchie e gareggerebbe col refetch dell'effetto [ratingSources].
+    const activeSources = sourcesOverride ?? ratingSources
+    const rsrcParam = activeSources && activeSources.length > 0 ? "&rsrc=" + encodeURIComponent(activeSources.join(",")) : ""
     const regionLang = getRegionDef(editorCtx.defaultRegion).lang
     const detailsUrl = `/api/tmdb/${itemId}/details?type=${itemType}&language=${regionLang}&api_key=${tmdbKey}${mdblistParam}${rsrcParam}`
+    // Le immagini partono SUBITO in parallelo ai details (non dopo): la lingua
+    // originale serve solo ad allargare la query quando è fuori da lang/en.
+    // Niente retry qui: i dati si ricaricano al tick dopo, e un retry
+    // triplicherebbe la coda peggiore (30s × 3) proprio sul path critico.
+    const defaultImageLangs = `${lang},en,null`
+    const imagesUrl = (langs: string) => `/api/tmdb/${itemId}/images?type=${itemType}&languages=${langs}&api_key=${tmdbKey}`
+    const emptyLists: ImageLists = { posters: [], logos: [], backdrops: [] }
+    const imagesPromise = http<ImageLists>(imagesUrl(defaultImageLangs), { timeout: 30000, retries: 0 }).catch(() => emptyLists)
     const [details, rankData, awardData] = await Promise.all([
-      http<{ genres: { id: number; name: string }[]; voteAverage: number; voteCount: number; status: string | null; type: string | null; release_date: string | null; first_air_date: string | null; last_air_date: string | null; next_episode_to_air: { air_date: string; episode_number: number; season_number: number } | null; number_of_seasons: number | null; number_of_episodes: number | null; title: string | null; name: string | null; imdb_id: string | null; networks: { name: string; logo_path: string | null; origin_country: string }[]; production_companies: { name: string; logo_path: string | null; origin_country: string }[]; original_language: string; aggregatedRatings?: AggregatedRatings | null }>(detailsUrl, { timeout: 30000 }).catch((e) => { console.error("[pictorium] Details fetch failed:", e); setServiceErrors((prev) => ({ ...prev, tmdb: true })); return { genres: [] as { id: number; name: string }[], voteAverage: 0, voteCount: 0, status: null, type: null, release_date: null, first_air_date: null, last_air_date: null, next_episode_to_air: null, number_of_seasons: null, number_of_episodes: null, title: null, name: null, imdb_id: null, networks: [] as { name: string; logo_path: string | null; origin_country: string }[], production_companies: [] as { name: string; logo_path: string | null; origin_country: string }[], original_language: "en", aggregatedRatings: null } }),
+      http<{ genres: { id: number; name: string }[]; voteAverage: number; voteCount: number; status: string | null; type: string | null; release_date: string | null; first_air_date: string | null; last_air_date: string | null; next_episode_to_air: { air_date: string; episode_number: number; season_number: number } | null; number_of_seasons: number | null; number_of_episodes: number | null; title: string | null; name: string | null; imdb_id: string | null; wikidata_id?: string | null; networks: { name: string; logo_path: string | null; origin_country?: string }[]; production_companies: { name: string; logo_path: string | null; origin_country?: string }[]; original_language: string; aggregatedRatings?: AggregatedRatings | null }>(detailsUrl, { timeout: 30000 }).catch((e) => { console.error("[pictorium] Details fetch failed:", e); setServiceErrors((prev) => ({ ...prev, tmdb: true })); return { genres: [] as { id: number; name: string }[], voteAverage: 0, voteCount: 0, status: null, type: null, release_date: null, first_air_date: null, last_air_date: null, next_episode_to_air: null, number_of_seasons: null, number_of_episodes: null, title: null, name: null, imdb_id: null, wikidata_id: null, networks: [] as { name: string; logo_path: string | null; origin_country?: string }[], production_companies: [] as { name: string; logo_path: string | null; origin_country?: string }[], original_language: "en", aggregatedRatings: null } }),
       http<{ rank: number | null }>(`/api/trending/rank?type=${itemType}&id=${itemId}&api_key=${encodeURIComponent(tmdbKey)}&region=${encodeURIComponent(editorCtx.defaultRegion)}&lang=${encodeURIComponent(regionLang)}`, { timeout: 15000 }).catch(() => ({ rank: null })),
-      http<{ awards: string[]; nominations: string[]; studios: string[]; director: string | null; keywords: string[] }>(`/api/awards/${itemType}/${itemId}?api_key=${encodeURIComponent(tmdbKey)}`, { timeout: 15000 }).catch(() => ({ awards: [] as string[], nominations: [] as string[], studios: [] as string[], director: null, keywords: [] as string[] })),
+      http<{ awards: string[]; nominations: string[]; studios: string[]; director: string | null; keywords: string[] }>(`/api/awards/${itemType}/${itemId}?api_key=${encodeURIComponent(tmdbKey)}&lang=${encodeURIComponent(lang)}`, { timeout: 15000 }).catch(() => ({ awards: [] as string[], nominations: [] as string[], studios: [] as string[], director: null, keywords: [] as string[] })),
     ])
     const origLang = details.original_language
-    const imageLangs = origLang && origLang !== lang && origLang !== "en" ? `${lang},en,null,${origLang}` : `${lang},en,null`
-    const data = await http<{ posters: TMDBImage[]; logos: TMDBImage[]; backdrops: TMDBImage[] }>(`/api/tmdb/${itemId}/images?type=${itemType}&languages=${imageLangs}&api_key=${tmdbKey}`, { timeout: 30000 }).catch(() => ({ posters: [] as TMDBImage[], logos: [] as TMDBImage[], backdrops: [] as TMDBImage[] }))
+    const imageLangs = origLang && origLang !== lang && origLang !== "en" ? `${defaultImageLangs},${origLang}` : defaultImageLangs
+    let data = await imagesPromise
+    if (imageLangs !== defaultImageLangs) {
+      // Solo quando la lingua originale aggiunge copertura: refetch e merge.
+      const extra = await http<ImageLists>(imagesUrl(imageLangs), { timeout: 30000, retries: 0 }).catch(() => null)
+      if (extra && navigation.fetchIdRef.current === fetchId) data = mergeImageLists(data, extra)
+    }
     if (navigation.fetchIdRef.current !== fetchId) return null
     navigation.setSelected({ ...item, imdb_id: details.imdb_id })
     navigation.setPosters(data.posters || [])
@@ -717,7 +1138,7 @@ export function usePictorium(): PictoriumCtx {
     if (details.title) navigation.setSelected((prev) => ({ ...prev!, title: details.title! }))
     if (details.name) navigation.setSelected((prev) => ({ ...prev!, name: details.name! }))
     const tmdbNetworks = itemType === "tv" ? (details.networks || []).map((n: { name: string }) => n.name) : (details.production_companies || []).map((c: { name: string }) => c.name)
-    setMetaInfo({ genres: details.genres || [], voteAverage: details.voteAverage || 0, voteCount: details.voteCount ?? 0, aggregatedRatings: details.aggregatedRatings ?? null, imdb_id: details.imdb_id ?? undefined, type: details.type ?? undefined, status: details.status ?? undefined, release_date: details.release_date ?? undefined, first_air_date: details.first_air_date ?? undefined, last_air_date: details.last_air_date ?? undefined, next_episode_to_air: details.next_episode_to_air ?? undefined, number_of_seasons: details.number_of_seasons ?? undefined, number_of_episodes: details.number_of_episodes ?? undefined, awards: awardData?.awards || [], nominations: awardData?.nominations || [], studios: matchTMDBStudios(tmdbNetworks).length ? matchTMDBStudios(tmdbNetworks) : (awardData?.studios || []), director: awardData?.director || null, keywords: awardData?.keywords || [], networksDetailed: details.networks || [], productionCompaniesDetailed: details.production_companies || [] })
+    setMetaInfo({ genres: details.genres || [], voteAverage: details.voteAverage || 0, voteCount: details.voteCount ?? 0, aggregatedRatings: details.aggregatedRatings ?? null, imdb_id: details.imdb_id ?? undefined, wikidata_id: details.wikidata_id ?? undefined, type: details.type ?? undefined, status: details.status ?? undefined, release_date: details.release_date ?? undefined, first_air_date: details.first_air_date ?? undefined, last_air_date: details.last_air_date ?? undefined, next_episode_to_air: details.next_episode_to_air ?? undefined, number_of_seasons: details.number_of_seasons ?? undefined, number_of_episodes: details.number_of_episodes ?? undefined, awards: awardData?.awards || [], nominations: awardData?.nominations || [], studios: matchTMDBStudios(tmdbNetworks).length ? matchTMDBStudios(tmdbNetworks) : (awardData?.studios || []), director: awardData?.director || null, keywords: awardData?.keywords || [], networksDetailed: details.networks || [], productionCompaniesDetailed: details.production_companies || [] })
     setTrendRank(rankData.rank || null)
     const extImdbId = item.imdb_id || details.imdb_id
     if (extImdbId) {
@@ -739,7 +1160,7 @@ export function usePictorium(): PictoriumCtx {
   // --- Aggiornamento reattivo voto medio quando cambia ratingSources ---
   useEffect(() => {
     if (metaInfo.aggregatedRatings) {
-      const calculated = calculateAverageRating(metaInfo.aggregatedRatings, ratingSources)
+      const calculated = computeVote(metaInfo.aggregatedRatings, ratingSources)
       if (typeof calculated === "number" && calculated > 0) {
         setMetaInfo((prev) => ({ ...prev, voteAverage: calculated }))
         return
@@ -781,24 +1202,43 @@ export function usePictorium(): PictoriumCtx {
       if (navigation.previewPoster) {
         const match = (data.posters || []).find((p: TMDBImage) => p.file_path === navigation.previewPoster!.file_path)
         if (!match) {
+          const oldPoster = navigation.previewPoster
+          // Stessa regola del cambio manuale: preset/tweak sopravvivono,
+          // solo lo stato pristine si ricalibra sul nuovo tipo.
+          const applyFor = (next: TMDBImage) => {
+            const adj = adjustGradientForPosterChange(
+              { gradientHeight, blurFade },
+              oldPoster,
+              next,
+            )
+            if (adj) {
+              setGradientHeight(adj.gradientHeight)
+              setBlurFade(adj.blurFade)
+            }
+          }
           const clean = data.posters?.find((p: TMDBImage) => p.iso_639_1 === null)
           const langPoster = data.posters?.find((p: TMDBImage) => p.iso_639_1 === lang)
           const firstPoster = data.posters?.[0]
-          if (clean) {
+          // Con "disattiva clean" il clean non è mai preferito (né qui né sotto):
+          // la catena resta lingua -> originale -> primo non-clean.
+          const firstNonClean = defaultDisableCleanPosters
+            ? data.posters?.find((p: TMDBImage) => p.iso_639_1 !== null)
+            : undefined
+          if (clean && !defaultDisableCleanPosters) {
             const autoLogo = selectBestLogo(data.logos || [], lang, details.original_language)
             if (autoLogo) {
               navigation.setPreviewPoster({ file_path: clean.file_path, iso_639_1: null, vote_average: 0, width: 0, height: 0 })
-              setGradientHeight(defaultGradientHeightForPoster(clean, defaultGradientHeight))
+              applyFor(clean)
             } else {
               const enPoster = data.posters?.find((p: TMDBImage) => p.iso_639_1 === "en")
               const nextPoster = langPoster || enPoster || firstPoster || navigation.previewPoster
               navigation.setPreviewPoster(nextPoster)
-              setGradientHeight(defaultGradientHeightForPoster(nextPoster, defaultGradientHeight))
+              applyFor(nextPoster)
             }
           } else {
-            const nextPoster = langPoster || firstPoster || navigation.previewPoster
+            const nextPoster = langPoster || firstNonClean || firstPoster || navigation.previewPoster
             navigation.setPreviewPoster(nextPoster)
-            setGradientHeight(defaultGradientHeightForPoster(nextPoster, defaultGradientHeight))
+            applyFor(nextPoster)
           }
         }
       }
@@ -814,6 +1254,17 @@ export function usePictorium(): PictoriumCtx {
   }, [lang, editorCtx.defaultRegion])
 
   const openPosterBrowser = async (item: SearchResult) => {
+    // Default logo globali per formato (Impostazioni · Verticale/Orizzontale):
+    // in landscape vince l'override Orizzontale, altrove il flat. Null =
+    // unset (auto-fit per la scala, 0 per gli offset). Usati all'apertura e
+    // alla scelta logo quando il mapping non congela un valore proprio.
+    const logoScaleDefaultFor = (shape: string): number | null =>
+      (shape === "landscape" ? landscapeDefaults?.logoScale : undefined) ?? defaultLogoScale ?? null
+    const logoOffsetDefault = (shape: string, axis: "x" | "y"): number | null => {
+      const land = shape === "landscape" ? landscapeDefaults : undefined
+      const flat = axis === "x" ? defaultLogoOffsetX : defaultLogoOffsetY
+      return (axis === "x" ? land?.logoOffsetX : land?.logoOffsetY) ?? flat ?? null
+    }
     const itemId = item.id
     const itemType = item.media_type
     const fetchId = navigation.incrementFetchId()
@@ -833,9 +1284,16 @@ export function usePictorium(): PictoriumCtx {
     // per evitare race condition: se l'utente cambia opzioni mentre
     // i dati sono in caricamento, la vecchia fetch non deve sovrascrivere
     const existing = mappingsMap.get(`${itemType}:${itemId}`)
+    // Fonti che saranno attive per questo titolo (per-titolo salvato o default):
+    // stesse per setRatingSources e per il fetch details qui sotto — così il
+    // voto in metaInfo nasce già corretto e l'effetto [ratingSources] lo
+    // conferma invece di gareggiare con un fetch su fonti diverse.
+    const nextSources = existing?.ratingSources ?? defaultRatingSources
     if (existing) {
       setBadgeStyle(existing.badgeStyle ?? defaultBadgeStyle)
       setRankingBadgeStyle(existing.rankingBadgeStyle ?? defaultRankingBadgeStyle)
+      setQualityBadgeStyle(existing.qualityBadgeStyle ?? defaultQualityBadgeStyle)
+      setVideoFormats(existing.videoFormats ?? null)
       setGlobalBadges(existing.showBadges ?? defaultGlobalBadges)
       setRankingBadges(existing.rankingBadges ?? defaultRankingBadges)
       setBadgeGenre(existing.badgeGenre ?? defaultBadgeGenre)
@@ -843,39 +1301,76 @@ export function usePictorium(): PictoriumCtx {
       setBadgeRating(existing.badgeRating ?? defaultBadgeRating)
       setBadgeQuality(existing.badgeQuality ?? defaultBadgeQuality)
       setCustomRatings(existing.customRatings ?? defaultCustomRatings)
+      setRatingSources(nextSources)
+      setSeparateRatings(existing.separateRatings ?? defaultSeparateRatings)
       setNetworkLogo(existing.networkLogo ?? defaultNetworkLogo)
       setAccentDominant(existing.accentDominant ?? defaultAccentDominant)
       setBadgeTopScale(existing.badgeTopScale ?? defaultBadgeTopScale)
       setBadgeBottomScale(existing.badgeBottomScale ?? defaultBadgeBottomScale)
       setBadgeTopOffset(existing.badgeTopOffset ?? defaultBadgeTopOffset)
       setBadgeBottomOffset(existing.badgeBottomOffset ?? defaultBadgeBottomOffset)
+      setNetworkLogoPosition(existing.networkLogoPosition ?? defaultNetworkLogoPosition)
       // ribbonSide solo globale: i mapping storici con valore salvato lo ignorano,
       // così la preview resta sincrona con Stremio (side dal default d'istanza).
       setRibbonSide(defaultRibbonSide)
-      setGradientHeight(existing.gradientHeight ?? defaultGradientHeight)
-      setTopBadgeScale(existing.topBadgeScale ?? defaultTopBadgeScale)
-      setTopBadgeOffsetX(existing.topBadgeOffsetX ?? defaultTopBadgeOffsetX)
-      setTopBadgeOffsetY(existing.topBadgeOffsetY ?? defaultTopBadgeOffsetY)
-      setGenreBadgeScale(existing.genreBadgeScale ?? defaultGenreBadgeScale)
-      setQualityBadgeScale(existing.qualityBadgeScale ?? defaultQualityBadgeScale)
-      setNetworkLogoScale(existing.networkLogoScale ?? defaultNetworkLogoScale)
-      setGenreBadgeOffsetX(existing.genreBadgeOffsetX ?? defaultGenreBadgeOffsetX)
-      setGenreBadgeOffsetY(existing.genreBadgeOffsetY ?? defaultGenreBadgeOffsetY)
-      setQualityBadgeOffsetX(existing.qualityBadgeOffsetX ?? defaultQualityBadgeOffsetX)
-      setQualityBadgeOffsetY(existing.qualityBadgeOffsetY ?? defaultQualityBadgeOffsetY)
-      setNetworkLogoOffsetX(existing.networkLogoOffsetX ?? defaultNetworkLogoOffsetX)
-      setNetworkLogoOffsetY(existing.networkLogoOffsetY ?? defaultNetworkLogoOffsetY)
-      setBlurIntensity(existing.blurIntensity ?? defaultBlurIntensity)
-      setBlurFade(existing.blurFade ?? defaultBlurFade)
-      setBlurDarkness(existing.blurDarkness ?? defaultBlurDarkness)
-      setBlurEnabled(existing.blurEnabled ?? defaultBlurEnabled)
+      setRibbonEnabled(existing.ribbonEnabled ?? defaultRibbonEnabled)
+      setPosterShape(existing.posterShape ?? defaultPosterShape)
+      // Allineamento fisso per formato (verticale sempre centro,
+      // orizzontale default globale o sinistra): nessun settaggio deve
+      // mai spostare i portrait (contratto legacy).
+      setLogoAlign((existing.posterShape ?? defaultPosterShape) === "landscape" ? (defaultLogoAlign ?? "left") : "center")
+      // Profili per-formato: all'apertura gli slider mostrano il tuning
+      // effettivo del formato salvato (landscape = profilo orizzontale).
+      // I flat sfumatura sono il profilo PORTRAIT (la sezione Orizzontale ha
+      // il suo store dedicato landscapeBlur, inizializzato qui sotto).
+      const eff = effectiveMappingForShape(existing ?? null, existing?.posterShape ?? defaultPosterShape)
+      setGradientHeight(existing?.gradientHeight ?? defaultGradientHeight)
+      setTopBadgeScale(eff?.topBadgeScale ?? defaultTopBadgeScale)
+      setTopBadgeOffsetX(eff?.topBadgeOffsetX ?? defaultTopBadgeOffsetX)
+      setTopBadgeOffsetY(eff?.topBadgeOffsetY ?? defaultTopBadgeOffsetY)
+      setGenreBadgeScale(eff?.genreBadgeScale ?? defaultGenreBadgeScale)
+      setQualityBadgeScale(eff?.qualityBadgeScale ?? defaultQualityBadgeScale)
+      setNetworkLogoScale(eff?.networkLogoScale ?? defaultNetworkLogoScale)
+      setGenreBadgeOffsetX(eff?.genreBadgeOffsetX ?? defaultGenreBadgeOffsetX)
+      setGenreBadgeOffsetY(eff?.genreBadgeOffsetY ?? defaultGenreBadgeOffsetY)
+      setQualityBadgeOffsetX(eff?.qualityBadgeOffsetX ?? defaultQualityBadgeOffsetX)
+      setQualityBadgeOffsetY(eff?.qualityBadgeOffsetY ?? defaultQualityBadgeOffsetY)
+      setNetworkLogoOffsetX(eff?.networkLogoOffsetX ?? defaultNetworkLogoOffsetX)
+      setNetworkLogoOffsetY(eff?.networkLogoOffsetY ?? defaultNetworkLogoOffsetY)
+      setBlurIntensity(existing?.blurIntensity ?? defaultBlurIntensity)
+      setTintStrength(eff?.tintStrength ?? defaultTintStrength)
+      // Ombra superiore: solo per-titolo (flat, niente profilo landscape) —
+      // default globale quando il mapping non ce l'ha.
+      setTopShade(existing.topShade ?? defaultTopShade)
+      setBlurFade(existing?.blurFade ?? defaultBlurFade)
+      setBlurDarkness(existing?.blurDarkness ?? defaultBlurDarkness)
+      setBlurEnabled(existing?.blurEnabled ?? defaultBlurEnabled)
+      // Profilo sfumatura landscape (sezione Orizzontale): mapping.landscape
+      // con fallback ai default globali Orizzontale, poi al default flat
+      // (come il server), poi al default di formato (fade 70).
+      const landEff = effectiveMappingForShape(existing ?? null, "landscape")
+      resetLandscapeBlur({
+        gradientHeight: landEff?.gradientHeight ?? landscapeDefaults?.gradientHeight ?? defaultGradientHeight,
+        blurEnabled: landEff?.blurEnabled ?? landscapeDefaults?.blurEnabled ?? defaultBlurEnabled,
+        blurIntensity: landEff?.blurIntensity ?? landscapeDefaults?.blurIntensity ?? defaultBlurIntensity,
+        blurFade: landEff?.blurFade ?? landscapeDefaults?.blurFade ?? defaultBlurFade ?? 70,
+        blurDarkness: landEff?.blurDarkness ?? landscapeDefaults?.blurDarkness ?? defaultBlurDarkness,
+        tintStrength: landEff?.tintStrength ?? landscapeDefaults?.tintStrength ?? defaultTintStrength,
+        topShade: landEff?.topShade ?? landscapeDefaults?.topShade ?? defaultTopShade,
+      })
       setCustomBadge(existing.customBadge ?? null)
       setRotationPosters(existing.cleanPosters || [])
       setAutoRotateClean(existing.autoRotateClean ?? defaultAutoRotateClean)
       setExcludedPosters(existing.excludedPosters || [])
+      setRotationBackdrops(existing.cleanBackdrops || [])
+      setAutoRotateBackdrop(existing.autoRotateBackdrop ?? defaultAutoRotateBackdrop)
+      setExcludedBackdrops(existing.excludedBackdrops || [])
       setLogoDisabled(existing.logoDisabled ?? false)
-      setLogoOffsetX(existing.logoOffsetX ?? 0)
-      setLogoOffsetY(existing.logoOffsetY ?? 0)
+      // Offset logo: profilo salvato (mapping.landscape in landscape) > default
+      // globali (Orizzontale nel formato) > 0. La calibrazione +10/-10 vive nel
+      // renderer, invisibile agli slider.
+      setLogoOffsetX(eff?.logoOffsetX ?? logoOffsetDefault(existing?.posterShape ?? defaultPosterShape, "x") ?? 0)
+      setLogoOffsetY(eff?.logoOffsetY ?? logoOffsetDefault(existing?.posterShape ?? defaultPosterShape, "y") ?? 0)
       setBackdropScale(existing.backdropScale ?? 100)
       setBackdropOffsetX(existing.backdropOffsetX ?? 0)
       setBackdropOffsetY(existing.backdropOffsetY ?? 0)
@@ -888,22 +1383,62 @@ export function usePictorium(): PictoriumCtx {
       setBadgeYear(defaultBadgeYear)
       setBadgeRating(defaultBadgeRating)
       setBadgeQuality(defaultBadgeQuality)
+      setQualityBadgeStyle(defaultQualityBadgeStyle)
+      setVideoFormats(null)
       setCustomRatings(defaultCustomRatings)
+      setRatingSources(nextSources)
+      setSeparateRatings(defaultSeparateRatings)
       setGradientHeight(defaultGradientHeight)
       setBlurIntensity(defaultBlurIntensity)
       setTintStrength(defaultTintStrength)
+      setTopShade(defaultTopShade)
       setBlurFade(defaultBlurFade)
       setBlurDarkness(defaultBlurDarkness)
       setBlurEnabled(defaultBlurEnabled)
+      resetLandscapeBlur({
+        gradientHeight: landscapeDefaults?.gradientHeight ?? defaultGradientHeight,
+        blurEnabled: landscapeDefaults?.blurEnabled ?? defaultBlurEnabled,
+        blurIntensity: landscapeDefaults?.blurIntensity ?? defaultBlurIntensity,
+        // Come il server (effectiveDefaultsForShape): senza override
+        // Orizzontale si eredita il default flat, non 70 fisso.
+        blurFade: landscapeDefaults?.blurFade ?? defaultBlurFade ?? 70,
+        blurDarkness: landscapeDefaults?.blurDarkness ?? defaultBlurDarkness,
+        tintStrength: landscapeDefaults?.tintStrength ?? defaultTintStrength,
+        topShade: landscapeDefaults?.topShade ?? defaultTopShade,
+      })
+      // Scale badge: con default Orizzontale gli slider partono dai default
+      // globali Orizzontale (come la sfumatura sopra); in portrait resta lo
+      // storico (valori correnti preservati, mai resettati all'apertura).
+      if (defaultPosterShape === "landscape") {
+        setTopBadgeScale(landscapeDefaults?.topBadgeScale ?? defaultTopBadgeScale)
+        setTopBadgeOffsetX(landscapeDefaults?.topBadgeOffsetX ?? defaultTopBadgeOffsetX)
+        setTopBadgeOffsetY(landscapeDefaults?.topBadgeOffsetY ?? defaultTopBadgeOffsetY)
+        setGenreBadgeScale(landscapeDefaults?.genreBadgeScale ?? defaultGenreBadgeScale)
+        setGenreBadgeOffsetX(landscapeDefaults?.genreBadgeOffsetX ?? defaultGenreBadgeOffsetX)
+        setGenreBadgeOffsetY(landscapeDefaults?.genreBadgeOffsetY ?? defaultGenreBadgeOffsetY)
+        setQualityBadgeScale(landscapeDefaults?.qualityBadgeScale ?? defaultQualityBadgeScale)
+        setQualityBadgeOffsetX(landscapeDefaults?.qualityBadgeOffsetX ?? defaultQualityBadgeOffsetX)
+        setQualityBadgeOffsetY(landscapeDefaults?.qualityBadgeOffsetY ?? defaultQualityBadgeOffsetY)
+        setNetworkLogoScale(landscapeDefaults?.networkLogoScale ?? defaultNetworkLogoScale)
+        setNetworkLogoOffsetX(landscapeDefaults?.networkLogoOffsetX ?? defaultNetworkLogoOffsetX)
+        setNetworkLogoOffsetY(landscapeDefaults?.networkLogoOffsetY ?? defaultNetworkLogoOffsetY)
+      }
       setNetworkLogo(defaultNetworkLogo)
+      setNetworkLogoPosition(defaultNetworkLogoPosition)
       setRibbonSide(defaultRibbonSide)
+      setRibbonEnabled(defaultRibbonEnabled)
+      setPosterShape(defaultPosterShape)
+      setLogoAlign(defaultPosterShape === "landscape" ? (defaultLogoAlign ?? "left") : "center")
       setCustomBadge(null)
       setRotationPosters([])
       setAutoRotateClean(defaultAutoRotateClean)
       setExcludedPosters([])
+      setRotationBackdrops([])
+      setAutoRotateBackdrop(defaultAutoRotateBackdrop)
+      setExcludedBackdrops([])
       setLogoDisabled(false)
-      setLogoOffsetX(0)
-      setLogoOffsetY(0)
+      setLogoOffsetX(logoOffsetDefault(defaultPosterShape, "x") ?? 0)
+      setLogoOffsetY(logoOffsetDefault(defaultPosterShape, "y") ?? 0)
       setSelectedBackdrop(null)
       setBackdropScale(100)
       setBackdropOffsetX(0)
@@ -911,13 +1446,20 @@ export function usePictorium(): PictoriumCtx {
     }
 
     try {
-      const loaded = await loadCurrentItemData(item, fetchId)
+      const loaded = await loadCurrentItemData(item, fetchId, nextSources)
       if (!loaded) return
       const { details, data } = loaded
       const existing = mappingsMap.get(`${itemType}:${itemId}`)
       if (existing) {
-        const foundPoster = (data.posters || []).find((p: TMDBImage) => p.file_path === existing.posterPath)
-        navigation.setPreviewPoster(foundPoster ? { file_path: foundPoster.file_path, iso_639_1: foundPoster.iso_639_1, vote_average: 0, width: foundPoster.width, height: foundPoster.height } : { file_path: existing.posterPath, iso_639_1: existing.language, vote_average: 0, width: 0, height: 0 })
+        // Base custom salvata: la preview parte dal tile custom (highlight e
+        // preview coerenti), non dal riferimento TMDB di fallback.
+        const customFile = existing.customPosterUrl && isCustomPosterUrl(existing.customPosterUrl)
+          ? existing.customPosterUrl
+          : null
+        const previewFilePath = customFile ?? existing.posterPath
+        const previewLang = customFile ? null : existing.language
+        const foundPoster = !customFile ? (data.posters || []).find((p: TMDBImage) => p.file_path === existing.posterPath) : undefined
+        navigation.setPreviewPoster(foundPoster ? { file_path: foundPoster.file_path, iso_639_1: foundPoster.iso_639_1, vote_average: 0, width: foundPoster.width, height: foundPoster.height } : { file_path: previewFilePath, iso_639_1: previewLang, vote_average: 0, width: 0, height: 0 })
         let foundLogo: TMDBImage | undefined
         if (existing.logoPath) {
           foundLogo = (data.logos || []).find((l: TMDBImage) => l.file_path === existing.logoPath)
@@ -926,11 +1468,12 @@ export function usePictorium(): PictoriumCtx {
           const autoLogo = autoLogoSelection(data.logos || [], lang, details.original_language, `${itemType}/${itemId}`)
           if (autoLogo) {
             navigation.setSelectedLogo({ file_path: autoLogo.file_path, iso_639_1: autoLogo.iso_639_1, vote_average: 0, width: autoLogo.width, height: autoLogo.height })
-            const scale = logoDefaultScale(autoLogo)
+            // Scala logo: default globale per formato > auto-fit per aspect.
+            const scale = logoScaleDefaultFor(existing.posterShape ?? defaultPosterShape) ?? logoDefaultScale(autoLogo)
             if (scale !== null) setLogoScale(scale)
           }
         }
-        setLogoScale(existing.logoScale ?? 75)
+        setLogoScale(effectiveMappingForShape(existing, existing.posterShape ?? defaultPosterShape)?.logoScale ?? logoScaleDefaultFor(existing.posterShape ?? defaultPosterShape) ?? 75)
         if (existing.backdropPath && data.backdrops) {
           const foundBackdrop = data.backdrops.find((b: TMDBImage) => b.file_path === existing.backdropPath)
           setSelectedBackdrop(foundBackdrop || { file_path: existing.backdropPath, iso_639_1: null, vote_average: 0, width: 0, height: 0 })
@@ -941,27 +1484,36 @@ export function usePictorium(): PictoriumCtx {
         setBadgeBottomScale(existing.badgeBottomScale ?? defaultBadgeBottomScale)
         setBadgeTopOffset(existing.badgeTopOffset ?? defaultBadgeTopOffset)
         setBadgeBottomOffset(existing.badgeBottomOffset ?? defaultBadgeBottomOffset)
+        setNetworkLogoPosition(existing.networkLogoPosition ?? defaultNetworkLogoPosition)
         setEpisodeGroupId(existing.episodeGroupId ?? null)
       } else {
         setLogoDisabled(false)
         setNetworkLogo(defaultNetworkLogo)
+        setNetworkLogoPosition(defaultNetworkLogoPosition)
         setEpisodeGroupId(null)
         const clean = data.posters?.find((p: TMDBImage) => p.iso_639_1 === null)
         const langPoster = data.posters?.find((p: TMDBImage) => p.iso_639_1 === lang)
         const firstPoster = data.posters?.[0]
+        // Con "disattiva clean" si salta il ramo clean+logo e si usa la catena
+        // lingua -> en -> originale -> primo non-clean (badge invariati, niente
+        // logo sopra in portrait). La scelta manuale di un clean resta possibile.
+        const firstNonClean = defaultDisableCleanPosters
+          ? data.posters?.find((p: TMDBImage) => p.iso_639_1 !== null)
+          : undefined
         let chosenPoster: TMDBImage | null = null
-        if (clean) {
+        if (clean && !defaultDisableCleanPosters) {
           const autoLogo = autoLogoSelection(data.logos || [], lang, details.original_language, `${itemType}/${itemId}`)
           if (autoLogo) {
             chosenPoster = clean
             navigation.setPreviewPoster({ file_path: clean.file_path, iso_639_1: null, vote_average: 0, width: 0, height: 0 })
             navigation.setSelectedLogo({ file_path: autoLogo.file_path, iso_639_1: autoLogo.iso_639_1, vote_average: 0, width: autoLogo.width, height: autoLogo.height })
-            const scale = logoDefaultScale(autoLogo)
+            // Scala logo: default globale per formato > auto-fit per aspect.
+            const scale = logoScaleDefaultFor(defaultPosterShape) ?? logoDefaultScale(autoLogo)
             if (scale !== null) setLogoScale(scale)
           } else {
             const enPoster = data.posters?.find((p: TMDBImage) => p.iso_639_1 === "en")
             const origPoster = details.original_language ? data.posters?.find((p: TMDBImage) => p.iso_639_1 === details.original_language) : undefined
-            const fallbackPoster = langPoster || enPoster || origPoster || firstPoster
+            const fallbackPoster = langPoster || enPoster || origPoster || firstNonClean || firstPoster
             if (fallbackPoster) {
               chosenPoster = fallbackPoster
               navigation.setPreviewPoster({ file_path: fallbackPoster.file_path, iso_639_1: fallbackPoster.iso_639_1, vote_average: 0, width: 0, height: 0 })
@@ -972,14 +1524,31 @@ export function usePictorium(): PictoriumCtx {
           navigation.setPreviewPoster({ file_path: langPoster.file_path, iso_639_1: lang, vote_average: 0, width: 0, height: 0 })
         } else {
           const origPoster = details.original_language ? data.posters?.find((p: TMDBImage) => p.iso_639_1 === details.original_language) : undefined
-          const fallbackPoster = origPoster || firstPoster
+          const fallbackPoster = origPoster || firstNonClean || firstPoster
           if (fallbackPoster) {
             chosenPoster = fallbackPoster
             navigation.setPreviewPoster({ file_path: fallbackPoster.file_path, iso_639_1: fallbackPoster.iso_639_1, vote_average: 0, width: 0, height: 0 })
           }
         }
+        // Solo landscape: senza poster clean (o con clean disattivati) il logo
+        // si auto-seleziona comunque (la base è il backdrop, senza testo). In
+        // portrait invariato: niente auto-logo senza clean.
+        if ((!clean || defaultDisableCleanPosters) && defaultPosterShape === "landscape" && (data.logos?.length ?? 0) > 0) {
+          const autoLogo = autoLogoSelection(data.logos || [], lang, details.original_language, `${itemType}/${itemId}`)
+          if (autoLogo) {
+            navigation.setSelectedLogo({ file_path: autoLogo.file_path, iso_639_1: autoLogo.iso_639_1, vote_average: 0, width: autoLogo.width, height: autoLogo.height })
+            // Scala logo: default globale per formato > auto-fit per aspect.
+            const landscapeLogoScale = logoScaleDefaultFor(defaultPosterShape) ?? logoDefaultScale(autoLogo)
+            if (landscapeLogoScale !== null) setLogoScale(landscapeLogoScale)
+          }
+        }
         loadDefaultsToState()
-        if (chosenPoster) setGradientHeight(defaultGradientHeightForPoster(chosenPoster, defaultGradientHeight))
+        if (chosenPoster) {
+          // Default personalizzati (es. preset Colore) restano assoluti;
+          // solo il legacy Naturale si ricalibra per tipo poster.
+          setGradientHeight(defaultHeightForPoster(defaultGradientHeight, chosenPoster))
+          setBlurFade(defaultFadeForPoster(defaultBlurFade, chosenPoster))
+        }
       }
     } finally {
       setLoadingImages(false)
@@ -1004,21 +1573,23 @@ export function usePictorium(): PictoriumCtx {
     mappingsMap, loadMappings, logoScale, logoOffsetX, logoOffsetY,
     selectedBackdrop, setSelectedBackdrop: setSelectedBackdrop, backdropScale, backdropOffsetX, backdropOffsetY,
     setBackdropScale, setBackdropOffsetX, setBackdropOffsetY,
-    globalBadges, rankingBadges, customBadge, badgeStyle, rankingBadgeStyle,
-    badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings,
-    defaultBadgeStyle, defaultRankingBadgeStyle, blurEnabled, tintStrength, blurIntensity, blurFade, blurDarkness, gradientHeight, defaultGradientHeight,
+    globalBadges, rankingBadges, customBadge, badgeStyle, rankingBadgeStyle, qualityBadgeStyle, videoFormats,
+    badgeGenre, badgeYear, badgeRating, badgeQuality, customRatings, ratingSources, separateRatings,
+    defaultBadgeStyle, defaultRankingBadgeStyle, blurEnabled, blurIntensity, blurFade, blurDarkness, landscapeBlur, landscapeBlurDirty, setLandscapeBlur, defaultLogoScale, defaultLogoOffsetX, defaultLogoOffsetY, landscapeDefaults, tintStrength, topShade, gradientHeight,
     topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale,
     genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY,
     networkLogoOffsetX, networkLogoOffsetY,
     accentDominant, badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset,
-    textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, ribbonSide,
-    setGradientHeight,
+    textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
+    setGradientHeight, setBlurFade,
     rotationPosters, autoRotateClean, defaultAutoRotateClean, excludedPosters, accentColor, autoAccentColor, logoDisabled, setLogoDisabled,
-    setLogoScale, setLogoOffsetX, setLogoOffsetY, networkLogo, lang, episodeGroupId,
+    rotationBackdrops, autoRotateBackdrop, defaultAutoRotateBackdrop, excludedBackdrops, backdrops,
+    setLogoScale, setLogoOffsetX, setLogoOffsetY, networkLogo, networkLogoPosition, ribbonEnabled, lang, episodeGroupId, posterShape,
+    defaultSashOrder,
   })
 
   const saveConfig = useCallback(async () => {
-    await savePosterConfig()
+    return await savePosterConfig()
   }, [savePosterConfig])
 
   const autoSaveExcludedPosters = useCallback(async (nextExcluded: string[], nextRotationPosters?: string[], nextPreviewPoster?: TMDBImage) => {
@@ -1030,6 +1601,19 @@ export function usePictorium(): PictoriumCtx {
     })
   }, [savePosterConfig, rotationPosters])
 
+  const autoSaveExcludedBackdrops = useCallback(async (nextExcluded: string[], nextRotationBackdrops?: string[], nextBackdrop?: TMDBImage | null) => {
+    await savePosterConfig({
+      excludedBackdrops: nextExcluded,
+      rotationBackdrops: nextRotationBackdrops ?? rotationBackdrops,
+      ...(nextBackdrop !== undefined ? { selectedBackdrop: nextBackdrop } : {}),
+      silent: true,
+    })
+  }, [savePosterConfig, rotationBackdrops])
+
+  // Prefetch hover sui risultati di ricerca — implementazione in
+  // usePrefetchTitle.ts (stesse deps, stessa identità del callback).
+  const prefetchTitle = usePrefetchTitle({ tmdbKey, serverHasTmdbKey, lang, defaultRegion: editorCtx.defaultRegion })
+
   return useMemo(() => ({
     selected: navigation.selected, setSelected: navigation.setSelected,
     view: navigation.view, setView: navigation.setView as React.Dispatch<React.SetStateAction<ViewType>>,
@@ -1039,7 +1623,7 @@ export function usePictorium(): PictoriumCtx {
     selectedLogo: navigation.selectedLogo, setSelectedLogo: navigation.setSelectedLogo,
     logos: navigation.logos,
     posterActivePath: posterActivePath ?? null,
-    previewUrl, urlPattern, logoUrlPattern, lang,
+    previewUrl, stremioPreview, setStremioPreview, stremioPreviewUrl, urlPattern, urlPatternImdb, urlPatternAuto, logoUrlPattern, lang,
     openSections, toggleSection: (key: string) => setOpenSections((prev) => ({ ...prev, [key]: !(prev[key] ?? true) })),
     posterScrollRef, posterScrollInfo, setPosterScrollInfo,
     selectPoster, selectLogo, removeLogo,
@@ -1066,13 +1650,17 @@ export function usePictorium(): PictoriumCtx {
     tmdbKeyInput, setTmdbKeyInput,
     showKey, setShowKey, setTmdbKey,
     serverHasTmdbKey,
+    serverKeyStatus,
+    currentUserId,
     mdblistApiKey, setMdblistApiKey: setMdblistApiKeyFn,
     tvdbApiKey, setTvdbApiKey: setTvdbApiKeyFn,
     exportData, importData, removeRecentSearch: search.removeRecentSearch, clearRecentSearches: search.clearRecentSearches,
     copyUrl, copied,
     accentColor, autoAccentColor, setAccentColor,
-    topEdgeColor,
+    topEdgeColor, bottomEdgeColor,
     autoSaveExcludedPosters,
+    autoSaveExcludedBackdrops,
+    prefetchTitle,
     theme, setTheme,
     uiAccent, setUiAccent,
     serviceErrors, setServiceErrors,
@@ -1086,7 +1674,7 @@ export function usePictorium(): PictoriumCtx {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- context value deps intentionally stable to prevent re-render cascades
   }), [
     navigation.selected, navigation.view, navigation.posters, loadingImages, navigation.previewPoster, navigation.selectedLogo,
-    navigation.logos, posterActivePath, previewUrl, urlPattern, lang,
+    navigation.logos, posterActivePath, previewUrl, stremioPreview, stremioPreviewUrl, urlPattern, logoUrlPattern, lang,
     openSections, posterScrollInfo, logoBounds,
     trendRank, mdblistMatch, imdbTop250, metaInfo, navigation.previewId,
     selectPoster, selectLogo, saveConfig, removeLogo,
@@ -1095,8 +1683,10 @@ export function usePictorium(): PictoriumCtx {
     langOpen, settingsOpen, showLangPicker,
     tmdbKeyInput, showKey, copied, mdblistApiKey, tvdbApiKey,
     serverHasTmdbKey,
+    serverKeyStatus,
+    currentUserId,
     accentColor, autoAccentColor, setAccentColor,
-    topEdgeColor, autoSaveExcludedPosters,
+    topEdgeColor, bottomEdgeColor, autoSaveExcludedPosters, autoSaveExcludedBackdrops, prefetchTitle,
     trending.trending, trending.trendingError, trending.streamingCharts, trending.mdblistAnimeList,
     trending.refreshLists,
     theme, uiAccent, serviceErrors, hasNetflixRank,

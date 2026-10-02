@@ -19,6 +19,7 @@ export function SearchView() {
   const hasKey = !!tmdbKey || serverHasTmdbKey
   const mappingsMap = usePSelector((v) => v.mappingsMap)
   const navigateToPoster = usePSelector((v) => v.navigateToPoster)
+  const prefetchTitle = usePSelector((v) => v.prefetchTitle)
   const router = usePSelector((v) => v.router)
   const [searchFocused, setSearchFocused] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -222,6 +223,8 @@ export function SearchView() {
                 type="button"
                 key={`${r.media_type}:${r.id}`}
                 onClick={() => navigateToPoster(r)}
+                onMouseEnter={() => prefetchTitle(r)}
+                onFocus={() => prefetchTitle(r)}
                 aria-label={`${title} (${year})`}
                 className="surface-card group relative rounded-xl overflow-hidden transition-all duration-300 ease-out w-full border border-white/10 shadow-2xl hover:-translate-y-[3px] hover:scale-[1.015] hover:shadow-[0_22px_48px_rgba(0,0,0,0.48),0_0_22px_rgba(232,93,42,0.10)] hover:border-white/20 active:scale-[0.98] cursor-pointer animate-stagger-in text-left flex flex-col"
                 style={{ animationDelay: `${Math.min(idx * 30, 300)}ms` }}

@@ -23,6 +23,19 @@ export function escSvg(s: string): string {
 /** Ebraico (blocco base + presentation forms). */
 const HEBREW_RE = /[\u0590-\u05FF\uFB1D-\uFB4F]/
 
+/** Arabo (base U+0600-06FF + supplemento U+0750-077F + presentation forms):
+ *  Rubik copre tutti questi glifi in tutti i pesi (vedi lib/fonts). Da upstream. */
+const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/
+
+/** Segni arabi a larghezza zero: tashkeel + marchi direzionali (RLM/LRM/ALM).
+ *  Non avanzano il cursore — contarli allargherebbe la pill via `textLength`. */
+const ARABIC_ZEROWIDTH_RE = /[\u064B-\u0652\u0670\u200E\u200F\u061C]/
+
+/** True se il testo contiene ebraico o arabo (serve il font Rubik). */
+function needsRubik(text: string): boolean {
+  return HEBREW_RE.test(text) || ARABIC_RE.test(text)
+}
+
 /** True se il testo contiene almeno un carattere ebraico. */
 export function containsHebrew(text: string): boolean {
   return HEBREW_RE.test(text)
@@ -60,7 +73,7 @@ const RLM = "\u200F"
  * `textLength`.
  */
 export function rtlSafe(text: string): string {
-  return HEBREW_RE.test(text) ? text + RLM : text
+  return needsRubik(text) ? text + RLM : text
 }
 
 /** FIRST STRONG ISOLATE e POP DIRECTIONAL ISOLATE: larghezza zero. */
@@ -88,10 +101,11 @@ export function bidiIsolate(text: string): string {
 }
 
 export function fontFamilyFor(text: string): string {
-  return HEBREW_RE.test(text) ? "Rubik" : "Inter"
+  return needsRubik(text) ? "Rubik" : "Inter"
 }
 
 function charWidthFactor(char: string): number {
+  if (ARABIC_ZEROWIDTH_RE.test(char)) return 0
   if (char === " ") return 0.33
   // Controlli bidi (RLM e compagnia): larghezza zero, altrimenti `rtlSafe`
   // gonfierebbe la stima e `textLength` allargherebbe i glifi per riempirla.
@@ -100,6 +114,8 @@ function charWidthFactor(char: string): number {
   // maiuscole/minuscole). Col default 0.62 la stima sforava del ~12% e
   // `lengthAdjust="spacingAndGlyphs"` allargava visibilmente i glifi.
   if (HEBREW_RE.test(char)) return 0.55
+  // Arabo in Rubik: avanzamento ~0.55-0.60em (da upstream).
+  if (ARABIC_RE.test(char)) return 0.58
   if ("iIl.,:;!'|`".includes(char)) return 0.28
   if ("-–_".includes(char)) return 0.36
   if ("fjrt".includes(char.toLowerCase())) return 0.45
@@ -361,7 +377,7 @@ function buildGenreTextFlow({ genreName, voteStr, yearStr, fs, centerX, y, parts
   t += tspan.join("")
   // L'RLM chiude la riga, non il singolo tspan: il paragrafo bidi è tutto il
   // contenuto di <text>, quindi il neutro finale va ancorato lì.
-  if (HEBREW_RE.test(genreName)) t += RLM
+  if (needsRubik(genreName)) t += RLM
   t += "</text>"
   return t
 }

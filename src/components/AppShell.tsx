@@ -6,9 +6,12 @@ import { usePSelector } from "@/lib/context"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { usePosterEditor } from "@/lib/contexts/PosterEditorContext"
 import { LangPicker } from "@/components/LangPicker"
-import { ToastProvider } from "@/components/Toast"
 import { HomeStatusStrip } from "@/components/HomeStatusStrip"
-import { Settings, Sparkles, QrCode, Palette, Layers } from "lucide-react"
+import { currentPathUuid, isUserUnlocked, requestUserUnlock, USER_UNLOCK_EVENT } from "@/lib/user-token"
+import { requestSettingsTab } from "@/lib/settings-tab"
+import { isMultiUserServer } from "@/lib/guest-guard"
+import { Settings, Sparkles, QrCode, Palette, Layers, KeyRound } from "lucide-react"
+import { DesktopCommunityLinks, MobileCommunityLinks } from "@/components/HeaderCommunityLinks"
 
 // Code-splitting: viste/modali pesanti caricate on-demand per ridurre il JS iniziale.
 const SettingsPanel = dynamic(() => import("@/components/SettingsPanel").then((m) => m.SettingsPanel), { ssr: false })
@@ -20,6 +23,7 @@ const ProxyModal = dynamic(() => import("@/components/ProxyModal").then((m) => m
 const InstallModal = dynamic(() => import("@/components/InstallModal").then((m) => m.InstallModal), { ssr: false })
 const OnboardingTour = dynamic(() => import("@/components/OnboardingTour").then((m) => m.OnboardingTour), { ssr: false })
 const PinLockModal = dynamic(() => import("@/components/PinLockModal").then((m) => m.PinLockModal), { ssr: false })
+const UserUnlockModal = dynamic(() => import("@/components/UserUnlockModal").then((m) => m.UserUnlockModal), { ssr: false })
 
 export function AppShell() {
   const setSettingsOpen = usePSelector((v) => v.setSettingsOpen)
@@ -30,6 +34,8 @@ export function AppShell() {
   const showLangPicker = usePSelector((v) => v.showLangPicker)
   const urlPattern = usePSelector((v) => v.urlPattern)
   const logoUrlPattern = usePSelector((v) => v.logoUrlPattern)
+  const urlPatternImdb = usePSelector((v) => v.urlPatternImdb)
+  const urlPatternAuto = usePSelector((v) => v.urlPatternAuto)
   const view = usePSelector((v) => v.view)
   const router = usePSelector((v) => v.router)
   const mappings = usePSelector((v) => v.mappings)
@@ -51,6 +57,17 @@ export function AppShell() {
 
   const [hasPinConfigured, setHasPinConfigured] = useState<boolean | null>(null)
   const [isUnlocked, setIsUnlocked] = useState(false)
+  // Su /u/<uuid> il cancello è la password dello spazio (UserUnlockModal):
+  // il lucchetto PIN d'istanza non deve murare anche gli spazi (niente doppio
+  // cancello in multi-user). Letto al mount: AppShell è per-pagina.
+  const [isUserPath] = useState(() => currentPathUuid() !== null)
+
+  useEffect(() => {
+    const id = currentPathUuid()
+    if (id && typeof window !== "undefined") {
+      try { window.sessionStorage?.setItem("pictorium_active_space", id) } catch {}
+    }
+  }, [])
 
   const checkPinStatus = useCallback(() => {
     fetch("/api/auth/pin")
@@ -104,13 +121,82 @@ export function AppShell() {
 
   const [installOpen, setInstallOpen] = useState(false)
 
+  // Lock toolbar pre-auth (multi-user): senza uuid o senza unlock di sessione
+  // i bottoni top-right + bottom-nav restano disabilitati — l'auth passa solo
+  // dal gate centrale (UserSpacesList) o dal modal di sblocco. Single-user
+  // invariato (multiUserOn false → mai locked).
+  const [multiUserOn, setMultiUserOn] = useState(false)
+  const [lockUuid, setLockUuid] = useState<string | null>(null)
+  const [, setUnlockTick] = useState(0)
+  useEffect(() => {
+    const syncLock = () => {
+      setLockUuid(currentPathUuid())
+      setUnlockTick((n) => n + 1)
+    }
+    syncLock()
+    let live = true
+    isMultiUserServer().then(
+      (v) => { if (live) setMultiUserOn(v) },
+      () => { if (live) setMultiUserOn(false) },
+    )
+    window.addEventListener(USER_UNLOCK_EVENT, syncLock)
+    window.addEventListener("popstate", syncLock)
+    return () => {
+      live = false
+      window.removeEventListener(USER_UNLOCK_EVENT, syncLock)
+      window.removeEventListener("popstate", syncLock)
+    }
+  }, [])
+  const toolbarLocked = multiUserOn && (!lockUuid || !isUserUnlocked(lockUuid))
+
   const handleInstallCatalog = () => {
+    if (toolbarLocked) return
     setInstallOpen(true)
   }
 
+  // Scorciatoia UUID (icona chiave): su /u/<uuid> bloccato riapre il modal di
+  // sblocco, altrimenti apre le impostazioni sul tab Spazio e ci scorre.
+  // Niente navigazione: resta dove sei. L'icona si mostra solo quando ha
+  // senso (multi-user ON o path /u/): il single-user resta pixel-identico.
+  const [uuidShortcutVisible, setUuidShortcutVisible] = useState(false)
+  useEffect(() => {
+    if (currentPathUuid()) {
+      setUuidShortcutVisible(true)
+      return
+    }
+    isMultiUserServer().then(
+      (v) => setUuidShortcutVisible(v),
+      () => setUuidShortcutVisible(false),
+    )
+  }, [])
+  const handleUuidShortcut = useCallback(() => {
+    if (toolbarLocked) return
+    const id = currentPathUuid()
+    if (id && !isUserUnlocked(id)) {
+      requestUserUnlock(id)
+      return
+    }
+    // Tab richiesta impostata PRIMA di aprire (consumata al mount in modo deterministico).
+    requestSettingsTab("spazio")
+    setSettingsOpen(true)
+    let tries = 0
+    const tick = () => {
+      window.dispatchEvent(new CustomEvent("pictorium:settings-space-tab"))
+      const el = document.getElementById("pictorium-uuid-section")
+      if (el) {
+        // Guardia: jsdom (test) e vecchi webview non implementano
+        // scrollIntoView — senza, il timer scade dopo il teardown e l'eccezione
+        // uncaught fa fallire l'intera run vitest (exit 1 a test tutti verdi).
+        if (typeof el.scrollIntoView === "function") el.scrollIntoView({ behavior: "smooth", block: "start" })
+        return
+      }
+      if (++tries < 10) setTimeout(tick, 150)
+    }
+    setTimeout(tick, 50)
+  }, [setSettingsOpen, toolbarLocked])
+
   return (
     <>
-    <ToastProvider>
     <div className="app-shell text-foreground relative overflow-x-hidden" style={{ "--bg-accent": accentColor ?? undefined } as CSSProperties}>
       {serviceErrors.tmdb && (
         <div className="mx-auto max-w-lg mt-2 mb-0 px-4 py-2 bg-red-900/40 border border-red-800/50 rounded-xl text-xs text-red-300 text-center">
@@ -122,8 +208,12 @@ export function AppShell() {
           onPickLang={pickLang}
           onPickRegion={(regionCode) => { ed.setDefaultRegion(regionCode); ed.setRegion(regionCode) }}
           onDone={() => setShowLangPicker(false)}
+          skipPin={isUserPath || uuidShortcutVisible}
         />
       )}
+
+      {/* Desktop Top-Left Community Island (GitHub & Ko-fi Goal) */}
+      {!(view === "edit" && selected) && <DesktopCommunityLinks />}
 
       {/* Desktop Toolbar — Floating Island */}
       <div className="hidden md:flex absolute top-4 right-4 z-20">
@@ -132,7 +222,9 @@ export function AppShell() {
           <button
             type="button"
             onClick={handleInstallCatalog}
-            className="top-action-button-primary flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-semibold text-xs shadow-md shadow-accent-orange/20 hover:scale-[1.02] active:scale-[0.97] transition-all duration-150 border cursor-pointer"
+            disabled={toolbarLocked}
+            aria-disabled={toolbarLocked || undefined}
+            className="top-action-button-primary flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-semibold text-xs shadow-md shadow-accent-orange/20 hover:scale-[1.02] active:scale-[0.97] transition-all duration-150 border cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
           >
             <QrCode className="w-3.5 h-3.5 text-white" />
             <span>{t("ui.installHub")}</span>
@@ -143,8 +235,10 @@ export function AppShell() {
           {/* Cataloghi Button */}
           <button
             type="button"
-            onClick={() => { if (view === "cataloghi") { router.push("edit") } else { router.push("cataloghi") } }}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all duration-150 active:scale-[0.95] cursor-pointer ${
+            onClick={() => { if (toolbarLocked) return; if (view === "cataloghi") { router.push("edit") } else { router.push("cataloghi") } }}
+            disabled={toolbarLocked}
+            aria-disabled={toolbarLocked || undefined}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all duration-150 active:scale-[0.95] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
               view === "cataloghi"
                 ? "bg-white/15 text-white font-semibold border border-white/20"
                 : "text-zinc-300 hover:text-white hover:bg-white/[0.08]"
@@ -161,15 +255,18 @@ export function AppShell() {
             type="button"
             aria-label={t("ui.myPostersBtn")}
             title={t("ui.myPostersBtn")}
-            onClick={() => { if (view === "myposters") { router.push("edit") } else { router.push("myposters") } }}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all duration-150 active:scale-[0.95] cursor-pointer ${
+            onClick={() => { if (toolbarLocked) return; if (view === "myposters") { router.push("edit") } else { router.push("myposters") } }}
+            disabled={toolbarLocked}
+            aria-disabled={toolbarLocked || undefined}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all duration-150 active:scale-[0.95] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
               view === "myposters"
                 ? "bg-white/15 text-white font-semibold border border-white/20"
                 : "text-zinc-300 hover:text-white hover:bg-white/[0.08]"
             }`}
           >
             <Palette className="w-3.5 h-3.5 text-accent-orange" />
-            <span>{mappings.length}</span>
+            <span className="hidden xl:inline">{t("ui.myPostersBtn") || "I Miei Poster"}</span>
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-white/[0.08] text-zinc-300 border border-white/10">{mappings.length}</span>
           </button>
 
           {/* Proxy Modal */}
@@ -177,19 +274,38 @@ export function AppShell() {
             type="button"
             aria-label={t("ui.addonProxy")}
             title={t("ui.addonProxy")}
-            onClick={() => setProxyOpen(true)}
-            className="p-2 rounded-xl text-zinc-400 hover:text-accent-orange hover:bg-white/[0.08] active:scale-90 transition-all duration-150 cursor-pointer"
+            onClick={() => { if (toolbarLocked) return; setProxyOpen(true) }}
+            disabled={toolbarLocked}
+            aria-disabled={toolbarLocked || undefined}
+            className="p-2 rounded-xl text-zinc-400 hover:text-accent-orange hover:bg-white/[0.08] active:scale-90 transition-all duration-150 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Sparkles className="w-4 h-4" />
           </button>
+
+          {/* Spazio UUID (crea/entri/sblocca) */}
+          {uuidShortcutVisible && (
+            <button
+              type="button"
+              aria-label={t("ui.userSpaceTitle")}
+              title={t("ui.userSpaceTitle")}
+              onClick={handleUuidShortcut}
+              disabled={toolbarLocked}
+              aria-disabled={toolbarLocked || undefined}
+              className="p-2 rounded-xl text-zinc-400 hover:text-accent-orange hover:bg-white/[0.08] active:scale-90 transition-all duration-150 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <KeyRound className="w-4 h-4" />
+            </button>
+          )}
 
           {/* Settings Button */}
           <button
             type="button"
             aria-label={t("ui.settings")}
             title={t("ui.settings")}
-            onClick={(e) => { e.stopPropagation(); setSettingsOpen((o) => !o) }}
-            className={`p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-white/[0.08] active:scale-90 transition-all duration-150 cursor-pointer ${
+            onClick={(e) => { e.stopPropagation(); if (toolbarLocked) return; setSettingsOpen((o) => !o) }}
+            disabled={toolbarLocked}
+            aria-disabled={toolbarLocked || undefined}
+            className={`p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-white/[0.08] active:scale-90 transition-all duration-150 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
               settingsOpen ? "bg-white/10 text-white" : ""
             }`}
           >
@@ -209,19 +325,20 @@ export function AppShell() {
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goHome() } }}
             role="button"
             tabIndex={0}
-            aria-label={t("ui.home")}
+            aria-label={t("ui.homeBtn")}
             src="/pictorium.svg"
             alt="Pictorium"
             decoding="async"
             className="header-logo h-10 sm:h-14 md:h-24 w-auto cursor-pointer hover:brightness-110 active:scale-95 transition-all duration-150 mb-1.5 md:mb-2"
           />
-          <p className="header-tagline text-center text-[10px] sm:text-xs md:text-sm mb-3.5 sm:mb-5 md:mb-6 max-w-xs sm:max-w-none">{t("ui.homeTagline")}</p>
+          <p className="header-tagline text-center text-[10px] sm:text-xs md:text-sm mb-3.5 sm:mb-4 md:mb-4 max-w-xs sm:max-w-none">{t("ui.homeTagline")}</p>
+          <MobileCommunityLinks />
           </>
         </div>
         )}
 
         <ProxyModal isOpen={proxyOpen} onClose={() => setProxyOpen(false)} />
-        <InstallModal isOpen={installOpen} onClose={() => setInstallOpen(false)} posterUrlPattern={urlPattern} logoUrlPattern={logoUrlPattern} />
+        <InstallModal isOpen={installOpen} onClose={() => setInstallOpen(false)} posterUrlPattern={urlPattern} posterUrlPatternImdb={urlPatternImdb} posterUrlPatternAuto={urlPatternAuto} logoUrlPattern={logoUrlPattern} />
         <div key={view} className="animate-view-enter">
           {view === "search" ? <SearchView /> : view === "myposters" ? <MyPostersView /> : view === "cataloghi" ? <CataloghiView /> : <EditView />}
         </div>
@@ -236,12 +353,14 @@ export function AppShell() {
           view === "edit" && selected ? "translate-y-full pointer-events-none opacity-0" : "translate-y-0 opacity-100"
         }`}
       >
-        <div className="grid grid-cols-5 items-center justify-around max-w-md mx-auto">
+        <div className={`grid ${uuidShortcutVisible ? "grid-cols-6" : "grid-cols-5"} items-center justify-around max-w-md mx-auto`}>
           {/* Cataloghi */}
           <button
             type="button"
-            onClick={() => router.replace("cataloghi")}
-            className={`flex flex-col items-center justify-center gap-1 py-1 px-1 rounded-xl transition-all duration-150 active:scale-90 cursor-pointer ${
+            onClick={() => { if (toolbarLocked) return; router.replace("cataloghi") }}
+            disabled={toolbarLocked}
+            aria-disabled={toolbarLocked || undefined}
+            className={`flex flex-col items-center justify-center gap-1 py-1 px-1 rounded-xl transition-all duration-150 active:scale-90 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
               view === "cataloghi"
                 ? "text-accent-orange font-semibold"
                 : "text-zinc-400 hover:text-zinc-200"
@@ -256,10 +375,12 @@ export function AppShell() {
           {/* Proxy Addon (seconda voce) */}
           <button
             type="button"
-            onClick={() => setProxyOpen(true)}
+            onClick={() => { if (toolbarLocked) return; setProxyOpen(true) }}
+            disabled={toolbarLocked}
+            aria-disabled={toolbarLocked || undefined}
             aria-label={t("ui.addonProxy")}
             title={t("ui.addonProxy")}
-            className="flex flex-col items-center justify-center gap-1 py-1 px-1 rounded-xl transition-all duration-150 active:scale-90 cursor-pointer text-zinc-400 hover:text-zinc-200"
+            className="flex flex-col items-center justify-center gap-1 py-1 px-1 rounded-xl transition-all duration-150 active:scale-90 cursor-pointer text-zinc-400 hover:text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <span className="h-8 flex items-center justify-center">
               <Sparkles className="w-5 h-5 text-accent-orange" />
@@ -271,7 +392,9 @@ export function AppShell() {
           <button
             type="button"
             onClick={handleInstallCatalog}
-            className="flex flex-col items-center justify-center gap-1 py-1 px-1 rounded-xl transition-all duration-150 active:scale-90 cursor-pointer text-zinc-300 hover:text-white"
+            disabled={toolbarLocked}
+            aria-disabled={toolbarLocked || undefined}
+            className="flex flex-col items-center justify-center gap-1 py-1 px-1 rounded-xl transition-all duration-150 active:scale-90 cursor-pointer text-zinc-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-accent-orange to-amber-500 flex items-center justify-center text-white shadow-md shadow-accent-orange/30">
               <QrCode className="w-4 h-4" />
@@ -279,11 +402,31 @@ export function AppShell() {
             <span className="text-[10px] font-semibold text-white tracking-tight truncate">{t("ui.install")}</span>
           </button>
 
+          {/* Spazio UUID (crea/entri/sblocca) */}
+          {uuidShortcutVisible && (
+            <button
+              type="button"
+              onClick={handleUuidShortcut}
+              disabled={toolbarLocked}
+              aria-disabled={toolbarLocked || undefined}
+              aria-label={t("ui.userSpaceTitle")}
+              title={t("ui.userSpaceTitle")}
+              className="flex flex-col items-center justify-center gap-1 py-1 px-1 rounded-xl transition-all duration-150 active:scale-90 cursor-pointer text-zinc-400 hover:text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <span className="h-8 flex items-center justify-center">
+                <KeyRound className="w-5 h-5 text-accent-orange" />
+              </span>
+              <span className="text-[10px] tracking-tight truncate">{t("ui.userSpaceTitle")}</span>
+            </button>
+          )}
+
           {/* I Miei Poster */}
           <button
             type="button"
-            onClick={() => router.replace("myposters")}
-            className={`flex flex-col items-center justify-center gap-1 py-1 px-1 rounded-xl transition-all duration-150 active:scale-90 cursor-pointer relative ${
+            onClick={() => { if (toolbarLocked) return; router.replace("myposters") }}
+            disabled={toolbarLocked}
+            aria-disabled={toolbarLocked || undefined}
+            className={`flex flex-col items-center justify-center gap-1 py-1 px-1 rounded-xl transition-all duration-150 active:scale-90 cursor-pointer relative disabled:opacity-40 disabled:cursor-not-allowed ${
               view === "myposters"
                 ? "text-accent-orange font-semibold"
                 : "text-zinc-400 hover:text-zinc-200"
@@ -305,8 +448,10 @@ export function AppShell() {
           {/* Impostazioni */}
           <button
             type="button"
-            onClick={() => setSettingsOpen(true)}
-            className={`flex flex-col items-center justify-center gap-1 py-1 px-1 rounded-xl transition-all duration-150 active:scale-90 cursor-pointer ${
+            onClick={() => { if (toolbarLocked) return; setSettingsOpen(true) }}
+            disabled={toolbarLocked}
+            aria-disabled={toolbarLocked || undefined}
+            className={`flex flex-col items-center justify-center gap-1 py-1 px-1 rounded-xl transition-all duration-150 active:scale-90 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
               settingsOpen
                 ? "text-accent-orange font-semibold"
                 : "text-zinc-400 hover:text-zinc-200"
@@ -355,11 +500,12 @@ export function AppShell() {
         </div>
       )}
     </div>
-    </ToastProvider>
     {!showLangPicker && <OnboardingTour />}
-    {hasPinConfigured && !isUnlocked && !showLangPicker && (
+    {hasPinConfigured && !isUnlocked && !showLangPicker && !isUserPath && (
       <PinLockModal onSuccess={handlePinUnlock} />
     )}
+    {/* Sblocco proprietario multi-user (solo path /u/<uuid>, vedi componente) */}
+    <UserUnlockModal />
     </>
   )
 }

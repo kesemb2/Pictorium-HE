@@ -20,6 +20,33 @@ GET {yourInstanceUrl}/api/poster/{movie|series}/{id}
   mean TV series.
 - `{id}`: a TMDB numeric id (`.../movie/550`) or an IMDb id (`.../movie/tt0133093`,
   resolved server-side to TMDB).
+- IMDb id resolution order: operator manual alias → saved-mapping `imdbId` →
+  TMDB `/find`. Always prefer the numeric TMDB id when you know it:
+  franchise-shared `tt...` ids (e.g. anthology series split into separate
+  TMDB entries) may fail to resolve (`404`) even though the title exists.
+
+### Placeholder patterns (AIO / custom URL)
+
+When the consumer substitutes per-title placeholders (e.g. AIOMetadata,
+which supports `{tmdb_id}` and `{imdb_id}`), use them in the path
+(`/api/poster/{type}/{tmdb_id}`):
+
+- `{tmdb_id|imdb_id}` (auto, recommended for Nuvio and AIOMetadata): the
+  consumer substitutes whichever id the current view provides (Home,
+  Library, More Like This, Cast rows each carry different ids) and keeps
+  the original poster when neither is available — verified against
+  AIOMetadata's alternation groups (`{a|b}`, first non-empty wins) and
+  Nuvio's `{a|b}` markers. One template works everywhere — no per-view
+  choice needed.
+- `{tmdb_id}` (exact alternative): no resolution involved — but only if the
+  consumer genuinely knows that item's TMDB id.
+- `{imdb_id}` (universal fallback): every item has one, but it pays the
+  resolution cost above and fails on franchise splits.
+  Typed `tmdb:<num>` substitutions resolve as the exact numeric path;
+  anything else unresolvable still answers `400`.
+
+If a title answers `404` via `tt...` while it exists on TMDB, use the
+numeric id or ask the instance operator to stitch a manual alias.
 
 You do **not** need `/catalog/*`, `/meta/*`, the editor UI, or any other
 Pictorium route. There is nothing to strip out of the codebase — simply do
@@ -100,6 +127,19 @@ paths (or TMDB `file_path`s) are accepted.
 > Do **not** use the `?config=` token for cross-project integration: it
 > requires sharing the instance `CONFIG_HMAC_SECRET` and is fail-closed in
 > production. Explicit query parameters are debuggable and versionable.
+
+### Public instances (presets mode)
+
+On public instances (`PICTORIUM_POSTER_PARAMS=presets`, on by default there)
+requests other than live editor previews are canonicalised before rendering:
+
+- Without an honoured `poster=` override (which needs a user space), `title`,
+  `genreName`, `year`, `rd`, `fad`, `voteAverage`, `imdbId` and `wikidata_id`
+  are ignored: the server uses TMDB data and the saved mapping. Sending them is
+  harmless.
+- `rank` is kept only as an integer from 0 to 100 (0 hides the rank badge).
+- `animerank` values above the anime badge cap (20) are treated as "no badge".
+- `rsrc` keeps supported sources only, without duplicates.
 
 ## Responses and failure behavior (fail-safe integration)
 

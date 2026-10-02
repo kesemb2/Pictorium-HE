@@ -9,6 +9,8 @@ import crypto from "node:crypto"
 import { createLogger } from "@/lib/logger"
 import { envWithFallback } from "@/lib/env-compat"
 import { createCircuitBreaker, parseRetryAfterMs } from "@/lib/circuit-breaker"
+import { combineAbortSignals } from "./abort-signal"
+import { timedFetch } from "./outbound-stats"
 
 const log = createLogger("tvdb")
 
@@ -54,10 +56,11 @@ export function isTvdbBreakerOpen(): boolean {
  * precedente ramo !ok (fallback standard). Altri 4xx: Response intatta, fail
  * veloce senza scattare (stesso contratto dei breaker MDBList/JustWatch).
  */
-async function tvdbFetch(url: string, init: RequestInit, timeoutMs: number): Promise<Response | null> {
+async function tvdbFetch(url: string, init: RequestInit, timeoutMs: number, signal?: AbortSignal): Promise<Response | null> {
+  if (signal?.aborted) return null
   if (tvdbBreaker.isOpen()) return null
   try {
-    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) })
+    const res = await timedFetch(url, { ...init, signal: combineAbortSignals(signal, timeoutMs) })
     if (res.status === 429 || res.status >= 500) {
       tvdbBreaker.recordFailure(parseRetryAfterMs((n) => res.headers.get(n)))
       return null
@@ -66,6 +69,10 @@ async function tvdbFetch(url: string, init: RequestInit, timeoutMs: number): Pro
     tvdbBreaker.recordSuccess()
     return res
   } catch (e) {
+    // Abort esterno (deadline render): niente rete sprecata e soprattutto
+    // niente recordFailure — la scadenza non è un outage upstream e non deve
+    // aprire il circuito a torto.
+    if (signal?.aborted) return null
     tvdbBreaker.recordFailure()
     log.error("TVDB fetch failed", { url, error: e instanceof Error ? e.message : String(e) })
     return null
@@ -164,7 +171,7 @@ interface TvdbSearchResponse {
 /**
  * Autentica una chiave API su TheTVDB v4 e restituisce il Bearer token.
  */
-export async function getTvdbToken(apiKey: string): Promise<string | null> {
+export async function getTvdbToken(apiKey: string, signal?: AbortSignal): Promise<string | null> {
   const cleanKey = apiKey.trim()
   if (!cleanKey) return null
   const tokenKey = hashKey(cleanKey)
@@ -187,6 +194,7 @@ export async function getTvdbToken(apiKey: string): Promise<string | null> {
           body: JSON.stringify({ apikey: cleanKey }),
         },
         TVDB_TIMEOUT_MS,
+        signal,
       )
 
       if (!res || !res.ok) {
@@ -226,16 +234,16 @@ const MAX_ARTWORK_ENTRIES = 200
 /**
  * Trova l'ID numerico TheTVDB di una serie partendo da un IMDb ID (es. "tt6468322") o TMDB ID.
  */
-export async function getTvdbSeriesId(remoteId: string, apiKey: string): Promise<number | null> {
-  return getTvdbIdByRemoteId("series", remoteId, apiKey, remoteIdCache)
+export async function getTvdbSeriesId(remoteId: string, apiKey: string, signal?: AbortSignal): Promise<number | null> {
+  return getTvdbIdByRemoteId("series", remoteId, apiKey, remoteIdCache, signal)
 }
 
 /**
  * Trova l'ID numerico TheTVDB di un film partendo da un IMDb ID o TMDB ID.
  * Spec v4: `/search/remoteid` ritorna `{ movie: { id } }` come per le serie.
  */
-export async function getTvdbMovieId(remoteId: string, apiKey: string): Promise<number | null> {
-  return getTvdbIdByRemoteId("movie", remoteId, apiKey, movieIdCache)
+export async function getTvdbMovieId(remoteId: string, apiKey: string, signal?: AbortSignal): Promise<number | null> {
+  return getTvdbIdByRemoteId("movie", remoteId, apiKey, movieIdCache, signal)
 }
 
 async function getTvdbIdByRemoteId(
@@ -243,6 +251,7 @@ async function getTvdbIdByRemoteId(
   remoteId: string,
   apiKey: string,
   cache: Map<string, { tvdbId: number; expiry: number }>,
+  signal?: AbortSignal,
 ): Promise<number | null> {
   const cleanRemoteId = remoteId.trim()
   if (!cleanRemoteId) return null
@@ -252,7 +261,7 @@ async function getTvdbIdByRemoteId(
     return cached.tvdbId
   }
 
-  const token = await getTvdbToken(apiKey)
+  const token = await getTvdbToken(apiKey, signal)
   if (!token) return null
 
   try {
@@ -265,6 +274,7 @@ async function getTvdbIdByRemoteId(
         },
       },
       TVDB_TIMEOUT_MS,
+      signal,
     )
 
     if (!res || !res.ok) {
@@ -300,12 +310,12 @@ async function getTvdbIdByRemoteId(
  * Recupera i seasonTypes disponibili per una serie (es. official, dvd, absolute, alternative).
  * Usato per esporre tutti gli ordinamenti TVDB (La Casa de Papel ne ha 2).
  */
-export async function getTvdbSeasonTypes(tvdbSeriesId: number, apiKey: string): Promise<TvdbSeasonType[]> {
+export async function getTvdbSeasonTypes(tvdbSeriesId: number, apiKey: string, signal?: AbortSignal): Promise<TvdbSeasonType[]> {
   const cacheKey = `st:${tvdbSeriesId}`
   const cached = seasonTypesCache.get(cacheKey)
   if (cached && Date.now() < cached.expiry) return cached.types
 
-  const token = await getTvdbToken(apiKey)
+  const token = await getTvdbToken(apiKey, signal)
   if (!token) return []
 
   try {
@@ -315,6 +325,7 @@ export async function getTvdbSeasonTypes(tvdbSeriesId: number, apiKey: string): 
         headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
       },
       TVDB_TIMEOUT_MS,
+      signal,
     )
     if (!res || !res.ok) {
       if (res) log.warn("TVDB series extended failed", { status: res.status, tvdbSeriesId })
@@ -407,13 +418,14 @@ export async function getTvdbArtworks(
   mediaType: "movie" | "tv",
   tvdbId: number,
   apiKey: string,
+  signal?: AbortSignal,
 ): Promise<TvdbArtwork[]> {
   if (!tvdbId || tvdbId <= 0 || !apiKey) return []
   const cacheKey = `${mediaType}:${tvdbId}`
   const cached = artworksCache.get(cacheKey)
   if (cached && Date.now() < cached.expiry) return cached.arts
 
-  const token = await getTvdbToken(apiKey)
+  const token = await getTvdbToken(apiKey, signal)
   if (!token) return []
 
   try {
@@ -424,6 +436,7 @@ export async function getTvdbArtworks(
       url,
       { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } },
       TVDB_TIMEOUT_MS,
+      signal,
     )
     if (!res || !res.ok) {
       if (res) log.warn("TVDB artworks fetch failed", { status: res.status, mediaType, tvdbId })
@@ -488,7 +501,7 @@ export function pickTvdbPoster(
 
 /**
  * Recupera la lista degli episodi con trame e copertine still da TheTVDB.
- */export async function getTvdbEpisodes(tvdbSeriesId: number, language = "ita", apiKey: string, seasonType: string = "default"): Promise<TvdbEpisode[]> {
+ */export async function getTvdbEpisodes(tvdbSeriesId: number, language = "ita", apiKey: string, seasonType: string = "default", signal?: AbortSignal): Promise<TvdbEpisode[]> {
   const normalizedType = seasonType?.trim() || "default"
   const cacheKey = `${tvdbSeriesId}:${language}:${normalizedType}`
   const cached = episodesCache.get(cacheKey)
@@ -496,7 +509,7 @@ export function pickTvdbPoster(
     return cached.episodes
   }
 
-  const token = await getTvdbToken(apiKey)
+  const token = await getTvdbToken(apiKey, signal)
   if (!token) return []
 
   try {
@@ -523,12 +536,13 @@ export function pickTvdbPoster(
           },
         },
         TVDB_TIMEOUT_MS,
+        signal,
       )
 
       if (!res || !res.ok) {
         // Se la lingua specifica (es. ita) fallisce o non ha episodi, prova il default
         if (page === 0 && language !== "default") {
-          return getTvdbEpisodes(tvdbSeriesId, "default", apiKey, normalizedType)
+          return getTvdbEpisodes(tvdbSeriesId, "default", apiKey, normalizedType, signal)
         }
         break
       }
@@ -583,6 +597,12 @@ export function formatTvdbImageUrl(imagePath?: string | null): string | undefine
 
 /**
  * Arricchisce i video di Stremio con copertine (screencap) e trame provenienti da TheTVDB.
+ *
+ * Solo link confermati: IMDb id oppure tvdb_id esplicito dagli external_ids
+ * TMDB (serve `tmdbApiKey`). NIENTE fallback fuzzy su `remoteid/<tmdbId>`:
+ * quel lookup può agganciare un'altra serie (es. il franchise al posto di
+ * uno split di stagione) e sovrascrivere nomi/trame corretti con quelli
+ * sbagliati. Senza link certo: no-op, restano i dati TMDB.
  */
 export async function enrichVideosWithTvdb(
   videos: Array<{
@@ -598,28 +618,28 @@ export async function enrichVideosWithTvdb(
   imdbId: string | null | undefined,
   tmdbId: number | null | undefined,
   apiKey: string,
-  language = "ita"
+  language = "ita",
+  tmdbApiKey?: string,
 ): Promise<void> {
   if (!videos || videos.length === 0 || !apiKey) return
 
-  // Risoluzione ID TheTVDB: prima tenta con IMDb ID, poi fallback con TMDB ID
+  // Risoluzione ID TheTVDB: prima IMDb ID, poi tvdb_id dagli external_ids
+  // TMDB (con chiave: senza, la chiamata lancia e il ramo resterebbe morto
+  // come prima del fix, quando getExternalIds veniva invocato senza chiave).
   let tvdbSeriesId: number | null = null
   if (imdbId) {
     tvdbSeriesId = await getTvdbSeriesId(imdbId, apiKey)
   }
-  if (!tvdbSeriesId && tmdbId) {
+  if (!tvdbSeriesId && tmdbApiKey && tmdbId) {
     try {
       const { getExternalIds } = await import("@/lib/tmdb")
-      const ext = await getExternalIds("tv", tmdbId)
+      const ext = await getExternalIds("tv", tmdbId, tmdbApiKey)
       if (ext?.tvdb_id && ext.tvdb_id > 0) {
         tvdbSeriesId = ext.tvdb_id
       } else if (ext?.imdb_id) {
         tvdbSeriesId = await getTvdbSeriesId(ext.imdb_id, apiKey)
       }
     } catch {}
-    if (!tvdbSeriesId) {
-      tvdbSeriesId = await getTvdbSeriesId(String(tmdbId), apiKey)
-    }
   }
 
   if (!tvdbSeriesId) return

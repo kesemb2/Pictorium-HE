@@ -8,7 +8,7 @@ import {
   getTVSeason,
   type TMDBEpisodeGroupDetails,
   posterUrl,
-  resolveRequestApiKey,
+  resolveRouteApiKey,
 } from "@/lib/tmdb"
 import { enrichVideosWithTvdb } from "@/lib/tvdb"
 import { buildVideosFromAnizip, buildVideosFromGroups, buildVideosFromTvdb, concurrentMap, resolveSeasonNumbers, seasonNumberForGroup } from "@/lib/episode-ordering"
@@ -44,9 +44,9 @@ export async function GET(req: NextRequest) {
   // normalize: empty string -> null (standard)
   const episodeGroupId = rawGroupId && rawGroupId !== "" ? rawGroupId : null
   const language = req.nextUrl.searchParams.get("lang") || "it-IT"
-  const apiKey = resolveRequestApiKey(req)
+  const apiKey = (await resolveRouteApiKey(req)) || ""
   const tvdbKeyParam = req.nextUrl.searchParams.get("tvdb_key") || undefined
-  const tvdbApiKey = tvdbKeyParam || envWithFallback("TVDB_API_KEY") || process.env.TVDB_API_KEY
+  const tvdbApiKey = tvdbKeyParam || (await resolveRouteApiKey(req, "tvdb")) || envWithFallback("TVDB_API_KEY") || process.env.TVDB_API_KEY || ""
   const episodeMetadataSource = req.nextUrl.searchParams.get("source") || (tvdbApiKey ? "tvdb" : "tmdb")
 
   // "auto" (parametro assente) e "standard" esplicito hanno chiavi diverse:
@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
     if (isTvdbPreview) {
       const seasonType = episodeGroupId === "tvdb" ? "default" : (episodeGroupId!.slice(5) || "default")
       try {
-        const tvdbVideos = await buildVideosFromTvdb(imdbId, tmdbId, primaryId, tvdbApiKey || "", seasonType)
+        const tvdbVideos = await buildVideosFromTvdb(imdbId, tmdbId, primaryId, tvdbApiKey || "", seasonType, apiKey)
         if (tvdbVideos.length > 0) videos.push(...(tvdbVideos as unknown as PreviewVideo[]))
       } catch {
         // fallback silenzioso a TMDB standard
@@ -175,7 +175,7 @@ export async function GET(req: NextRequest) {
 
     const isTvdbPreviewForEnrich = episodeGroupId === "tvdb" || (episodeGroupId?.startsWith("tvdb:") ?? false)
     if (videos.length > 0 && episodeMetadataSource === "tvdb" && tvdbApiKey && !isTvdbPreviewForEnrich && !videosFromGroup) {
-      await enrichVideosWithTvdb(videos as unknown as import("@/lib/meta-handler").StremioVideo[], imdbId, tmdbId, tvdbApiKey, "ita")
+      await enrichVideosWithTvdb(videos as unknown as import("@/lib/meta-handler").StremioVideo[], imdbId, tmdbId, tvdbApiKey, "ita", apiKey)
     }
 
     // Raggruppa per stagione per l'anteprima
@@ -223,7 +223,8 @@ export async function GET(req: NextRequest) {
         "Access-Control-Allow-Origin": "*",
       },
     })
-  } catch (e) {
-    return Response.json({ videos: [], seasons: [], totalEpisodes: 0, totalSeasons: 0, error: e instanceof Error ? e.message : String(e) }, { status: 200 })
+  } catch {
+    // Mai e.message in chiaro nel body: può contenere URL/chiavi upstream.
+    return Response.json({ videos: [], seasons: [], totalEpisodes: 0, totalSeasons: 0, error: "Episodi non disponibili" }, { status: 200 })
   }
 }

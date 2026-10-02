@@ -1,7 +1,8 @@
 "use client"
 
-import { useMemo, useRef, type MouseEvent, type KeyboardEvent } from "react"
+import { useMemo, useRef, type MouseEvent, type KeyboardEvent, type ReactNode } from "react"
 import { usePSelector } from "@/lib/context"
+import { currentPathUuid } from "@/lib/user-token"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { toSearchResult, type SearchResult } from "@/lib/types"
 import { useSecurePosterUrl } from "@/lib/useSecurePosterUrl"
@@ -72,7 +73,7 @@ function shuffle<T>(arr: T[]): T[] {
   return a
 }
 
-export function HomeHero() {
+export function HomeHero({ search }: { search?: ReactNode }) {
   const router = usePSelector((v) => v.router)
   const trending = usePSelector((v) => v.trending)
   const titleOf = usePSelector((v) => v.titleOf)
@@ -87,13 +88,20 @@ export function HomeHero() {
   // classifiche giornaliere (JustWatch DAILY_POPULARITY esposta da
   // /api/tmdb/trending): il podio cambia a ogni visita. Ogni poster mostra il
   // badge rank reale della posizione del titolo in classifica.
+  // Namespace utente (?u=) per i poster del podio: senza, il server non può
+  // risolvere le chiavi salvate nel profilo e risponde 503 su profilo fresco
+  // (chiave nel namespace ma niente chiave device). A `/` è stringa vuota.
+  const nsSuffix = useMemo(() => {
+    const id = currentPathUuid()
+    return id ? `&u=${id}` : ""
+  }, [])
   const slots = useMemo<PodiumSlot[]>(() => {
     const movies = trending.filter((i) => i.media_type === "movie").sort((a, b) => a.rank - b.rank)
     const tv = trending.filter((i) => i.media_type === "tv").sort((a, b) => a.rank - b.rank)
     if (movies.length < 2 || tv.length < 1) {
       // URL pulite: la chiave viaggia solo via header x-api-key (hook
       // useSecurePosterUrl) — mai incollata in query string.
-      return FALLBACK_PODIUM.map((p) => ({ ...p, url: p.url() }))
+      return FALLBACK_PODIUM.map((p) => ({ ...p, url: `${p.url()}${nsSuffix}` }))
     }
     const [m1, m2] = shuffle(movies)
     const [s1] = shuffle(tv)
@@ -103,16 +111,17 @@ export function HomeHero() {
       className: ["p-frame p-frame-side p-frame-left", "p-frame p-frame-main", "p-frame p-frame-side p-frame-right"][i],
       alt: titleOf(item),
       item,
-      url: `/api/poster/${item.media_type}/${item.id}?ranking=&rank=${item.rank}&rs=${SLOT_RANK_STYLES[i]}&tl=0&gradHeight=25&blur=30&bf=50&bd=40&logoFit=0`,
+      url: `/api/poster/${item.media_type}/${item.id}?ranking=&rank=${item.rank}&rs=${SLOT_RANK_STYLES[i]}&tl=0&gradHeight=25&blur=30&bf=50&bd=40&logoFit=0${nsSuffix}`,
     }))
-  }, [trending, titleOf])
+  }, [trending, titleOf, nsSuffix])
 
   // Parallasse attivo solo su dispositivi con hover (desktop); calcolato una
   // volta per non ri-eseguire matchMedia a ogni mousemove.
   const hoverOkRef = useRef<boolean | null>(null)
   const hoverOk = () => {
     if (hoverOkRef.current === null) {
-      hoverOkRef.current = typeof window.matchMedia === "function" && window.matchMedia("(hover: hover)").matches
+      const reduced = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      hoverOkRef.current = !reduced && typeof window.matchMedia === "function" && window.matchMedia("(hover: hover)").matches
     }
     return hoverOkRef.current
   }
@@ -150,6 +159,11 @@ export function HomeHero() {
           {t("ui.heroTitleTail")}
         </h1>
         <p className="home-hero-sub mt-3 animate-fade-up" style={{ animationDelay: "140ms" }}>{t("ui.heroSubtitle")}</p>
+        {search ? (
+          <div className="home-hero-search animate-fade-up" style={{ animationDelay: "175ms" }}>
+            {search}
+          </div>
+        ) : null}
         <div className="stat-pills mt-4 animate-fade-up" style={{ animationDelay: "210ms" }}>
           <span className="stat-pill">
             <Layers className="w-3.5 h-3.5" />
@@ -203,7 +217,7 @@ export function HomeHero() {
           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
-          {t("ui.saved")}
+          {t("ui.demoTag")} · {t("ui.saved")}
         </div>
       </div>
     </section>

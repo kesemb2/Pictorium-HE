@@ -1,11 +1,12 @@
 import crypto from "node:crypto"
 import sharp from "sharp"
-import { FANART_ASSET_PREFIX } from "./fanart"
-import { combineAbortSignals } from "./abort-signal"
-import { cachedImageBytes } from "./image-bytes-cache"
-import { findAccentColor, findSceneTint, type AccentHueMode } from "@/lib/accent-color"
+import { cacheGet, cacheSet } from "./cache"
+import { findAccentColor, findBandTint, type AccentHueMode } from "@/lib/accent-color"
+import { FANART_ASSET_PREFIX } from "./fanart-artwork"
 import { GENRE_FALLBACK } from "@/lib/badges"
 import { ARTWORKS_BASE } from "@/lib/tvdb"
+import { cachedImageBytes } from "@/lib/image-bytes-cache"
+import { timedFetch } from "@/lib/outbound-stats"
 // Batch B: STD_W/STD_H ora provengono da image-utils.ts (single source of truth)
 import { STD_W, STD_H, computeRegionStats } from "@/lib/image-utils"
 
@@ -27,17 +28,40 @@ export function hashKey(key: string): string {
   return crypto.createHash("md5").update(key).digest("hex").slice(0, 16)
 }
 
+// Cache delle analisi pixel (luminance top/bottom, tinta di scena): come gli
+// altri image-level cache, vive 24h sotto il tag "poster-extract" e la chiave
+// identifica i byte sorgente (path TMDB immutabili per path + derivazione:
+// portrait/backdrop/pillarbox). Nessun cambio dell'output: stessi byte in
+// ingresso → stessi numeri in uscita, solo calcolati una volta per titolo
+// invece che a ogni variante di cache key poster. Chiave null → ricalcolo
+// diretto senza cache (mai poison da byte non identificati).
+const ANALYSIS_CACHE_TTL = 24 * 60 * 60 * 1000
+const ANALYSIS_CACHE_TAG = "poster-extract"
+
 export async function fetchImg(url: string, signal?: AbortSignal): Promise<Buffer> {
-  // LRU sui byte grezzi, per URL: le cache image-level esistenti salvano
-  // artefatti sharp, non i byte scaricati, quindi ogni render con una cache key
-  // diversa per lo stesso titolo ripagava la CDN. Da noi conta di più che a
-  // monte: oltre a TMDB peschiamo anche i tier fanart e TVDB.
-  // Controllo SSRF, signal/timeout e cap di dimensione restano dentro, invariati.
+  // Se il chiamante passa un signal esterno, unirlo al timeout interno invece
+  // di sostituirlo: un signal mai abortito (es. renderAbort a render riuscito)
+  // lascerebbe il fetch senza tetto in background. Il limite resta 15s.
+  const timeoutSignal = AbortSignal.timeout(15000)
+  let combined: AbortSignal = timeoutSignal
+  if (signal) {
+    if (typeof (AbortSignal as unknown as { any?: unknown }).any === "function") {
+      combined = (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any([signal, timeoutSignal])
+    } else {
+      const ctrl = new AbortController()
+      const onAbort = () => ctrl.abort((signal as unknown as { reason?: unknown })?.reason ?? timeoutSignal.reason)
+      if (signal.aborted || timeoutSignal.aborted) ctrl.abort()
+      else {
+        signal.addEventListener("abort", onAbort, { once: true })
+        timeoutSignal.addEventListener("abort", onAbort, { once: true })
+      }
+      combined = ctrl.signal
+    }
+  }
+  // Byte-LRU (F3): a parità di URL i re-download spariscono; SSRF check,
+  // signal/timeout e cap size restano dentro doFetch, invariati.
   return cachedImageBytes(url, async () => {
-    // Se il chiamante passa un signal esterno, unirlo al timeout interno invece
-    // di sostituirlo: un signal mai abortito (es. renderAbort a render riuscito)
-    // lascerebbe il fetch senza tetto in background. Il limite resta 15s.
-    const res = await fetch(url, { signal: combineAbortSignals(signal, 15000) })
+    const res = await timedFetch(url, { signal: combined })
     if (!res.ok) throw new Error(`fetch failed: ${res.status}`)
     const cl = res.headers.get("content-length")
     if (cl && Number(cl) > MAX_IMG_SIZE) throw new Error("image too large")
@@ -53,7 +77,8 @@ export function isValidHex(color: string): boolean {
 
 /**
  * Host di immagini ammessi, per prefisso ESATTO e solo https. Un path relativo
- * resta TMDB; qualunque altro URL assoluto viene rifiutato.
+ * resta TMDB; qualunque altro URL assoluto viene rifiutato. Il fork aggiunge
+ * fanart.tv: il ladder textless e l'endpoint logo ne usano gli asset.
  */
 const ALLOWED_IMAGE_PREFIXES = [
   "https://image.tmdb.org/t/p/",
@@ -66,15 +91,47 @@ export function isAllowedImageUrl(url: string): boolean {
   return ALLOWED_IMAGE_PREFIXES.some((p) => url.startsWith(p))
 }
 
-export function imgSrc(path: string): string {
+/** Vero quando fetchImg ha rifiutato per il cap anti-OOM (non per 404/timeout). */
+export function isImageTooLargeError(e: unknown): boolean {
+  return e instanceof Error && e.message === "image too large"
+}
+
+/**
+ * Fetch di un logo TMDB con fallback morbido sulla taglia: `original` per la
+ * nitidezza, ma gli originali giganti (>10MB, es. PNG 7795px) vengono
+ * rifiutati dal cap anti-OOM di fetchImg — in quel caso (e solo in quel
+ * caso: 404/timeout/abort rilanciano subito) riprova `w780` e poi `w500`.
+ * Su un poster da 380px un logo a 780px è già oltre la nitidezza necessaria.
+ */
+export async function fetchLogoImg(path: string, signal?: AbortSignal): Promise<Buffer> {
+  // URL esterni (http): imgSrc non inserisce la taglia, riprovare lo stesso
+  // URL sarebbe inutile — un solo tentativo come prima.
+  if (path.startsWith("http")) return fetchImg(imgSrc(path), signal)
+  try {
+    return await fetchImg(imgSrc(path, "original"), signal)
+  } catch (e) {
+    if (!isImageTooLargeError(e)) throw e
+  }
+  try {
+    return await fetchImg(imgSrc(path, "w780"), signal)
+  } catch (e) {
+    if (!isImageTooLargeError(e)) throw e
+  }
+  return fetchImg(imgSrc(path, "w500"), signal)
+}
+
+export function imgSrc(path: string, size = "w500"): string {
   if (path.startsWith("http")) {
-    // SSRF protection: solo i CDN immagine noti (TMDB, fanart.tv)
+    // SSRF protection: solo i CDN immagine noti (TMDB, TVDB artworks e, nel
+    // fork, fanart.tv) — vedi ALLOWED_IMAGE_PREFIXES.
     if (!isAllowedImageUrl(path)) {
       throw new Error(`Blocked external image URL: ${path.slice(0, 60)}...`)
     }
     return path
   }
-  return `${IMG_BASE}/w500${path}`
+  // I loghi usano "original" (nitidezza, PNG piccoli); poster/backdrop restano
+  // "w500" per non appesantire memoria e tempi di risposta.
+  return `${IMG_BASE}/${size}${path}`
 }
 
 /**
@@ -128,11 +185,32 @@ export async function fitCompositeToCanvas(
  * and skipped alpha removal; computeRegionStats uses RGB stride-3 with
  * unrounded Rec.709 luminance. This is why RENDER_VERSION was bumped.
  */
-export async function topLuminance(buf: Buffer): Promise<number> {
+export async function topLuminance(buf: Buffer, cacheKey?: string | null): Promise<number> {
+  const key = cacheKey ? `lum:top:${cacheKey}` : null
+  const hit = key ? cacheGet<number>(key) : null
+  if (hit !== null) return hit
   const stripH = Math.max(Math.round(STD_H * 0.08), 3)
   const stats = await computeRegionStats(buf, 0, 0, STD_W, stripH)
-  if (!stats) return 0.5 // fallback: medium luminance
-  return stats.mean / 255
+  const lum = stats ? stats.mean / 255 : 0.5 // fallback: medium luminance
+  if (key) cacheSet(key, lum, [ANALYSIS_CACHE_TAG], ANALYSIS_CACHE_TTL)
+  return lum
+}
+
+/**
+ * Luminanza della striscia inferiore del poster (ultimo 8% di STD_H).
+ * Speculare a topLuminance: decide la polarità del badge genere in basso
+ * (bottomLight), che non può riusare il top su poster con alto chiaro e
+ * fondo scuro. Stesso pool di computeRegionStats, stessa metrica.
+ */
+export async function bottomLuminance(buf: Buffer, cacheKey?: string | null): Promise<number> {
+  const key = cacheKey ? `lum:bottom:${cacheKey}` : null
+  const hit = key ? cacheGet<number>(key) : null
+  if (hit !== null) return hit
+  const stripH = Math.max(Math.round(STD_H * 0.08), 3)
+  const stats = await computeRegionStats(buf, 0, STD_H - stripH, STD_W, stripH)
+  const lum = stats ? stats.mean / 255 : 0.5 // fallback: medium luminance
+  if (key) cacheSet(key, lum, [ANALYSIS_CACHE_TAG], ANALYSIS_CACHE_TTL)
+  return lum
 }
 
 /**
@@ -407,7 +485,7 @@ export async function extractSceneTint(
           .toBuffer()
 
     const pixels = await sharp(stripBuf).ensureAlpha().raw().toBuffer()
-    const tint = findSceneTint(pixels, posterW, stripH)
+    const tint = findBandTint(pixels, posterW, stripH)
     if (!tint) return null
     return `#${tint.r.toString(16).padStart(2, "0")}${tint.g.toString(16).padStart(2, "0")}${tint.b.toString(16).padStart(2, "0")}`
   } catch {

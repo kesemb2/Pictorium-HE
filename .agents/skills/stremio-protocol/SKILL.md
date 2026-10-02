@@ -2,7 +2,7 @@
 name: stremio-protocol
 description: >
   Stremio addon contract for Pictorium: manifest (manifest.json, /u/<uuid>/
-  path variant for AIOMetadata), addonId scheme, resources (catalog, poster,
+  path variant for AIOMetadata), addonId scheme, resources (catalog,
   meta), /meta/{type}/{id} resolution and idPrefixes, catalog routes and their
   query params (u=, config=, skip=), poster endpoint contract, resolvable
   metadata IDs (tt... / provider:id — never bare numbers), headers
@@ -21,10 +21,11 @@ external addons like AIOMetadata.
 - Route `src/app/meta/[type]/[id]/route.ts`, delegating to `pictoriumMeta` in
   `src/lib/meta-handler.ts`. Also reachable at `/c/[config]/meta/[type]/[id]` and
   `/u/[user]/meta/[type]/[id]`.
-- Resolvable id prefixes: `tt...` (IMDb), `tmdb:<id>`, `tvdb:<id>`, `tvdbc:<id>`,
-  `kitsu:<id>`, `mal:<id>`, `anilist:<id>`, `anidb:<id>`; a bare numeric id is
-  treated as a TMDB id (fallback). Unresolvable id → `{ meta: null }` (200),
-  never a 404/cancel.
+- Resolvable id prefixes: `tt...` (IMDb), `tmdb:<id>`, `tvdb:<id>`, `tvdbc:<id>`;
+  a bare numeric id is treated as a TMDB id (fallback). `kitsu:`, `mal:`,
+  `anilist:`, `anidb:` are intentionally NOT resolved → `{ meta: null }` (200)
+  so dedicated anime addons keep serving them (manifest C3). Unresolvable id →
+  `{ meta: null }` (200), never a 404/cancel.
 - Resolution flow: TMDB id via `tmdbFindByImdb` / `tmdbFindByTvdb` or direct
   parse; full details via `getFullDetails` (+ credits/videos/external_ids);
   logo via `getImages`; poster via `buildStremioPosterUrl` (standalone poster
@@ -50,11 +51,12 @@ Never emit a bare numeric `id` as the catalog meta id.
 - URL: classic `manifest.json?u=...` OR path `/u/<uuid>/manifest.json` for
   AIOMetadata imports (they reject/break URLs with query strings).
 - `addonId`: `org.pictorium` + `.` + first 8 chars of user UUID (or config token).
-- Fields: `resources: ["catalog", "poster", { name: "meta", types, idPrefixes }]`,
+- Fields: `resources: ["catalog", { name: "meta", types, idPrefixes }]`,
   `types`, `idPrefixes`, `manifestVersion: 1`, `catalogs` from `PICTORIUM_CATALOGS`
   each with `extra: [{ name: "skip" }]`, `version: APP_VERSION` (generated).
 - Headers: `Access-Control-Allow-Origin: *`, `Content-Type: application/json`,
   `Cache-Control: no-cache, max-age=0, must-revalidate`.
+- Posters are image URLs in catalog/meta responses, not a manifest resource.
 
 ## Catalog route
 
@@ -72,6 +74,15 @@ profile) and `config=` (config token) — both enter cache keys and poster URLs.
 `/api/poster/{type}/{id}` — the SAME endpoint serves the client preview and the
 Stremio poster. Query params: `rv` (render version), `mv` (saved mapping), `u=`
 (user profile), plus all render params (see `.agents/render-params.md`).
+The copy-paste AIO template comes in three variants with identical params:
+`{tmdb_id|imdb_id}` auto first (recommended for Nuvio and AIOMetadata — both
+support `{a|b}` alternation with graceful fallback to the original poster),
+`{tmdb_id}` (exact, no TMDB `/find` involved) and `{imdb_id}` as the
+universal fallback (every item has one, but franchise-shared `tt` ids on
+split season entries need a manual alias or mapping `imdbId` — resolution
+order: user alias > global alias > own mapping `imdbId` > global mapping
+`imdbId` > `/find`). Typed `tmdb:<num>` substitutions resolve as the exact
+numeric path, other prefixes stay `400`.
 
 ## Catalog list (`PICTORIUM_CATALOGS` in `catalog-definitions.ts`)
 

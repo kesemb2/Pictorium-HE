@@ -2,21 +2,36 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import type { BadgeStyle, RankingBadgeStyle } from "./badge-styles"
+import type { NetworkLogoPosition, PosterShape } from "./types"
+import { isNetworkLogoPosition, isPosterShape } from "./types"
+import type { LandscapeServerDefaults } from "./server-defaults"
+import { parseDateFormat, type DateFormat } from "./release-badge"
 import { normalizeRegion } from "./regions"
-import { shouldSkipServerSync } from "./guest-guard"
+import { isProfilelessOnMultiUser, notifyProfilelessOnce, shouldSkipServerSync } from "./guest-guard"
+import { userFetch } from "./http"
+import { USER_UNLOCK_EVENT, currentPathUuid } from "./user-token"
 import { t } from "./i18n"
+import { normalizeSashOrder, DEFAULT_SASH_ORDER, type SashBucket } from "./badge-priority"
+import { DEFAULT_QUALITY_BADGE_STYLE, type QualityBadgeStyle } from "./badge-styles"
+import { KNOWN_VIDEO_FORMATS, isVideoFormat, type VideoFormat } from "./av-specs"
 
 export type RibbonSide = "left" | "right"
 
 export interface DefaultsState {
   defaultBadgeStyle: BadgeStyle
   defaultRankingBadgeStyle: RankingBadgeStyle
+  /** Stile icone del badge qualità di default (default "standard"). */
+  defaultQualityBadgeStyle: QualityBadgeStyle
+  /** Formati A/V abilitati di default (dv, atmos, imax, hdr, hdr10plus). */
+  defaultVideoFormats: VideoFormat[]
   defaultBlurEnabled: boolean
   defaultBlurIntensity: number
   defaultBlurFade: number
   defaultBlurDarkness: number
   /** Intensità tinta di scena di default 0-100 (default 20). */
   defaultTintStrength: number
+  /** Ombra lineare superiore di default 0-100 (default 50). */
+  defaultTopShade: number
   defaultGradientHeight: number
   defaultTopBadgeScale: number
   defaultTopBadgeOffsetX: number
@@ -44,8 +59,18 @@ export interface DefaultsState {
   /** Header chiave provider salvato via UI. */
   defaultCustomRatingApiKeyHeader?: string
   defaultRatingSources: string[]
+  /** Colonna rating separati di default (default OFF). */
+  defaultSeparateRatings: boolean
+  /** Bucket sash abilitati (ordine canonico; vuota = tutto spento). */
+  defaultSashOrder: SashBucket[]
   defaultAutoRotateClean: boolean
-  defaultLogoFitEnabled: boolean
+  /** Rotazione 24h di default per formato (sdoppiata). */
+  defaultAutoRotateBackdrop: boolean
+  /** Disattiva i poster clean TMDB nella selezione automatica (default OFF = priorità ai clean). */
+  defaultDisableCleanPosters: boolean
+  /** Best-fit automatico per formato (sdoppiato da defaultLogoFitEnabled). */
+  defaultPortraitFitEnabled: boolean
+  defaultLandscapeFitEnabled: boolean
   defaultNetworkLogo: boolean
   defaultAccentDominant: boolean
   defaultBadgeTopScale: number
@@ -60,11 +85,21 @@ export interface DefaultsState {
   defaultBadgeTopOffset: number
   defaultBadgeBottomOffset: number
   defaultLogoBottomOffset: number
+  /** Posizione del logo network di default ("auto" = specchio dinamico, "top" = angolo alto lato nastro). */
+  defaultNetworkLogoPosition: NetworkLogoPosition
   defaultPreRelease: boolean
   defaultRibbonSide: RibbonSide
+  /** Nastro stile Netflix all'angolo di default (false = badge classifica centrato). */
+  defaultRibbonEnabled: boolean
+  /** Formato canvas di default (portrait = verticale standard). */
+  defaultPosterShape: PosterShape
+  /** Allineamento blocco logo/metadati di default (null = default di formato). */
+  defaultLogoAlign: "left" | "center" | null
   defaultEpisodeMetadataSource: "tmdb" | "tvdb"
   /** Regione classifiche (codice JW canonico, es. "IT"). */
   defaultRegion: string
+  /** Formato data badge "in uscita" (default `locale` = segue la lingua). */
+  defaultDateFormat: DateFormat
   region: string
   globalBadges: boolean
   rankingBadges: boolean
@@ -76,6 +111,8 @@ export interface DefaultsState {
   /** Riga rating custom provider (default ON). */
   customRatings: boolean
   ratingSources: string[]
+  /** Colonna rating separati a destra (default OFF). */
+  separateRatings: boolean
   networkLogo: boolean
   accentDominant: boolean
   badgeTopScale: number
@@ -90,8 +127,16 @@ export interface DefaultsState {
   badgeTopOffset: number
   badgeBottomOffset: number
   logoBottomOffset: number
+  /** Posizione del logo network del poster in editing. */
+  networkLogoPosition: NetworkLogoPosition
   preRelease: boolean
   ribbonSide: RibbonSide
+  /** Nastro stile Netflix all'angolo (false = badge classifica centrato). */
+  ribbonEnabled: boolean
+  /** Allineamento blocco logo/metadati del poster in editing. */
+  logoAlign: "left" | "center"
+  /** Formato canvas del poster in editing (default: defaultPosterShape). */
+  posterShape: PosterShape
   episodeMetadataSource: "tmdb" | "tvdb"
   gradientHeight: number
   topBadgeScale: number
@@ -112,18 +157,42 @@ export interface DefaultsState {
   blurEnabled: boolean
   /** Intensità tinta di scena 0-100 (default 20). */
   tintStrength: number
+  /**
+   * Ombra lineare superiore 0-100 in editing (solo per-titolo, default 0 =
+   * spenta). Nessun default globale in Fase 1: parte sempre da 0 e si carica
+   * dal mapping all'apertura titolo.
+   */
+  topShade: number
   badgeStyle: BadgeStyle
   rankingBadgeStyle: RankingBadgeStyle
+  /** Stile icone del badge qualità del poster in editing. */
+  qualityBadgeStyle: QualityBadgeStyle
+  /** Formati A/V del poster in editing (null = segui default / spec locale). */
+  videoFormats: VideoFormat[] | null
+  /** Scala % logo di default (null = auto-fit per aspect, storico). */
+  defaultLogoScale: number | null
+  /** Offset px logo di default (null = 0). */
+  defaultLogoOffsetX: number | null
+  defaultLogoOffsetY: number | null
+  /**
+   * Profilo default landscape (sezione Impostazioni · Orizzontale): chiavi
+   * assenti seguono i flat (portrait). Sempre oggetto (mai null) per
+   * patch parziali semplici.
+   */
+  landscape: LandscapeServerDefaults
 }
 
 const DEFAULTS: DefaultsState = {
   defaultBadgeStyle: "shadow",
   defaultRankingBadgeStyle: "default",
+  defaultQualityBadgeStyle: DEFAULT_QUALITY_BADGE_STYLE,
+  defaultVideoFormats: [...KNOWN_VIDEO_FORMATS],
   defaultBlurEnabled: true,
   defaultBlurIntensity: 20,
   defaultBlurFade: 50,
   defaultBlurDarkness: 30,
   defaultTintStrength: 20,
+  defaultTopShade: 50,
   defaultGradientHeight: 30,
   defaultTopBadgeScale: 100,
   defaultTopBadgeOffsetX: 0,
@@ -145,8 +214,13 @@ const DEFAULTS: DefaultsState = {
   defaultBadgeQuality: true,
   defaultCustomRatings: true,
   defaultRatingSources: ["imdb", "tmdb"],
+  defaultSeparateRatings: false,
+  defaultSashOrder: [...DEFAULT_SASH_ORDER],
   defaultAutoRotateClean: false,
-  defaultLogoFitEnabled: true,
+  defaultAutoRotateBackdrop: false,
+  defaultDisableCleanPosters: false,
+  defaultPortraitFitEnabled: true,
+  defaultLandscapeFitEnabled: true,
   defaultNetworkLogo: true,
   defaultAccentDominant: true,
   defaultBadgeTopScale: 100,
@@ -161,9 +235,14 @@ const DEFAULTS: DefaultsState = {
   defaultBadgeTopOffset: 0,
   defaultBadgeBottomOffset: 0,
   defaultLogoBottomOffset: 0,
+  defaultNetworkLogoPosition: "auto",
   defaultPreRelease: false,
   defaultRibbonSide: "left",
+  defaultRibbonEnabled: true,
+  defaultPosterShape: "poster",
+  defaultLogoAlign: null,
   defaultEpisodeMetadataSource: "tmdb",
+  defaultDateFormat: "locale",
   defaultRegion: "IT",
   region: "IT",
   globalBadges: true,
@@ -174,6 +253,7 @@ const DEFAULTS: DefaultsState = {
   badgeQuality: true,
   customRatings: true,
   ratingSources: ["imdb", "tmdb"],
+  separateRatings: false,
   networkLogo: true,
   accentDominant: true,
   badgeTopScale: 100,
@@ -188,8 +268,12 @@ const DEFAULTS: DefaultsState = {
   badgeTopOffset: 0,
   badgeBottomOffset: 0,
   logoBottomOffset: 0,
+  networkLogoPosition: "auto",
   preRelease: false,
   ribbonSide: "left",
+  ribbonEnabled: true,
+  posterShape: "poster",
+  logoAlign: "center",
   episodeMetadataSource: "tmdb",
   gradientHeight: 30,
   topBadgeScale: 100,
@@ -209,11 +293,20 @@ const DEFAULTS: DefaultsState = {
   blurDarkness: 30,
   blurEnabled: true,
   tintStrength: 20,
+  topShade: 50,
   badgeStyle: "shadow",
   rankingBadgeStyle: "default",
+  qualityBadgeStyle: DEFAULT_QUALITY_BADGE_STYLE,
+  videoFormats: null,
+  defaultLogoScale: null,
+  defaultLogoOffsetX: null,
+  defaultLogoOffsetY: null,
+  landscape: {},
 }
 
 interface StoredDefaults {
+  videoFormats?: VideoFormat[] | null
+  defaultVideoFormats?: VideoFormat[] | null
   globalBadges?: boolean
   rankingBadges?: boolean
   badgeGenre?: boolean
@@ -266,15 +359,19 @@ interface StoredDefaults {
   blurDarkness?: number
   blurEnabled?: boolean
   tintStrength?: number
+  topShade?: number
   badgeStyle?: BadgeStyle
   rankingBadgeStyle?: RankingBadgeStyle
+  qualityBadgeStyle?: QualityBadgeStyle
   defaultBadgeStyle?: BadgeStyle
   defaultRankingBadgeStyle?: RankingBadgeStyle
+  defaultQualityBadgeStyle?: QualityBadgeStyle
   defaultBlurEnabled?: boolean
   defaultBlurIntensity?: number
   defaultBlurFade?: number
   defaultBlurDarkness?: number
   defaultTintStrength?: number
+  defaultTopShade?: number
   defaultGradientHeight?: number
   defaultTopBadgeScale?: number
   defaultTopBadgeOffsetX?: number
@@ -301,24 +398,61 @@ interface StoredDefaults {
   customRatingApiKeyHeader?: string
   defaultRatingSources?: string[]
   ratingSources?: string[]
+  defaultSeparateRatings?: boolean
+  separateRatings?: boolean
+  /** Bucket sash abilitati (grezzi; normalizzati in buildFromStored). */
+  defaultSashOrder?: string[]
+  /** Chiave server/local piatta (saveDefaults/defaultsToPayload): fallback di lettura. */
+  sashOrder?: string[]
   defaultAutoRotateClean?: boolean
+  defaultAutoRotateBackdrop?: boolean
+  defaultDisableCleanPosters?: boolean
+  /** Chiave flat server (ServerDefaults.disableCleanPosters): fallback di lettura. */
+  disableCleanPosters?: boolean
+  defaultPortraitFitEnabled?: boolean
+  defaultLandscapeFitEnabled?: boolean
+  /** Deprecato (migrazione): il flag unico alimenta entrambi i formati. */
   defaultLogoFitEnabled?: boolean
   defaultNetworkLogo?: boolean
+  defaultNetworkLogoPosition?: NetworkLogoPosition
+  networkLogoPosition?: NetworkLogoPosition
   defaultPreRelease?: boolean
   preRelease?: boolean
   defaultRibbonSide?: RibbonSide
   ribbonSide?: RibbonSide
+  defaultRibbonEnabled?: boolean
+  ribbonEnabled?: boolean
+  defaultPosterShape?: PosterShape
+  posterShape?: PosterShape
+  /** null/assente = default di formato (mai spazzatura dallo storage). */
+  defaultLogoAlign?: "left" | "center" | null
+  logoAlign?: "left" | "center"
   defaultEpisodeMetadataSource?: "tmdb" | "tvdb"
   episodeMetadataSource?: "tmdb" | "tvdb"
+  defaultDateFormat?: DateFormat
+  /** Chiave server/local piatta (saveDefaults/defaultsToPayload): fallback di lettura. */
+  dateFormat?: DateFormat
   defaultRegion?: string
   region?: string
   autoRotateClean?: boolean
+  /** Scala % logo di default (numero o null = auto-fit; mai spazzatura).
+   *  Legge entrambe le chiavi (flat da saveDefaults/auto-persist, prefixed
+   *  legacy), come gli altri default numerici. */
+  defaultLogoScale?: number | null
+  defaultLogoOffsetX?: number | null
+  defaultLogoOffsetY?: number | null
+  /** Chiavi flat (scritte da saveDefaults/auto-persist): fallback di lettura. */
+  logoScale?: number | null
+  logoOffsetX?: number | null
+  logoOffsetY?: number | null
+  /** Profilo default landscape (grezzo dallo storage/server, mai validato qui). */
+  landscape?: Record<string, unknown> | null
 }
 
 function readStoredDefaults(): StoredDefaults | null {
   if (typeof window === "undefined" || !window.localStorage) return null
   try {
-    const raw = window.localStorage.getItem("badgeDefaults")
+    const raw = window.localStorage.getItem(defaultsStorageKey())
     return raw ? JSON.parse(raw) : null
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -327,20 +461,43 @@ function readStoredDefaults(): StoredDefaults | null {
   }
 }
 
+/**
+ * Chiave localStorage dei default: namespaced per UUID sui path `/u/<uuid>`
+ * (niente inquinamento tra profili sullo stesso browser), globale altrove.
+ * Lo uuid è fisso per mount (il cambio path rimonta), quindi stabile dentro
+ * ogni effect che la usa.
+ */
+export function defaultsStorageKey(): string {
+  const uuid = currentPathUuid()
+  return uuid ? `badgeDefaults:${uuid}` : "badgeDefaults"
+}
+
 function safeSetItem(key: string, val: string) {
   try { localStorage.setItem(key, val) } catch { /* localStorage non disponibile */ }
 }
 
 function buildFromStored(d: StoredDefaults | null): DefaultsState {
   if (!d) return { ...DEFAULTS }
+  // Lo storage è JSON non validato: solo shape noti, mai spazzatura.
+  const storedDefaultShape = isPosterShape(d.defaultPosterShape)
+    ? d.defaultPosterShape
+    : (isPosterShape(d.posterShape) ? d.posterShape : undefined)
+  const storedShape = isPosterShape(d.posterShape)
+    ? d.posterShape
+    : (isPosterShape(d.defaultPosterShape) ? d.defaultPosterShape : undefined)
   return {
     defaultBadgeStyle: d.defaultBadgeStyle ?? d.badgeStyle ?? "shadow",
     defaultRankingBadgeStyle: d.defaultRankingBadgeStyle ?? d.rankingBadgeStyle ?? "default",
+    defaultQualityBadgeStyle: d.defaultQualityBadgeStyle ?? d.qualityBadgeStyle ?? DEFAULT_QUALITY_BADGE_STYLE,
+    defaultVideoFormats: Array.isArray(d.defaultVideoFormats)
+      ? d.defaultVideoFormats.filter(isVideoFormat)
+      : (Array.isArray(d.videoFormats) ? d.videoFormats.filter(isVideoFormat) : [...KNOWN_VIDEO_FORMATS]),
     defaultBlurEnabled: d.defaultBlurEnabled ?? d.blurEnabled ?? true,
     defaultBlurIntensity: d.defaultBlurIntensity ?? d.blurIntensity ?? 20,
     defaultBlurFade: d.defaultBlurFade ?? d.blurFade ?? 50,
     defaultBlurDarkness: d.defaultBlurDarkness ?? d.blurDarkness ?? 30,
     defaultTintStrength: d.defaultTintStrength ?? d.tintStrength ?? 20,
+    defaultTopShade: d.defaultTopShade ?? d.topShade ?? 50,
     defaultGradientHeight: d.defaultGradientHeight ?? d.gradientHeight ?? 30,
     defaultTopBadgeScale: d.defaultTopBadgeScale ?? d.topBadgeScale ?? 100,
     defaultTopBadgeOffsetX: d.defaultTopBadgeOffsetX ?? d.topBadgeOffsetX ?? 0,
@@ -364,8 +521,14 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     defaultCustomRatingEndpoint: d.defaultCustomRatingEndpoint ?? d.customRatingEndpoint,
     defaultCustomRatingApiKeyHeader: d.defaultCustomRatingApiKeyHeader ?? d.customRatingApiKeyHeader,
     defaultRatingSources: d.defaultRatingSources ?? d.ratingSources ?? ["imdb", "tmdb"],
+    defaultSeparateRatings: d.defaultSeparateRatings ?? d.separateRatings ?? false,
+    defaultSashOrder: normalizeSashOrder(d.defaultSashOrder ?? d.sashOrder) ?? [...DEFAULT_SASH_ORDER],
     defaultAutoRotateClean: d.defaultAutoRotateClean ?? d.autoRotateClean ?? false,
-    defaultLogoFitEnabled: d.defaultLogoFitEnabled ?? true,
+    defaultAutoRotateBackdrop: d.defaultAutoRotateBackdrop ?? false,
+    defaultDisableCleanPosters: d.defaultDisableCleanPosters ?? d.disableCleanPosters ?? false,
+    // Migrazione: il vecchio flag unico alimenta entrambi i formati.
+    defaultPortraitFitEnabled: d.defaultPortraitFitEnabled ?? d.defaultLogoFitEnabled ?? true,
+    defaultLandscapeFitEnabled: d.defaultLandscapeFitEnabled ?? d.defaultLogoFitEnabled ?? true,
     defaultNetworkLogo: d.defaultNetworkLogo ?? d.networkLogo ?? true,
     defaultAccentDominant: d.defaultAccentDominant ?? d.accentDominant ?? true,
     defaultBadgeTopScale: d.defaultBadgeTopScale ?? d.badgeTopScale ?? 100,
@@ -380,9 +543,16 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     defaultBadgeTopOffset: d.defaultBadgeTopOffset ?? d.badgeTopOffset ?? 0,
     defaultBadgeBottomOffset: d.defaultBadgeBottomOffset ?? d.badgeBottomOffset ?? 0,
     defaultLogoBottomOffset: d.defaultLogoBottomOffset ?? d.logoBottomOffset ?? 0,
+    defaultNetworkLogoPosition: isNetworkLogoPosition(d.defaultNetworkLogoPosition)
+      ? d.defaultNetworkLogoPosition
+      : (isNetworkLogoPosition(d.networkLogoPosition) ? d.networkLogoPosition : "auto"),
     defaultPreRelease: d.defaultPreRelease ?? d.preRelease ?? false,
     defaultRibbonSide: d.defaultRibbonSide ?? d.ribbonSide ?? "left",
+    defaultRibbonEnabled: d.defaultRibbonEnabled ?? d.ribbonEnabled ?? true,
+    defaultPosterShape: storedDefaultShape ?? "poster",
+    defaultLogoAlign: d.defaultLogoAlign === "left" || d.defaultLogoAlign === "center" ? d.defaultLogoAlign : null,
     defaultEpisodeMetadataSource: d.defaultEpisodeMetadataSource ?? d.episodeMetadataSource ?? "tmdb",
+    defaultDateFormat: parseDateFormat(d.defaultDateFormat ?? d.dateFormat) ?? "locale",
     defaultRegion: normalizeRegion(d.defaultRegion ?? d.region),
     region: normalizeRegion(d.region ?? d.defaultRegion),
     globalBadges: d.globalBadges ?? d.defaultGlobalBadges ?? true,
@@ -393,6 +563,7 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     badgeQuality: d.badgeQuality ?? d.defaultBadgeQuality ?? true,
     customRatings: d.customRatings ?? d.defaultCustomRatings ?? true,
     ratingSources: d.ratingSources ?? d.defaultRatingSources ?? ["imdb", "tmdb"],
+    separateRatings: d.separateRatings ?? d.defaultSeparateRatings ?? false,
     networkLogo: d.networkLogo ?? d.defaultNetworkLogo ?? true,
     accentDominant: d.accentDominant ?? d.defaultAccentDominant ?? true,
     badgeTopScale: d.badgeTopScale ?? d.defaultBadgeTopScale ?? 100,
@@ -407,8 +578,16 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     badgeTopOffset: d.badgeTopOffset ?? d.defaultBadgeTopOffset ?? 0,
     badgeBottomOffset: d.badgeBottomOffset ?? d.defaultBadgeBottomOffset ?? 0,
     logoBottomOffset: d.logoBottomOffset ?? d.defaultLogoBottomOffset ?? 0,
+    networkLogoPosition: isNetworkLogoPosition(d.networkLogoPosition)
+      ? d.networkLogoPosition
+      : (isNetworkLogoPosition(d.defaultNetworkLogoPosition) ? d.defaultNetworkLogoPosition : "auto"),
     preRelease: d.preRelease ?? d.defaultPreRelease ?? false,
     ribbonSide: d.ribbonSide ?? d.defaultRibbonSide ?? "left",
+    ribbonEnabled: d.ribbonEnabled ?? d.defaultRibbonEnabled ?? true,
+    posterShape: storedShape ?? "poster",
+    logoAlign: d.logoAlign === "left" || d.logoAlign === "center"
+      ? d.logoAlign
+      : (storedShape === "landscape" ? "left" : "center"),
     episodeMetadataSource: d.episodeMetadataSource ?? d.defaultEpisodeMetadataSource ?? "tmdb",
     gradientHeight: d.gradientHeight ?? d.defaultGradientHeight ?? 30,
     topBadgeScale: d.topBadgeScale ?? d.defaultTopBadgeScale ?? 100,
@@ -428,8 +607,21 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     blurDarkness: d.blurDarkness ?? d.defaultBlurDarkness ?? 30,
     blurEnabled: d.blurEnabled ?? d.defaultBlurEnabled ?? true,
     tintStrength: d.tintStrength ?? d.defaultTintStrength ?? 20,
+    // Solo per-titolo nel localStorage (dal mapping): il default globale vive
+    // in defaultTopShade — qui si segue lo stesso per coerenza coi correnti.
+    topShade: d.topShade ?? d.defaultTopShade ?? 50,
     badgeStyle: d.badgeStyle ?? d.defaultBadgeStyle ?? "shadow",
     rankingBadgeStyle: d.rankingBadgeStyle ?? d.defaultRankingBadgeStyle ?? "default",
+    qualityBadgeStyle: d.qualityBadgeStyle ?? d.defaultQualityBadgeStyle ?? DEFAULT_QUALITY_BADGE_STYLE,
+    videoFormats: Array.isArray(d.videoFormats) ? d.videoFormats.filter(isVideoFormat) : null,
+    defaultLogoScale: typeof d.defaultLogoScale === "number" ? d.defaultLogoScale : (typeof d.logoScale === "number" ? d.logoScale : null),
+    defaultLogoOffsetX: typeof d.defaultLogoOffsetX === "number" ? d.defaultLogoOffsetX : (typeof d.logoOffsetX === "number" ? d.logoOffsetX : null),
+    defaultLogoOffsetY: typeof d.defaultLogoOffsetY === "number" ? d.defaultLogoOffsetY : (typeof d.logoOffsetY === "number" ? d.logoOffsetY : null),
+    // Profilo landscape: solo plain object (mai array/null dallo storage);
+    // la validazione vera avviene sul server al sync (PUT).
+    landscape: (d.landscape !== null && typeof d.landscape === "object" && !Array.isArray(d.landscape))
+      ? (d.landscape as LandscapeServerDefaults)
+      : {},
   }
 }
 
@@ -443,11 +635,13 @@ function defaultsToPayload(d: DefaultsState): Record<string, unknown> {
   return {
     badgeStyle: d.defaultBadgeStyle,
     rankingBadgeStyle: d.defaultRankingBadgeStyle,
+    qualityBadgeStyle: d.defaultQualityBadgeStyle,
     blurEnabled: d.defaultBlurEnabled,
     blurIntensity: d.defaultBlurIntensity,
     blurFade: d.defaultBlurFade,
     blurDarkness: d.defaultBlurDarkness,
     tintStrength: d.defaultTintStrength,
+    topShade: d.defaultTopShade,
     gradientHeight: d.defaultGradientHeight,
     topBadgeScale: d.defaultTopBadgeScale,
     topBadgeOffsetX: d.defaultTopBadgeOffsetX,
@@ -468,11 +662,18 @@ function defaultsToPayload(d: DefaultsState): Record<string, unknown> {
     badgeRating: d.defaultBadgeRating,
     badgeQuality: d.defaultBadgeQuality,
     customRatings: d.defaultCustomRatings,
-    customRatingEndpoint: d.defaultCustomRatingEndpoint ?? "",
+    // Provider OFF = campo nascosto: un endpoint stale/invalido non deve far
+    // fallire l'intero PUT 400 (stessa protezione del Salva manuale).
+    customRatingEndpoint: d.defaultCustomRatings ? (d.defaultCustomRatingEndpoint ?? "") : "",
     customRatingApiKeyHeader: d.defaultCustomRatingApiKeyHeader ?? "",
     ratingSources: d.defaultRatingSources,
+    separateRatings: d.defaultSeparateRatings,
+    sashOrder: d.defaultSashOrder,
     autoRotateClean: d.defaultAutoRotateClean,
-    defaultLogoFitEnabled: d.defaultLogoFitEnabled,
+    defaultAutoRotateBackdrop: d.defaultAutoRotateBackdrop,
+    disableCleanPosters: d.defaultDisableCleanPosters,
+    defaultPortraitFitEnabled: d.defaultPortraitFitEnabled,
+    defaultLandscapeFitEnabled: d.defaultLandscapeFitEnabled,
     networkLogo: d.defaultNetworkLogo,
     accentDominant: d.defaultAccentDominant,
     badgeTopScale: d.defaultBadgeTopScale,
@@ -487,10 +688,20 @@ function defaultsToPayload(d: DefaultsState): Record<string, unknown> {
     badgeTopOffset: d.defaultBadgeTopOffset,
     badgeBottomOffset: d.defaultBadgeBottomOffset,
     logoBottomOffset: d.defaultLogoBottomOffset,
+    networkLogoPosition: d.defaultNetworkLogoPosition,
     preRelease: d.defaultPreRelease,
     ribbonSide: d.defaultRibbonSide,
+    ribbonEnabled: d.defaultRibbonEnabled,
+    posterShape: d.defaultPosterShape,
+    logoAlign: d.defaultLogoAlign,
     episodeMetadataSource: d.defaultEpisodeMetadataSource,
     region: d.defaultRegion,
+    dateFormat: d.defaultDateFormat,
+    videoFormats: d.defaultVideoFormats,
+    logoScale: d.defaultLogoScale ?? null,
+    logoOffsetX: d.defaultLogoOffsetX ?? null,
+    logoOffsetY: d.defaultLogoOffsetY ?? null,
+    landscape: d.landscape,
   }
 }
 
@@ -513,14 +724,11 @@ export function useDefaults() {
   // caricato, così il primo run dell'effetto di sync trova payload identico e non scrive.
   const lastPersistRef = useRef<string>("")
 
-  useEffect(() => {
-    const stored = readStoredDefaults()
-    const hydratedState = buildFromStored(stored)
-    setState(hydratedState)
-    lastPersistRef.current = JSON.stringify(defaultsToPayload(hydratedState))
-    setHydrated(true)
-
-    fetch("/api/defaults")
+  // Refresh defaults dal server (namespace via userFetch su /u/<uuid>).
+  // Estratto per riuso post-unlock: la prima fetch può aver girato senza
+  // token (race col #key=) e il merge server→locale va rifatto a sblocco.
+  const refreshFromServer = useCallback(() => {
+    userFetch("/api/defaults")
       .then((r) => (r.ok ? r.json() : null))
       .then((serverData) => {
         if (!serverData) return
@@ -537,13 +745,36 @@ export function useDefaults() {
           merged.defaultRatingSources = serverData.ratingSources
           merged.ratingSources = serverData.ratingSources
         }
+        if (!currentStored?.defaultSashOrder && !currentStored?.sashOrder && Array.isArray(serverData.sashOrder)) {
+          merged.defaultSashOrder = serverData.sashOrder
+        }
+        if (!currentStored?.defaultVideoFormats && Array.isArray(serverData.videoFormats)) {
+          merged.defaultVideoFormats = serverData.videoFormats
+        }
         const updated = buildFromStored(merged)
         setState(updated)
         lastPersistRef.current = JSON.stringify(defaultsToPayload(updated))
-        safeSetItem("badgeDefaults", JSON.stringify(defaultsToPayload(updated)))
+        safeSetItem(defaultsStorageKey(), JSON.stringify(defaultsToPayload(updated)))
       })
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    const stored = readStoredDefaults()
+    const hydratedState = buildFromStored(stored)
+    setState(hydratedState)
+    lastPersistRef.current = JSON.stringify(defaultsToPayload(hydratedState))
+    setHydrated(true)
+
+    refreshFromServer()
+  }, [refreshFromServer])
+
+  // Post-unlock: ricarica i defaults del namespace senza refresh pagina.
+  useEffect(() => {
+    const onUnlock = () => refreshFromServer()
+    window.addEventListener(USER_UNLOCK_EVENT, onUnlock)
+    return () => window.removeEventListener(USER_UNLOCK_EVENT, onUnlock)
+  }, [refreshFromServer])
 
   // Auto-persist: ogni cambio dei default scrive SUBITO su localStorage
   // e tenta il sync server (/api/defaults). Dedup via payload string — se cambiano
@@ -557,7 +788,7 @@ export function useDefaults() {
     lastPersistRef.current = payloadStr
 
     // Scrittura immediata e sincrona in localStorage ad ogni cambio
-    safeSetItem("badgeDefaults", payloadStr)
+    safeSetItem(defaultsStorageKey(), payloadStr)
 
     const timer = setTimeout(() => {
       // Guest guard: ospite da link altrui senza sessione su istanza con PIN
@@ -567,10 +798,13 @@ export function useDefaults() {
       void shouldSkipServerSync().then((skip) => {
         if (skip) {
           lastPersistRef.current = ""
-          console.debug("[defaults] Server sync skipped (guest without session)")
+          console.debug("[defaults] Server sync skipped (guest without session, or no profile)")
+          void isProfilelessOnMultiUser().then((profileless) => {
+            if (profileless) notifyProfilelessOnce()
+          })
           return
         }
-        fetch("/api/defaults", {
+        userFetch("/api/defaults", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: payloadStr,

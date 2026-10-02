@@ -1,16 +1,16 @@
 {
   "name": "pictorium",
-  "version": "1.10.0",
+  "version": "1.24.6",
   "license": "AGPL-3.0-only",
   "private": true,
   "scripts": {
-    "predev": "node scripts/write-app-version.mjs && node scripts/write-render-version.mjs",
+    "predev": "node scripts/write-app-version.mjs && node scripts/write-render-version.mjs && node scripts/write-recent-changes.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/write-app-version.mjs && node scripts/write-render-version.mjs",
+    "prebuild": "node scripts/write-app-version.mjs && node scripts/write-render-version.mjs && node scripts/write-recent-changes.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "pretest": "node scripts/write-app-version.mjs && node scripts/write-render-version.mjs",
+    "pretest": "node scripts/write-app-version.mjs && node scripts/write-render-version.mjs && node scripts/write-recent-changes.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
@@ -26,6 +26,7 @@
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "@vercel/kv": "^3.0.0",
+    "ioredis": "^6.0.0",
     "lucide-react": "^1.35.0",
     "next": "^16.3.3",
     "qrcode": "^1.5.4",

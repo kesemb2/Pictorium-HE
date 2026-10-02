@@ -5,6 +5,9 @@ import Link from "next/link"
 import { RefreshCw } from "lucide-react"
 import { t, getLang, setLang } from "@/lib/i18n"
 import { APP_COMMIT, APP_VERSION } from "@/generated/app-version"
+import { currentPathUuid, userAuthHeaders } from "@/lib/user-token"
+import { adminAuthHeaders } from "@/lib/admin-token"
+import { AdminUnlockCard } from "@/components/AdminUnlockCard"
 
 interface CheckResult {
   ok: boolean
@@ -115,6 +118,15 @@ function StatusRow({ label, ok, extra }: { label: string; ok: boolean | null; ex
 export default function StatusPage() {
   const [data, setData] = useState<HealthData | null>(null)
   const [cacheStatus, setCacheStatus] = useState<CacheStatusData | null>(null)
+  // 401/403 su /api/cache/status (senza token admin o sessione PIN valida:
+  // l'endpoint è fail-closed anche su istanze pubbliche): le metriche sono
+  // protette, non assenti — si mostra la card di sblocco invece del
+  // generico "non disponibile" (errori di rete/500 restano non disponibile).
+  const [cacheLocked, setCacheLocked] = useState(false)
+  // Presenza di ADMIN_TOKEN sul server: la card di sblocco ha senso solo se
+  // esiste un token da sbloccare. null = ancora ignoto: si mostra come oggi
+  // (fail-open display, mai togliere UI su rete lenta).
+  const [adminTokenConfigured, setAdminTokenConfigured] = useState<boolean | null>(null)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
   // Fuori dal provider di traduzione: sincronizza la lingua salvata al mount
@@ -132,7 +144,11 @@ export default function StatusPage() {
 
   async function loadCacheStatus() {
     try {
-      const res = await fetch("/api/cache/status")
+      // Il token admin di sessione (sbloccato in Impostazioni o qui) viaggia
+      // con la richiesta: senza, su istanza privata arriva 401 (fail-closed).
+      const res = await fetch("/api/cache/status", { headers: adminAuthHeaders() })
+      if (res.status === 401 || res.status === 403) { setCacheLocked(true); setCacheStatus(null); return }
+      setCacheLocked(false)
       if (!res.ok) { setCacheStatus(null); return }
       const body = await res.json()
       setCacheStatus(body)
@@ -141,15 +157,26 @@ export default function StatusPage() {
     }
   }
 
+  const [uuid, setUuid] = useState<string | null>(null)
+  useEffect(() => {
+    const id = currentPathUuid() || (typeof window !== "undefined" ? window.sessionStorage?.getItem("pictorium_active_space") : null)
+    if (id) setUuid(id)
+  }, [])
+
   const loadHealth = useCallback(async () => {
-    // La chiave TMDB è personale (localStorage) e la route /api/health la
-    // accetta SOLO via header x-api-key: senza, tutti i check rispondono 401
-    // e la pagina mostrerebbe punti rossi anche a servizi sani.
+    // Risolve la chiave TMDB: priorità a localStorage (single-user / override),
+    // poi allo spazio personale attivo (?u= + x-user-token/password) risolto da /api/health.
+    const id = currentPathUuid() || (typeof window !== "undefined" ? window.sessionStorage?.getItem("pictorium_active_space") : null)
     const key = typeof window !== "undefined" ? (localStorage.getItem("tmdb_key") || "") : ""
+    const headers: Record<string, string> = {}
+    if (key) headers["x-api-key"] = key
+    if (id) Object.assign(headers, userAuthHeaders(id))
+    const url = id ? `/api/health?u=${encodeURIComponent(id)}` : "/api/health"
+
     setLoading(true)
     setError("")
     try {
-      const r = await fetch("/api/health", { headers: key ? { "x-api-key": key } : undefined })
+      const r = await fetch(url, { headers: Object.keys(headers).length > 0 ? headers : undefined })
       if (!r.ok && r.status !== 503) throw new Error("Errore " + r.status)
       const d = await r.json()
       setData(d)
@@ -179,6 +206,12 @@ export default function StatusPage() {
   useEffect(() => {
     void loadHealth()
     void loadCacheStatus()
+    fetch("/api/auth/pin")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && typeof data.hasAdminToken === "boolean") setAdminTokenConfigured(data.hasAdminToken)
+      })
+      .catch(() => null)
   }, [loadHealth])
 
   // Auto-refresh SOLO metriche locali (/api/cache/status, zero upstream):
@@ -192,16 +225,23 @@ export default function StatusPage() {
     return () => clearInterval(timer)
   }, [autoRefresh])
 
+  const backHref = uuid ? `/u/${encodeURIComponent(uuid)}/configure` : "/"
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-2xl mx-auto px-4 py-8">
-        <Link href="/" className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-accent transition-colors mb-6">{t("ui.statusBack")}</Link>
+        <Link href={backHref} className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-accent transition-colors mb-6">{t("ui.statusBack")}</Link>
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold mb-1">{t("ui.statusTitle")}</h1>
             <p className="text-xs text-zinc-500 font-mono" data-testid="status-build">
               v{APP_VERSION} · {APP_COMMIT}
             </p>
+            {uuid && (
+              <p className="text-[11px] text-zinc-400 mt-1 font-mono">
+                <span className="text-zinc-500">Spazio:</span> {uuid.slice(0, 8)}…
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -309,10 +349,17 @@ export default function StatusPage() {
               <div className="space-y-1">
                 {data.storage.mode === "kv"
                   ? <StatusRow label={t("ui.statusStorageMode")} ok extra={t("ui.statusStorageKv")} />
-                  : <>
-                      <StatusRow label={t("ui.statusStorageMode")} ok={!!data.storage.dataFileExists} extra={t("ui.statusStorageFile")} />
-                      <StatusRow label={t("ui.statusDataFile")} ok={!!data.storage.dataFileExists} extra={data.storage.dataFileExists ? t("ui.statusDataFileName") : t("ui.statusNotFound")} />
-                    </>
+                  : (() => {
+                      // Installazione fresca: il file nasce al primo save —
+// "not found" con 0 poster è lo stato iniziale sano, non un
+// errore (pallino neutro invece che rosso).
+                      const freshInstall = !data.storage.dataFileExists && data.storage.mappingsCount === 0
+                      const fileOk = freshInstall ? null : !!data.storage.dataFileExists
+                      return (<>
+                        <StatusRow label={t("ui.statusStorageMode")} ok={fileOk} extra={t("ui.statusStorageFile")} />
+                        <StatusRow label={t("ui.statusDataFile")} ok={fileOk} extra={data.storage.dataFileExists ? t("ui.statusDataFileName") : t("ui.statusNotFound")} />
+                      </>)
+                    })()
                 }
                 <StatusRow label={t("ui.statusSavedPosters")} ok={data.storage.mappingsCount > 0 || data.storage.mode === "kv" || !data.storage.dataFileExists} extra={<>{t("ui.statusPosterCount", { count: data.storage.mappingsCount })}</>} />
               </div>
@@ -414,7 +461,19 @@ export default function StatusPage() {
 
             <div className="surface-card border-white/10 rounded-2xl p-5 shadow-xl">
               <h2 className="text-base font-semibold mb-3">{t("ui.statusCache")}</h2>
-              {cacheStatus ? (
+              {cacheLocked && !cacheStatus ? (
+                adminTokenConfigured !== false ? (
+                  <AdminUnlockCard
+                    t={t}
+                    className="space-y-2.5"
+                    description={t("ui.statusTelemetryLocked")}
+                    onUnlocked={() => void loadCacheStatus()}
+                    onLock={() => { setCacheLocked(true); setCacheStatus(null) }}
+                  />
+                ) : (
+                  <p className="text-xs text-zinc-500">{t("ui.statusCacheUnavailable")}</p>
+                )
+              ) : cacheStatus ? (
                 <div className="space-y-1">
                   <StatusRow label={t("ui.statusCacheTotal")} ok extra={cacheStatus.totalEntries} />
                   <StatusRow label={t("ui.statusCacheUntagged")} ok extra={cacheStatus.untaggedEntries} />

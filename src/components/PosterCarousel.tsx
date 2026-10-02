@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type TouchEvent } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { usePSelector } from "@/lib/context"
+import { currentPathUuid } from "@/lib/user-token"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { toSearchResult } from "@/lib/types"
 import { titleOf } from "@/lib/utils"
@@ -74,6 +75,12 @@ export function PosterCarousel() {
   const navigateToPoster = usePSelector((v) => v.navigateToPoster)
   const trending = usePSelector((v) => v.trending)
   const { t } = useT()
+  // Come HomeHero: ?u= per far risolvere al server le chiavi del profilo.
+  // Costante per mount (il cambio path rimonta la route): fuori dai deps di items.
+  const nsSuffix = useMemo(() => {
+    const id = currentPathUuid()
+    return id ? `&u=${id}` : ""
+  }, [])
   const containerRef = useRef<HTMLDivElement>(null)
 
   // 20 poster demo scelti a caso a ogni refresh tra gli esempi statici e i film/
@@ -309,7 +316,7 @@ export function PosterCarousel() {
             {[...items, ...items].map((ex, i) => {
               // URL pulita: la chiave viaggia solo via header x-api-key
               // (SecureCarouselImg) — il server la legge lì per primo.
-              const posterUrl = `/api/poster/${ex.type}/${ex.id}${ex.params}`
+              const posterUrl = `/api/poster/${ex.type}/${ex.id}${ex.params}${nsSuffix}`
               return (
                 <div
                   key={i}

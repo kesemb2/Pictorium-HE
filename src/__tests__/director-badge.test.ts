@@ -18,34 +18,34 @@ const tIt = tFor(itDict as Record<string, string>)
 
 describe("directorBadgeLabel", () => {
   it("uses the curated Hebrew name over Wikidata's", () => {
-    expect(directorBadgeLabel("Martin Scorsese", "מרטין סקורסזי", tHe, "he")).toBe("מרטין סקורסזה")
+    expect(directorBadgeLabel("Martin Scorsese", tHe, { nameHe: "מרטין סקורסזי", locale: "he" })).toBe("מרטין סקורסזה")
   })
 
   it("falls back to Wikidata's Hebrew label when the name is not curated", () => {
-    expect(directorBadgeLabel("John Ford", "ג'ון פורד", tHe, "he")).toBe("ג'ון פורד")
+    expect(directorBadgeLabel("John Ford", tHe, { nameHe: "ג'ון פורד", locale: "he" })).toBe("ג'ון פורד")
   })
 
   // Un nome in latino è meglio di nessun badge.
   it("keeps the English name when no Hebrew is available", () => {
-    expect(directorBadgeLabel("John Ford", null, tHe, "he")).toBe("John Ford")
+    expect(directorBadgeLabel("John Ford", tHe, { nameHe: null, locale: "he" })).toBe("John Ford")
   })
 
   it("never uses Hebrew for another language", () => {
-    expect(directorBadgeLabel("Martin Scorsese", "מרטין סקורסזה", tEn, "en")).toBe("By Martin Scorsese")
-    expect(directorBadgeLabel("Martin Scorsese", "מרטין סקורסזה", tIt, "it")).toBe("Di Martin Scorsese")
+    expect(directorBadgeLabel("Martin Scorsese", tEn, { nameHe: "מרטין סקורסזה", locale: "en" })).toBe("By Martin Scorsese")
+    expect(directorBadgeLabel("Martin Scorsese", tIt, { nameHe: "מרטין סקורסזה", locale: "it" })).toBe("Di Martin Scorsese")
   })
 
   it("accepts a full locale, not only the two-letter code", () => {
-    expect(directorBadgeLabel("Martin Scorsese", null, tHe, "he-IL")).toBe("מרטין סקורסזה")
+    expect(directorBadgeLabel("Martin Scorsese", tHe, { nameHe: null, locale: "he-IL" })).toBe("מרטין סקורסזה")
   })
 
   it("is null without a director", () => {
-    expect(directorBadgeLabel(null, "מרטין סקורסזה", tHe, "he")).toBeNull()
+    expect(directorBadgeLabel(null, tHe, { nameHe: "מרטין סקורסזה", locale: "he" })).toBeNull()
   })
 
   it("drops the prefix in Hebrew but keeps it elsewhere", () => {
-    expect(directorBadgeLabel("Tim Burton", null, tHe, "he")).toBe("טים ברטון")
-    expect(directorBadgeLabel("Tim Burton", null, tEn, "en")).toBe("By Tim Burton")
+    expect(directorBadgeLabel("Tim Burton", tHe, { nameHe: null, locale: "he" })).toBe("טים ברטון")
+    expect(directorBadgeLabel("Tim Burton", tEn, { nameHe: null, locale: "en" })).toBe("By Tim Burton")
   })
 
   /**
@@ -56,7 +56,7 @@ describe("directorBadgeLabel", () => {
    */
   it("renders the same cached pair differently per language", () => {
     const cached = { director: "Stanley Kubrick", directorHe: "סטנלי קובריק" }
-    expect(directorBadgeLabel(cached.director, cached.directorHe, tHe, "he")).toBe("סטנלי קובריק")
-    expect(directorBadgeLabel(cached.director, cached.directorHe, tEn, "en")).toBe("By Stanley Kubrick")
+    expect(directorBadgeLabel(cached.director, tHe, { nameHe: cached.directorHe, locale: "he" })).toBe("סטנלי קובריק")
+    expect(directorBadgeLabel(cached.director, tEn, { nameHe: cached.directorHe, locale: "en" })).toBe("By Stanley Kubrick")
   })
 })

@@ -127,6 +127,14 @@ export function PosterLightbox({
       : t("ui.tvSeries")
   const vote = mapping.voteAverage != null ? mapping.voteAverage.toFixed(1) : null
 
+  // Dual-format: il lightbox adotta base e aspect del formato primario.
+  const isLandscape = mapping?.posterShape === "landscape"
+  const displaySrc = imgFailed
+    ? null
+    : isLandscape
+      ? (mapping?.backdropPath ? posterUrlFn(mapping.backdropPath, "w780") : (mapping?.posterPath ? posterUrlFn(mapping.posterPath, "w500") : null))
+      : mediaSrc
+
   const isInCol = (colId: string) =>
     collections?.some((c) => c.id === colId && c.posterIds.includes(posterKey!)) ?? false
 
@@ -144,7 +152,7 @@ export function PosterLightbox({
       <div
         ref={cardRef}
         onClick={(e) => e.stopPropagation()}
-        className={`relative w-full max-w-xs sm:max-w-sm rounded-2xl surface-card overflow-hidden shadow-2xl shadow-black/60 transition-all duration-300 ${
+        className={`relative w-full ${isLandscape ? "max-w-3xl" : "max-w-xs sm:max-w-sm"} rounded-2xl surface-card overflow-hidden shadow-2xl shadow-black/60 transition-all duration-300 ${
           mounted && !closing
             ? "opacity-100 scale-100"
             : closing
@@ -166,12 +174,12 @@ export function PosterLightbox({
         </button>
 
         {/* Poster area */}
-        <div className="aspect-[2/3] bg-surface relative overflow-hidden">
-          {mediaSrc ? (
+        <div className={`${isLandscape ? "aspect-video" : "aspect-[2/3]"} bg-surface relative overflow-hidden`}>
+          {displaySrc ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element -- TMDB dynamic URL */}
               <img
-                src={mediaSrc}
+                src={displaySrc ?? undefined}
                 alt={mapping.title}
                 className="w-full h-full object-cover"
                 onError={() => { if (!imgFailed) setImgFailed(true) }}
@@ -229,7 +237,7 @@ export function PosterLightbox({
           </div>
 
           {/* Poster icon badge */}
-          {mediaSrc && (
+          {displaySrc && (
             <div className="absolute top-3 left-3 w-7 h-7 rounded-lg bg-black/40 backdrop-blur-sm flex items-center justify-center pointer-events-none">
               <Maximize2 className="w-3.5 h-3.5 text-white/60" />
             </div>

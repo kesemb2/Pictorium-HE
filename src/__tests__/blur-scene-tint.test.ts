@@ -1,6 +1,6 @@
 import sharp from "sharp"
 import { describe, expect, it } from "vitest"
-import { findAccentColor, findSceneTint } from "@/lib/accent-color"
+import { findAccentColor, findBandTint } from "@/lib/accent-color"
 import { extractSceneTint } from "@/lib/poster-render-helpers"
 
 function relLuma({ r, g, b }: { r: number; g: number; b: number }): number {
@@ -28,7 +28,7 @@ describe("scene tint vs badge accent on a dark poster", () => {
     const pixels = await sharp(buf).ensureAlpha().raw().toBuffer()
 
     const badge = findAccentColor(pixels, 200, 300, "")
-    const scene = findSceneTint(pixels, 200, 300)!
+    const scene = findBandTint(pixels, 200, 300)!
 
     expect(scene).not.toBeNull()
     expect(relLuma(badge)).toBeGreaterThan(0.6)

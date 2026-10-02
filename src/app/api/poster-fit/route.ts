@@ -6,6 +6,10 @@ import { BEST_FIT_GLOBAL } from "@/lib/best-fit-config"
 import { createLogger } from "@/lib/logger"
 import { readJsonBody, BodyTooLargeError } from "@/lib/read-body"
 import { checkAdminToken, isSameOrigin, adminAuthResponse, originMismatchResponse } from "@/lib/auth"
+import { checkUserAuth, getScopedUserId, extractUserParam, invalidUserResponse, isMultiUserEnabled, userAuthResponse, userRateLimitKey } from "@/lib/user-auth"
+import { initSharp } from "@/lib/sharp-config"
+import { timedFetch } from "@/lib/outbound-stats"
+import { cachedImageBytes } from "@/lib/image-bytes-cache"
 
 const log = createLogger("poster-fit-api")
 
@@ -22,7 +26,8 @@ interface PosterFitBody {
   hasBadges?: boolean
   /** Altezza della fascia sfocata in % del poster; null/assente a blur spento. */
   blurBandPct?: number | null
-  posterSize?: "w342" | "w500"
+  posterSize?: "w342" | "w500" | "w780" | "w300"
+  shape?: "poster" | "landscape"
   voteAverages?: number[]
   widths?: number[]
   heights?: number[]
@@ -53,32 +58,64 @@ interface PosterFitResponse {
 }
 
 async function fetchImage(url: string, signal: AbortSignal): Promise<Buffer> {
-  const res = await fetch(url, { signal })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const buf = Buffer.from(await res.arrayBuffer())
-  if (buf.length < 100) throw new Error(`Image too small (${buf.length} bytes)`)
-  return buf
+  // Byte-LRU (F3): a parità di URL (logo + candidati per toggle) niente
+  // re-download; il check <100 resta dentro, invariato.
+  return cachedImageBytes(url, async () => {
+    const res = await timedFetch(url, { signal })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const buf = Buffer.from(await res.arrayBuffer())
+    if (buf.length < 100) throw new Error(`Image too small (${buf.length} bytes)`)
+    return buf
+  })
 }
 
 const MAX_BODY_BYTES = 50_000
-const POSTER_SIZES = new Set(["w342", "w500"])
+const POSTER_SIZES = new Set(["w342", "w500", "w780", "w300"])
+const FIT_SHAPES = new Set(["poster", "landscape"])
+
+/**
+ * Namespace della richiesta (multi-user): `?u=`/`?user=` validato, solo con
+ * flag ON. Stesso pattern di mappings/defaults.
+ */
+function resolveScope(req: NextRequest): { scoped: string | null; error?: Response } {
+  const rawUser = extractUserParam(req)
+  if (rawUser && isMultiUserEnabled() && !getScopedUserId(rawUser)) {
+    return { scoped: null, error: invalidUserResponse() }
+  }
+  return { scoped: getScopedUserId(rawUser) }
+}
 
 export async function POST(req: NextRequest) {
-  const rl = await rateLimit(rateLimitKey(req), "search")
+  const { scoped, error } = resolveScope(req)
+  // Il rate-limit protegge anche contro lo spam di 400 (bad uuid): mai
+  // ritornare l'errore di scope prima del rate-limit.
+  const rl = await rateLimit(error ? rateLimitKey(req) : (scoped ? userRateLimitKey(req, scoped) : rateLimitKey(req)), "search")
   if (!rl.ok) return rateLimitResponse(rl.retAfter)
+  if (error) return error
   // S10: endpoint CPU/network-heavy (fetch di fino a 17 immagini + analisi
   // sharp). Protetto come le altre route admin: senza auth un attaccante lo
   // userebbe come amplificatore di richieste verso image.tmdb.org e consumo
   // CPU. Su istanza pubblica (PICTORIUM_PUBLIC_INSTANCE=1) resta aperto per
-  // l'editor; con ADMIN_TOKEN configurato richiede il token.
-  if (!checkAdminToken(req)) return adminAuthResponse()
-  if (!isSameOrigin(req)) return originMismatchResponse()
+  // l'editor; con ADMIN_TOKEN configurato richiede il token. Su istanza
+  // multi-user il proprietario dello spazio (`?u=` + secret/password) passa
+  // dal ramo scoped senza bisogno del flag public né del token globale.
+  if (scoped) {
+    if (!(await checkUserAuth(req, scoped))) return userAuthResponse()
+    if (!isSameOrigin(req)) return originMismatchResponse()
+  } else {
+    if (!checkAdminToken(req)) return adminAuthResponse()
+    if (!isSameOrigin(req)) return originMismatchResponse()
+  }
 
   // Override globale dell'istanza (PICTORIUM_BEST_FIT_ENABLED): se disabilitato
   // il best-fit non viene nemmeno calcolato — risposta vuota con flag.
   if (BEST_FIT_GLOBAL === "off") {
     return Response.json({ ranked: [], bestPosterPath: null, total: 0, failed: 0, disabled: true })
   }
+
+  // HF Spaces 512MB: cap sharp come la route poster (concurrency/memoria),
+  // altrimenti libvips parte a ncore thread sui 16 candidati → OOM.
+  initSharp()
 
   const contentLength = Number(req.headers.get("content-length") || "0")
   if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
@@ -116,11 +153,16 @@ if (body.blurBandPct !== undefined && body.blurBandPct !== null
     && (typeof body.blurBandPct !== "number" || !Number.isFinite(body.blurBandPct))) {
   return Response.json({ error: "Invalid body field: 'blurBandPct' must be a number" }, { status: 400 })
 }
+if (body.shape !== undefined && !FIT_SHAPES.has(body.shape)) {
+  return Response.json({ error: "Invalid body field: 'shape' must be 'poster' or 'landscape'" }, { status: 400 })
+}
 
 // logoPath entra in una URL TMDB: deve essere un path assoluto, non una URL.
 if (!body.logoPath.startsWith("/")) {
   return Response.json({ error: "logoPath must be a path starting with '/'" }, { status: 400 })
 }
+
+  const shape = body.shape === "landscape" ? "landscape" as const : "poster" as const
 
   // Endpoint CPU/network-heavy: limita il numero di candidati da analizzare.
   if (body.posterPaths.length > MAX_CANDIDATES) {
@@ -135,11 +177,13 @@ if (!body.logoPath.startsWith("/")) {
       width: body.widths?.[index] ?? 0,
       height: body.heights?.[index] ?? 0,
     })),
+    shape,
   )
 
   // posterSize entra nel path dell'URL TMDB: set chiuso per evitare
-  // dimensioni/percorsi arbitrari.
-  const posterSize = POSTER_SIZES.has(body.posterSize || "") ? body.posterSize! : "w342"
+  // dimensioni/percorsi arbitrari. Default w780 in landscape (backdrop),
+  // w342 in portrait.
+  const posterSize = POSTER_SIZES.has(body.posterSize || "") ? body.posterSize! : (shape === "landscape" ? "w780" : "w342")
   const logoScale = body.logoScale ?? 75
   const logoOffsetX = body.logoOffsetX ?? 0
   const logoOffsetY = body.logoOffsetY ?? 0
@@ -202,6 +246,7 @@ if (!body.logoPath.startsWith("/")) {
     hasBadges,
     [-20, 0, 20],
     blurBandPct,
+    shape,
   )
 
   const ranked = rankedResults.map((r) => ({

@@ -7,6 +7,16 @@ afterEach(() => {
   delete process.env.ADMIN_TOKEN
 })
 
+const TEST_TOKEN = "secret"
+
+/** Richiesta autenticata (il token va anche in env: resolveAdminToken). */
+function statusReq(withAuth: boolean) {
+  process.env.ADMIN_TOKEN = TEST_TOKEN
+  return new Request("http://localhost:3000/api/cache/status", {
+    headers: withAuth ? { "x-admin-token": TEST_TOKEN } : {},
+  })
+}
+
 describe("GET /api/cache/status", () => {
   it("returns cache status grouped by tag", async () => {
     cacheSet("poster:1", "a", ["poster"])
@@ -14,7 +24,7 @@ describe("GET /api/cache/status", () => {
     cacheSet("catalog:1", "c", ["catalog", "stremio"])
     cacheSet("misc", "d")
 
-    const req = new Request("http://localhost:3000/api/cache/status")
+    const req = statusReq(true)
     const res = await GET(req as never)
     const body = await res.json()
 
@@ -55,12 +65,20 @@ describe("GET /api/cache/status", () => {
         uptimeSeconds: expect.any(Number),
       }),
       circuitBreakers: expect.any(Object),
+      outbound: expect.any(Object),
     })
   })
 
   it("requires admin token when configured", async () => {
-    process.env.ADMIN_TOKEN = "secret"
+    const req = statusReq(false)
+    const res = await GET(req as never)
 
+    expect(res.status).toBe(401)
+  })
+
+  it("stays fail-closed without token even on public instances", async () => {
+    // Nessun ADMIN_TOKEN (ma POSTERIUM_PUBLIC_INSTANCE=1 dal setup): la
+    // telemetria non è più aperta a chiunque come con checkAdminToken.
     const req = new Request("http://localhost:3000/api/cache/status")
     const res = await GET(req as never)
 
@@ -70,7 +88,7 @@ describe("GET /api/cache/status", () => {
   it("does not count expired entries", async () => {
     cacheSet("expired", "old", ["short-lived"], -1)
 
-    const req = new Request("http://localhost:3000/api/cache/status")
+    const req = statusReq(true)
     const res = await GET(req as never)
     const body = await res.json()
 
@@ -83,11 +101,12 @@ describe("GET /api/cache/status", () => {
       maxBytes: expect.any(Number),
       maxEntries: expect.any(Number),
       posterErrors: { writes: 0, hits: 0 },
-      imageBytes: expect.any(Object),
       poster: expect.any(Object),
       tmdb: expect.any(Object),
       system: expect.any(Object),
       circuitBreakers: expect.any(Object),
+      outbound: expect.any(Object),
+      imageBytes: expect.any(Object),
     })
   })
 })

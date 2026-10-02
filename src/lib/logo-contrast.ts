@@ -303,10 +303,10 @@ export function logoContrast(logoLum: number | null, zoneLum: number | null): nu
 /**
  * Quanto deve essere forte la velatura sotto al logo, 0..1, dato il contrasto
  * misurato. Sopra la soglia è esattamente 0 (nessun pixel dipinto); sotto cresce
- * in proporzione a quanto manca, e si ferma a 0.55 perché una velatura piena
- * coprirebbe l'artwork invece di aiutarlo.
+ * in proporzione a quanto manca, e si ferma a 0.25: un velo leggero che aiuta
+ * senza diventare un alone visibile sul fondo.
  */
-export const LOGO_SCRIM_MAX = 0.55
+export const LOGO_SCRIM_MAX = 0.25
 
 export function logoScrimStrength(contrast: number): number {
   if (!Number.isFinite(contrast) || contrast >= LOGO_CONTRAST_MIN) return 0
@@ -328,12 +328,12 @@ export async function buildLogoScrim(
   maxH: number = STD_H,
 ): Promise<Buffer | null> {
   if (strength <= 0 || width <= 0 || height <= 0) return null
-  // Il riquadro è più largo del logo: la sfumatura deve morire fuori dai bordi,
+  // Il riquadro è poco più largo del logo: la sfumatura deve morire fuori dai bordi,
   // altrimenti si vedrebbe l'alone come una macchia con un contorno. Il clamp
   // alla tela non è un dettaglio: un logo a piena larghezza produrrebbe un
   // riquadro più grande del poster, e sharp rifiuta di comporlo.
-  const w = Math.min(Math.round(width * 1.35), Math.round(maxW))
-  const h = Math.min(Math.round(height * 1.8), Math.round(maxH))
+  const w = Math.min(Math.round(width * 1.2), Math.round(maxW))
+  const h = Math.min(Math.round(height * 1.5), Math.round(maxH))
   if (w <= 0 || h <= 0) return null
   const rgb = lightLogo ? "0,0,0" : "255,255,255"
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">`

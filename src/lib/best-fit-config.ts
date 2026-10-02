@@ -24,3 +24,32 @@ export const BEST_FIT_GLOBAL: BestFitGlobal =
     : raw === "1" || raw === "true" || raw === "on" || raw === "yes"
       ? "on"
       : "auto"
+
+export interface LogoFitInputs {
+  readonly global: BestFitGlobal
+  readonly queryLogoFit: string | null
+  readonly configLogoFit?: boolean
+  readonly sdFit?: {
+    readonly defaultPortraitFitEnabled?: boolean
+    readonly defaultLandscapeFitEnabled?: boolean
+    readonly defaultLogoFitEnabled?: boolean
+  } | null
+  readonly isLandscape: boolean
+}
+
+/**
+ * Catena di risoluzione best-fit (pura, testabile): globale > query >
+ * config token > per-shape del namespace > legacy globale. Tutto undefined
+ * → false (default spento). Il gradino per-shape è il ponte che mancava:
+ * i toggle UI salvano defaultPortrait/LandscapeFitEnabled, che la route
+ * ignorava leggendo solo il legacy defaultLogoFitEnabled.
+ */
+export function resolveLogoFitEnabled(input: LogoFitInputs): boolean {
+  if (input.global === "off") return false
+  if (input.global === "on") return true
+  if (input.queryLogoFit !== null) return input.queryLogoFit !== "0"
+  if (input.configLogoFit !== undefined) return input.configLogoFit
+  const sd = input.sdFit
+  const perShape = input.isLandscape ? sd?.defaultLandscapeFitEnabled : sd?.defaultPortraitFitEnabled
+  return (perShape ?? sd?.defaultLogoFitEnabled) === true
+}

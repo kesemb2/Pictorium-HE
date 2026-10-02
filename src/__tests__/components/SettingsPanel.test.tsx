@@ -1,7 +1,24 @@
-import { describe, it, expect, vi } from "vitest"
-import { screen } from "@testing-library/react"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { fireEvent, screen, within } from "@testing-library/react"
 import { SettingsPanel } from "@/components/SettingsPanel"
 import { renderWithCtx } from "@/__tests__/test-utils"
+import { resetGuestGuardForTests } from "@/lib/guest-guard"
+import {
+  __resetAdminTokenForTests,
+  clearAdminToken,
+  setAdminToken,
+} from "@/lib/admin-token"
+
+// UserSpaceSection (renderizzato dal pannello) richiede l'app router di Next:
+// in jsdom non è montato (stesso mock usato in EditViewGate.test.tsx).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+}))
+
+beforeEach(() => {
+  __resetAdminTokenForTests()
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, json: async () => ({}) })))
+})
 
 describe("SettingsPanel", () => {
   it("renders genre/rating badge toggle and mirror card", () => {
@@ -25,9 +42,11 @@ describe("SettingsPanel", () => {
       />
     )
     expect(screen.getByText("ui.trendBadge")).toBeInTheDocument()
+    // Hint: il default non muove i salvati, il kill-switch globale è la sash Classifiche.
+    expect(screen.getByText("ui.trendDefaultHint")).toBeInTheDocument()
   })
 
-  it("renders clear cache button", () => {
+  it("trend master toggle turns all sash categories off and restores them on", () => {
     renderWithCtx(
       <SettingsPanel
         setSettingsOpen={() => {}}
@@ -35,6 +54,74 @@ describe("SettingsPanel", () => {
         importData={() => {}}
       />
     )
+    const trend = screen.getByRole("switch", { name: "ui.trendBadge" })
+    const sashNames = ["ui.sash_upcoming", "ui.sash_rank", "ui.sash_new", "ui.sash_award", "ui.sash_extra"]
+    const sashSwitches = () => sashNames.map((n) => screen.getByRole("switch", { name: n }))
+    // Precondizione: master ON e categorie tutte ON (default).
+    if (trend.getAttribute("aria-checked") !== "true") fireEvent.click(trend)
+    sashSwitches().forEach((s) => expect(s.getAttribute("aria-checked")).toBe("true"))
+    // Master OFF → tutte le categorie spente.
+    fireEvent.click(trend)
+    expect(trend.getAttribute("aria-checked")).toBe("false")
+    sashSwitches().forEach((s) => expect(s.getAttribute("aria-checked")).toBe("false"))
+    // Master ON → categorie ripristinate.
+    fireEvent.click(trend)
+    expect(trend.getAttribute("aria-checked")).toBe("true")
+    sashSwitches().forEach((s) => expect(s.getAttribute("aria-checked")).toBe("true"))
+  })
+
+  it("renders separate ratings toggle at top level without opening the accordion", () => {
+    renderWithCtx(
+      <SettingsPanel
+        setSettingsOpen={() => {}}
+        exportData={() => {}}
+        importData={() => {}}
+      />
+    )
+    // Accordion chiuso di default: il toggle ora vive al livello di Voto.
+    expect(screen.getByText("ui.separateRatings")).toBeInTheDocument()
+    expect(screen.getByRole("switch", { name: "ui.separateRatings" })).toBeInTheDocument()
+  })
+
+  it("hides custom rating endpoint block when its master toggle is off", () => {
+    renderWithCtx(
+      <SettingsPanel
+        setSettingsOpen={() => {}}
+        exportData={() => {}}
+        importData={() => {}}
+      />
+    )
+    // Default ON: blocco visibile.
+    expect(screen.getByText("ui.customRatingEndpoint")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("switch", { name: "ui.customRatings" }))
+    expect(screen.queryByText("ui.customRatingEndpoint")).not.toBeInTheDocument()
+  })
+
+  it("shows preRelease hint and honest sources button label", async () => {
+    renderWithCtx(
+      <SettingsPanel
+        setSettingsOpen={() => {}}
+        exportData={() => {}}
+        importData={() => {}}
+      />
+    )
+    expect(screen.getByTitle("ui.preReleaseHint")).toBeInTheDocument()
+    // Accordion provider: il bottone dice il vero (reset a solo IMDb).
+    fireEvent.click(screen.getByRole("button", { name: /ui\.ratingSources/ }))
+    expect(await screen.findByText("ui.sourcesImdbOnly")).toBeInTheDocument()
+    expect(screen.queryByText("ui.disableAll")).not.toBeInTheDocument()
+  })
+
+  it("renders clear cache button inside the diagnostics disclosure", () => {    renderWithCtx(
+      <SettingsPanel
+        setSettingsOpen={() => {}}
+        exportData={() => {}}
+        importData={() => {}}
+      />
+    )
+    // Disclosure chiusa di default: il bottone si monta solo aprendola.
+    expect(screen.queryByText("ui.clearCache")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /ui\.cacheDiagnostics/ }))
     const buttons = screen.getAllByRole("button")
     const clearBtn = buttons.find((b) => b.textContent === "ui.clearCache")
     expect(clearBtn).toBeTruthy()
@@ -124,5 +211,346 @@ describe("SettingsPanel", () => {
     expect(closeButtons.length).toBeGreaterThan(0)
     fireEvent.click(closeButtons[0])
     expect(closeSpy).toHaveBeenCalledWith(false)
+  })
+
+  it("mostra la sezione PIN con multi-user spento", async () => {
+    resetGuestGuardForTests()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) =>
+        String(url).includes("/api/status")
+          ? { ok: true, json: async () => ({ multiUser: false }) }
+          : { ok: false, json: async () => ({}) },
+      ),
+    )
+    renderWithCtx(
+      <SettingsPanel
+        setSettingsOpen={() => {}}
+        exportData={() => {}}
+        importData={() => {}}
+      />
+    )
+    expect(await screen.findByText("ui.pinSecurityTitle")).toBeInTheDocument()
+    resetGuestGuardForTests()
+  })
+
+  it("nasconde la sezione PIN con multi-user attivo (niente doppio lucchetto)", async () => {
+    resetGuestGuardForTests()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) =>
+        String(url).includes("/api/status")
+          ? { ok: true, json: async () => ({ multiUser: true }) }
+          : { ok: false, json: async () => ({}) },
+      ),
+    )
+    renderWithCtx(
+      <SettingsPanel
+        setSettingsOpen={() => {}}
+        exportData={() => {}}
+        importData={() => {}}
+      />
+    )
+    // Il pannello c'è (altro contenuto stabile), la sezione PIN sparisce.
+    expect(await screen.findAllByText("ui.genreRatingBadge")).not.toHaveLength(0)
+    expect(screen.queryByText("ui.pinSecurityTitle")).not.toBeInTheDocument()
+    resetGuestGuardForTests()
+  })
+
+  it("tiene il corpo PIN smontato finché la disclosure è chiusa", () => {
+    renderWithCtx(
+      <SettingsPanel
+        setSettingsOpen={() => {}}
+        exportData={() => {}}
+        importData={() => {}}
+      />
+    )
+    expect(screen.getByText("ui.pinSecurityTitle")).toBeInTheDocument()
+    expect(screen.queryByText("ui.pinSecurityDesc")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /ui\.pinSecurityTitle/ }))
+    expect(screen.getByText("ui.pinSecurityDesc")).toBeInTheDocument()
+  })
+
+  it("tab Spazio dedicato: fuori da Dati & Cache, solo con contenuto", async () => {
+    resetGuestGuardForTests()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) =>
+        String(url).includes("/api/status")
+          ? { ok: true, json: async () => ({ multiUser: true }) }
+          : { ok: false, json: async () => ({}) },
+      ),
+    )
+    renderWithCtx(
+      <SettingsPanel
+        setSettingsOpen={() => {}}
+        exportData={() => {}}
+        importData={() => {}}
+      />
+    )
+    // Quinto tab; il gate vive lì dentro (divider crea/entri).
+    const tab = await screen.findByRole("tab", { name: "ui.settingsTabSpace" })
+    expect(screen.getAllByRole("tab")).toHaveLength(5)
+    fireEvent.click(tab)
+    expect(tab).toHaveAttribute("aria-selected", "true")
+    expect(await screen.findByText("ui.userSpaceOr")).toBeInTheDocument()
+    resetGuestGuardForTests()
+  })
+
+  it("senza multi-user né /u/ il tab Spazio non esiste (restano 4)", async () => {
+    resetGuestGuardForTests()
+    renderWithCtx(
+      <SettingsPanel
+        setSettingsOpen={() => {}}
+        exportData={() => {}}
+        importData={() => {}}
+      />
+    )
+    expect(await screen.findAllByText("ui.genreRatingBadge")).not.toHaveLength(0)
+    expect(screen.queryByRole("tab", { name: "ui.settingsTabSpace" })).not.toBeInTheDocument()
+    expect(screen.getAllByRole("tab")).toHaveLength(4)
+    resetGuestGuardForTests()
+  })
+
+  it("trasforma tab has Portrait/Landscape sub-tabs with separate tuning", async () => {
+    renderWithCtx(
+      <SettingsPanel
+        setSettingsOpen={() => {}}
+        exportData={() => {}}
+        importData={() => {}}
+      />
+    )
+    fireEvent.click(screen.getByRole("tab", { name: "ui.transform" }))
+    const panel = screen.getByRole("tabpanel", { name: "ui.transform" })
+    // Default: sezione Verticale, quella Orizzontale non è nel DOM.
+    expect(within(panel).queryByText("ui.landscapeDefaultsHint")).not.toBeInTheDocument()
+    fireEvent.click(within(panel).getByRole("button", { name: "ui.posterShapeLandscape" }))
+    expect(await within(panel).findByText("ui.landscapeDefaultsHint")).toBeInTheDocument()
+  })
+
+  it("badge tab has split blur toggles for Portrait and Landscape", async () => {
+    renderWithCtx(
+      <SettingsPanel
+        setSettingsOpen={() => {}}
+        exportData={() => {}}
+        importData={() => {}}
+      />
+    )
+    // Due switch Sfocatura: Verticale (flat) e Orizzontale (override, segue il flat).
+    const switches = screen.getAllByRole("switch", { name: "ui.blurSection" })
+    expect(switches).toHaveLength(1)
+    expect(screen.getByRole("switch", { name: "ui.blurSection · ui.posterShapeLandscape" })).toBeInTheDocument()
+  })
+
+  it("landscape logo card follows the Orizzontale override, portrait the flat default", async () => {
+    localStorage.setItem(
+      "badgeDefaults",
+      JSON.stringify({ landscape: { logoScale: 60 }, logoScale: 80 }),
+    )
+    try {
+      renderWithCtx(
+        <SettingsPanel
+          setSettingsOpen={() => {}}
+          exportData={() => {}}
+          importData={() => {}}
+        />
+      )
+      fireEvent.click(screen.getByRole("tab", { name: "ui.transform" }))
+      const panel = screen.getByRole("tabpanel", { name: "ui.transform" })
+      // Verticale: default flat 80%.
+      const portraitSliders = within(panel).getAllByRole("slider", { name: "ui.scale" })
+      expect(portraitSliders.some((s) => s.getAttribute("aria-valuetext") === "80%")).toBe(true)
+      // Orizzontale: override 60%.
+      fireEvent.click(within(panel).getByRole("button", { name: "ui.posterShapeLandscape" }))
+      const landscapeSliders = within(panel).getAllByRole("slider", { name: "ui.scale" })
+      expect(landscapeSliders.some((s) => s.getAttribute("aria-valuetext") === "60%")).toBe(true)
+    } finally {
+      localStorage.removeItem("badgeDefaults")
+    }
+  })
+
+  it("allows selecting TVDB as episode metadata source in prefs tab", async () => {
+    renderWithCtx(
+      <SettingsPanel
+        setSettingsOpen={() => {}}
+        exportData={() => {}}
+        importData={() => {}}
+      />
+    )
+    const prefsTab = screen.getByRole("tab", { name: "ui.settingsTabPrefs" })
+    fireEvent.click(prefsTab)
+
+    const tvdbBtn = screen.getByRole("button", { name: "TVDB" })
+    const tmdbBtn = screen.getByRole("button", { name: "TMDB" })
+
+    // TMDB default: highlighted with bg-white/20
+    expect(tmdbBtn.className).toContain("bg-white/20")
+    expect(tvdbBtn.className).not.toContain("bg-white/20")
+
+    // Click TVDB
+    fireEvent.click(tvdbBtn)
+    expect(tvdbBtn.className).toContain("bg-white/20")
+    expect(tmdbBtn.className).not.toContain("bg-white/20")
+
+    // Click TMDB back
+    fireEvent.click(tmdbBtn)
+    expect(tmdbBtn.className).toContain("bg-white/20")
+    expect(tvdbBtn.className).not.toContain("bg-white/20")
+  })
+
+  it("mostra Formato poster nel tab Preferenze (non nel tab Badge)", async () => {
+    renderWithCtx(
+      <SettingsPanel
+        setSettingsOpen={() => {}}
+        exportData={() => {}}
+        importData={() => {}}
+      />
+    )
+    // Tab Badge: nessun controllo formato.
+    const badgePanel = screen.getByRole("tabpanel", { name: "ui.badgeSection" })
+    expect(within(badgePanel).queryByRole("button", { name: "ui.posterShapeLandscape" })).not.toBeInTheDocument()
+    // Tab Preferenze: il controllo c'è e commuta il default.
+    fireEvent.click(screen.getByRole("tab", { name: "ui.settingsTabPrefs" }))
+    const prefsPanel = screen.getByRole("tabpanel", { name: "ui.settingsTabPrefs" })
+    const portraitBtn = within(prefsPanel).getByRole("button", { name: "ui.posterShapePortrait" })
+    const landscapeBtn = within(prefsPanel).getByRole("button", { name: "ui.posterShapeLandscape" })
+    expect(portraitBtn.className).toContain("bg-white/20")
+    fireEvent.click(landscapeBtn)
+    expect(landscapeBtn.className).toContain("bg-white/20")
+    expect(portraitBtn.className).not.toContain("bg-white/20")
+  })
+
+  it("mostra la card Token admin solo quando il server ha ADMIN_TOKEN", async () => {
+    resetGuestGuardForTests()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) =>
+        String(url).includes("/api/auth/pin")
+          ? { ok: true, json: async () => ({ hasPin: false, hasAdminToken: true }) }
+          : { ok: false, json: async () => ({}) },
+      ),
+    )
+    renderWithCtx(
+      <SettingsPanel
+        setSettingsOpen={() => {}}
+        exportData={() => {}}
+        importData={() => {}}
+      />
+    )
+    expect(await screen.findByText("ui.adminTokenTitle")).toBeInTheDocument()
+    resetGuestGuardForTests()
+  })
+
+  it("nasconde la card Token admin quando il server non ha ADMIN_TOKEN", async () => {
+    resetGuestGuardForTests()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) =>
+        String(url).includes("/api/auth/pin")
+          ? { ok: true, json: async () => ({ hasPin: false, hasAdminToken: false }) }
+          : { ok: false, json: async () => ({}) },
+      ),
+    )
+    renderWithCtx(
+      <SettingsPanel
+        setSettingsOpen={() => {}}
+        exportData={() => {}}
+        importData={() => {}}
+      />
+    )
+    // Flush del fetch async, poi la card deve mancare (niente rumore UI).
+    expect(await screen.findAllByText("ui.genreRatingBadge")).not.toHaveLength(0)
+    expect(screen.queryByText("ui.adminTokenTitle")).not.toBeInTheDocument()
+    resetGuestGuardForTests()
+  })
+
+  it("mostra la riga risorse server solo con admin token quando /api/cache/status risponde", async () => {
+    setAdminToken("test-token")
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: unknown) =>
+          String(url).includes("/api/cache/status")
+            ? {
+                ok: true,
+                json: async () => ({
+                  totalEntries: 7,
+                  system: {
+                    memory: { rssMb: 110, heapUsedMb: 54, heapTotalMb: 78 },
+                    uptimeSeconds: 195,
+                  },
+                }),
+              }
+            : { ok: false, json: async () => ({}) },
+        ),
+      )
+      renderWithCtx(
+        <SettingsPanel
+          setSettingsOpen={() => {}}
+          exportData={() => {}}
+          importData={() => {}}
+        />
+      )
+      // Disclosure chiusa di default: vai al tab Dati & Cache, aprila, il fetch parte.
+      fireEvent.click(screen.getByRole("tab", { name: "ui.settingsTabData" }))
+      fireEvent.click(screen.getByRole("button", { name: /ui\.cacheDiagnostics/ }))
+      expect(await screen.findByText(/ui\.statusMemoryRss/)).toBeInTheDocument()
+      const link = screen.getByRole("link", { name: /ui\.statusTitle/ })
+      expect(link).toHaveAttribute("href", "/status")
+      expect(link).toHaveAttribute("target", "_blank")
+    } finally {
+      clearAdminToken()
+    }
+  })
+
+  it("nasconde riga e link senza admin token anche se l'endpoint è aperto (istanza pubblica)", async () => {
+    // Niente setAdminToken: simula un visitatore qualunque su istanza pubblica.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) =>
+        String(url).includes("/api/cache/status")
+          ? {
+              ok: true,
+              json: async () => ({
+                totalEntries: 7,
+                system: {
+                  memory: { rssMb: 110, heapUsedMb: 54, heapTotalMb: 78 },
+                  uptimeSeconds: 195,
+                },
+              }),
+            }
+          : { ok: false, json: async () => ({}) },
+      ),
+    )
+    renderWithCtx(
+      <SettingsPanel
+        setSettingsOpen={() => {}}
+        exportData={() => {}}
+        importData={() => {}}
+      />
+    )
+    // Flush del fetch async, poi riga e link devono mancare.
+    expect(await screen.findAllByText("ui.genreRatingBadge")).not.toHaveLength(0)
+    expect(screen.queryByText(/ui\.statusMemoryRss/)).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: /ui\.statusTitle/ })).not.toBeInTheDocument()
+  })
+
+  it("nasconde la riga risorse server su 401 anche con token (fail-closed)", async () => {
+    setAdminToken("test-token")
+    try {
+      vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, json: async () => ({}) })))
+      renderWithCtx(
+        <SettingsPanel
+          setSettingsOpen={() => {}}
+          exportData={() => {}}
+          importData={() => {}}
+        />
+      )
+      // Flush del fetch async, poi la riga deve mancare.
+      expect(await screen.findAllByText("ui.genreRatingBadge")).not.toHaveLength(0)
+      expect(screen.queryByText(/ui\.statusMemoryRss/)).not.toBeInTheDocument()
+    } finally {
+      clearAdminToken()
+    }
   })
 })

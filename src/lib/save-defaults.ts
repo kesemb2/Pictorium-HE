@@ -1,16 +1,24 @@
 import type { PosterEditorCtx } from "@/lib/contexts/PosterEditorContext"
+import { userFetch } from "@/lib/http"
+import { isProfilelessOnMultiUser, notifyProfilelessOnce } from "@/lib/guest-guard"
+import { defaultsStorageKey } from "@/lib/useDefaults"
 
 function safeSetItem(key: string, val: string) {
   try { localStorage.setItem(key, val) } catch { /* localStorage non disponibile */ }
 }
 
-/** Salva i default in localStorage e li sincronizza col server.
- *  Scrive SOLO i default: il poster eventualmente aperto non viene toccato
- *  (i suoi valori per-titolo restano congelati nel mapping al save).
- *  Ritorna `true` se il PUT /api/defaults è andato a buon fine, `false` se è
- *  fallito (rete, 401 admin fail-closed, 5xx): in quel caso i default D'ISTANZA
- *  usati dai poster dei cataloghi su Stremio restano quelli vecchi. */
-export function saveDefaults(ed: PosterEditorCtx): Promise<boolean> {
+/** Saves the defaults to localStorage and syncs them to the server.
+ *  Writes ONLY the defaults: an open poster is left untouched (its per-title
+ *  values stay frozen in the mapping on save).
+ *  Returns `true` when there is nothing to warn about: the PUT /api/defaults
+ *  succeeded, or it was skipped on purpose (multi-user root editor without an
+ *  admin session, where the visitor gets the "no profile" notice instead).
+ *  Returns `false` when the PUT failed (network, 401 admin fail-closed, 5xx):
+ *  the instance defaults used by Stremio catalog posters stay the old ones. */
+export async function saveDefaults(ed: PosterEditorCtx): Promise<boolean> {
+  // Endpoint provider: quando il display è OFF il campo è nascosto — un URL
+  // stale/invalido (senza {imdbId}) non deve far fallire l'intero PUT 400.
+  const endpointForSave = ed.defaultCustomRatings ? (ed.defaultCustomRatingEndpoint ?? "") : ""
   const d = {
     globalBadges: ed.defaultGlobalBadges,
     rankingBadges: ed.defaultRankingBadges,
@@ -18,17 +26,21 @@ export function saveDefaults(ed: PosterEditorCtx): Promise<boolean> {
     badgeYear: ed.defaultBadgeYear,
     badgeRating: ed.defaultBadgeRating,
     badgeQuality: ed.defaultBadgeQuality,
-    customRatings: ed.defaultCustomRatings,
-    customRatingEndpoint: ed.defaultCustomRatingEndpoint ?? "",
+    customRatings: ed.defaultCustomRatings,    customRatingEndpoint: endpointForSave,
     customRatingApiKeyHeader: ed.defaultCustomRatingApiKeyHeader ?? "",
     ratingSources: ed.defaultRatingSources,
+    separateRatings: ed.defaultSeparateRatings,
+    sashOrder: ed.defaultSashOrder,
     badgeStyle: ed.defaultBadgeStyle,
     rankingBadgeStyle: ed.defaultRankingBadgeStyle,
+    qualityBadgeStyle: ed.defaultQualityBadgeStyle,
+    videoFormats: ed.defaultVideoFormats,
     blurEnabled: ed.defaultBlurEnabled,
     blurIntensity: ed.defaultBlurIntensity,
     blurFade: ed.defaultBlurFade,
     blurDarkness: ed.defaultBlurDarkness,
     tintStrength: ed.defaultTintStrength,
+    topShade: ed.defaultTopShade,
     gradientHeight: ed.defaultGradientHeight,
     topBadgeScale: ed.defaultTopBadgeScale,
     topBadgeOffsetX: ed.defaultTopBadgeOffsetX,
@@ -59,18 +71,41 @@ export function saveDefaults(ed: PosterEditorCtx): Promise<boolean> {
     autoDarkText: ed.defaultAutoDarkText,
     textHalo: ed.defaultTextHalo,
     autoRotateClean: ed.defaultAutoRotateClean,
-    defaultLogoFitEnabled: ed.defaultLogoFitEnabled,
+    defaultAutoRotateBackdrop: ed.defaultAutoRotateBackdrop,
+    disableCleanPosters: ed.defaultDisableCleanPosters,
+    defaultPortraitFitEnabled: ed.defaultPortraitFitEnabled,
+    defaultLandscapeFitEnabled: ed.defaultLandscapeFitEnabled,
     defaultNetworkLogo: ed.defaultNetworkLogo,
+    networkLogoPosition: ed.defaultNetworkLogoPosition,
     preRelease: ed.defaultPreRelease,
     defaultRibbonSide: ed.defaultRibbonSide,
     defaultEpisodeMetadataSource: ed.defaultEpisodeMetadataSource,
     region: ed.defaultRegion,
+    dateFormat: ed.defaultDateFormat,
     networkLogo: ed.defaultNetworkLogo,
     ribbonSide: ed.defaultRibbonSide,
+    ribbonEnabled: ed.defaultRibbonEnabled,
+    posterShape: ed.defaultPosterShape,
+    logoAlign: ed.defaultLogoAlign,
     episodeMetadataSource: ed.defaultEpisodeMetadataSource,
+    // Default logo (null = auto-fit/0): senza, il save manuale cancellerebbe
+    // dal localStorage i default impostati nella sezione Logo.
+    logoScale: ed.defaultLogoScale,
+    logoOffsetX: ed.defaultLogoOffsetX,
+    logoOffsetY: ed.defaultLogoOffsetY,
+    // Profilo Orizzontale: senza, il save manuale cancellerebbe dal localStorage
+    // gli override impostati nella sezione Orizzontale (l'auto-persist li scrive).
+    landscape: ed.landscape,
   }
-  safeSetItem("badgeDefaults", JSON.stringify(d))
-  const syncPromise = fetch("/api/defaults", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(d) })
+  safeSetItem(defaultsStorageKey(), JSON.stringify(d))
+  // Multi-user root editor without an admin session: the PUT can only 401.
+  // Keep it local and explain once; true = nothing for the caller to warn about.
+  if (await isProfilelessOnMultiUser()) {
+    notifyProfilelessOnce()
+    return true
+  }
+  // userFetch: su path /u/<uuid> il PUT va nel namespace (token da storage).
+  const syncPromise = userFetch("/api/defaults", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(d) })
     .then((res) => {
       if (res.ok) return true
       // 401 (admin fail-closed) / 403 origin / 5xx: il localStorage è salvato ma

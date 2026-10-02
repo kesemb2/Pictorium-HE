@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { Check, Info, AlertTriangle, AlertCircle } from "lucide-react";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -19,8 +20,14 @@ export const metadata: Metadata = {
   description: "Generatore dinamico di poster cinematografici per Stremio: locandine pulite, loghi vettoriali, rating e badge trend composti in tempo reale.",
   manifest: "/site.webmanifest",
   icons: {
-    icon: "/App.png",
-    apple: "/App.png",
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/App.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+      { url: "/App.png", sizes: "512x512", type: "image/png" },
+    ],
   },
   openGraph: {
     title: "Pictorium",
@@ -52,22 +59,17 @@ export default function RootLayout({
         </a>
         <main id="main-content">{children}</main>
         <Toaster
-          position="bottom-center"
-          toastOptions={{
-            style: {
-              background: "var(--color-accent-orange)",
-              color: "white",
-              borderRadius: "12px",
-              fontSize: "13px",
-              fontWeight: 600,
-              boxShadow: "0 8px 24px rgb(var(--accent-rgb) / 0.3)",
-              border: "none",
-            },
-          }}
-          duration={2500}
+          position="bottom-right"
+          duration={3000}
           closeButton={false}
           richColors={false}
           theme="dark"
+          icons={{
+            success: <Check className="w-3.5 h-3.5 stroke-[2.5]" />,
+            info: <Info className="w-3.5 h-3.5 stroke-[2.5]" />,
+            warning: <AlertTriangle className="w-3.5 h-3.5 stroke-[2.5]" />,
+            error: <AlertCircle className="w-3.5 h-3.5 stroke-[2.5]" />,
+          }}
         />
       </body>
     </html>

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { fetchAggregatedRating, calculateAverageRating } from "@/lib/ratings"
+import { fetchAggregatedRating, calculateAverageRating, parseRatingSources, resolveRatingSources, pickSeparateRatings, formatSeparateValue, MAX_SEPARATE_RATINGS } from "@/lib/ratings"
 import { cacheClear } from "@/lib/cache"
 import * as cacheModule from "@/lib/cache"
 
@@ -116,5 +116,81 @@ describe("fetchAggregatedRating (D4 — mdblist key nel cache key, D5 — niente
     // Nessuna fonte trovata -> null
     expect(calculateAverageRating(sample, ["letterboxd", "mal"])).toBeNull()
     expect(calculateAverageRating(null)).toBeNull()
+  })
+
+  it("tmdbFallbackVote riempie sources.tmdb solo se MDBList manca", async () => {
+    // MDBList down (503) + voto diretto → backfill tmdb
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 503, headers: { get: () => null } })))
+    const down = await fetchAggregatedRating("tt_fb1", "k", undefined, { tmdbFallbackVote: 7.86 })
+    expect(down?.sources.tmdb).toBe(7.9)
+    expect(down?.sources.imdb).toBeUndefined()
+
+    // MDBList ok con tmdb → vince MDBList, mai sovrascrittura
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ ratings: [{ source: "tmdb", value: 8.2 }] }),
+    })))
+    const up = await fetchAggregatedRating("tt_fb2", "k", undefined, { tmdbFallbackVote: 7.0 })
+    expect(up?.sources.tmdb).toBe(8.2)
+
+    // Fallback invalido → ignorato
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 503, headers: { get: () => null } })))
+    const bad = await fetchAggregatedRating("tt_fb3", "k", undefined, { tmdbFallbackVote: 0 })
+    expect(bad).toBeNull()
+  })
+})
+
+describe("pickSeparateRatings / formatSeparateValue (colonna separati)", () => {
+  const sample = {
+    sources: { imdb: 8.4, tmdb: 8.0, tomatoes: 9.2, popcorntime: 7.9 },
+    average: 8.2,
+    count: 4,
+  }
+
+  it("ordine di selezione, skip miss/zero, cap MAX_SEPARATE_RATINGS", () => {
+    expect(MAX_SEPARATE_RATINGS).toBe(3)
+    expect(pickSeparateRatings(sample, ["tmdb", "imdb"])).toEqual([
+      { id: "tmdb", value: 8.0 },
+      { id: "imdb", value: 8.4 },
+    ])
+    // Miss skippata, ordine preservato
+    expect(pickSeparateRatings(sample, ["letterboxd", "tomatoes"])).toEqual([{ id: "tomatoes", value: 9.2 }])
+    // Cap a 3 anche con 4 disponibili
+    expect(pickSeparateRatings(sample, ["imdb", "tmdb", "tomatoes", "popcorntime"])).toHaveLength(3)
+    // Zero/mancanti → []
+    expect(pickSeparateRatings(sample, ["letterboxd", "mal"])).toEqual([])
+    expect(pickSeparateRatings(null, ["imdb"])).toEqual([])
+    // Default imdb+tmdb senza selezione
+    expect(pickSeparateRatings(sample)).toEqual([
+      { id: "imdb", value: 8.4 },
+      { id: "tmdb", value: 8.0 },
+    ])
+  })
+
+  it("formato: decimale 1 cifra, percent per tomatoes/popcorntime", () => {
+    expect(formatSeparateValue("imdb", 8.44)).toBe("8.4")
+    expect(formatSeparateValue("tmdb", 8.0)).toBe("8.0")
+    expect(formatSeparateValue("tomatoes", 9.2)).toBe("92%")
+    expect(formatSeparateValue("popcorntime", 7.9)).toBe("79%")
+  })
+})
+
+describe("parseRatingSources / resolveRatingSources (Fix D — parser unico rsrc)", () => {
+  it("null quando assente; whitelist + lowercase + trim quando presente", () => {
+    expect(parseRatingSources(null)).toBeNull()
+    expect(parseRatingSources(undefined)).toBeNull()
+    expect(parseRatingSources("IMDb, Tomatoes ")).toEqual(["imdb", "tomatoes"])
+    expect(parseRatingSources("imdb,xyz,trakt")).toEqual(["imdb", "trakt"])
+    expect(parseRatingSources("xyz")).toEqual([])
+    expect(parseRatingSources("")).toEqual([])
+  })
+
+  it("catena query > mapping > config > defaults > imdb+tmdb; vuoti saltati", () => {
+    expect(resolveRatingSources("trakt", ["imdb"], ["letterboxd"], ["metacritic"])).toEqual(["trakt"])
+    expect(resolveRatingSources(null, ["imdb"], ["letterboxd"], ["metacritic"])).toEqual(["imdb"])
+    expect(resolveRatingSources(null, null, ["letterboxd"], ["metacritic"])).toEqual(["letterboxd"])
+    expect(resolveRatingSources(null, [], undefined, ["metacritic"])).toEqual(["metacritic"])
+    expect(resolveRatingSources("xyz", ["imdb"])).toEqual(["imdb"])
+    expect(resolveRatingSources(null)).toEqual(["imdb", "tmdb"])
   })
 })

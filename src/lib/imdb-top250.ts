@@ -10,6 +10,7 @@
 import { cacheGet, cacheSet } from "./cache"
 import { IMDB_TOP_250_IDS } from "./imdb-top250-data"
 import { combineAbortSignals } from "./abort-signal"
+import { timedFetch } from "./outbound-stats"
 
 const CACHE_KEY = "imdb:top250"
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000
@@ -34,7 +35,7 @@ async function fetchTop250Ids(signal?: AbortSignal): Promise<string[]> {
     // Chart URL sovrascrivibile via env: nei test E2E punta al mock server
     // locale, così il fetch resta deterministico (fallback al dataset statico).
     const chartUrl = process.env.IMDB_CHART_URL || "https://www.imdb.com/chart/top/"
-    const res = await fetch(chartUrl, {
+    const res = await timedFetch(chartUrl, {
       headers: {
         "User-Agent": USER_AGENT,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -95,6 +96,26 @@ async function getTop250Ids(signal?: AbortSignal): Promise<Set<string>> {
   })().finally(() => { inflightTop250 = null })
 
   return inflightTop250
+}
+
+/**
+ * Precarica la chart Top 250 (mem + shared cache) senza mai lanciare.
+ * Idempotente via inflight dedup + cache 24h: chiamate ripetute costano zero.
+ * Pensato per il warmup al boot così il primo render non paga il download
+ * dell'HTML (1-2MB) sul critical path.
+ */
+export function warmTop250(signal?: AbortSignal): Promise<void> {
+  return getTop250Ids(signal).then(
+    () => {},
+    () => {},
+  )
+}
+
+/** Solo per i test: svuota mem cache e inflight. */
+export function __resetTop250ForTest(): void {
+  memCache = null
+  memCacheAt = 0
+  inflightTop250 = null
 }
 
 /**

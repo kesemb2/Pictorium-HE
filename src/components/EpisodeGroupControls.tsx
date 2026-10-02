@@ -5,7 +5,7 @@ import { ListOrdered, Check, Save } from "lucide-react"
 import { usePSelector } from "@/lib/context"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { usePosterEditor } from "@/lib/contexts/PosterEditorContext"
-import { http } from "@/lib/http"
+import { http, userFetch } from "@/lib/http"
 import { EpisodePreview } from "@/components/EpisodePreview"
 
 export function EpisodeGroupControls() {
@@ -13,6 +13,9 @@ export function EpisodeGroupControls() {
   const selected = usePSelector((v) => v.selected)
   const tmdbKey = usePSelector((v) => v.tmdbKey)
   const tvdbApiKey = usePSelector((v) => v.tvdbApiKey)
+  const serverKeyStatus = usePSelector((v) => v.serverKeyStatus)
+  // Chiave TVDB effettiva = device oppure namespace (risolta dal server via ?u=).
+  const hasTvdbKey = !!tvdbApiKey || !!serverKeyStatus?.tvdb
   const mappingsMap = usePSelector((v) => v.mappingsMap)
   const loadMappings = usePSelector((v) => v.loadMappings)
   const previewPoster = usePSelector((v) => v.previewPoster)
@@ -33,7 +36,7 @@ export function EpisodeGroupControls() {
       return
     }
     let active = true
-    fetch(`/api/tmdb/${selected.id}/episode_groups`, {
+    userFetch(`/api/tmdb/${selected.id}/episode_groups`, {
       headers: tmdbKey ? { "x-api-key": tmdbKey } : undefined,
     })
       .then((res) => res.json())
@@ -60,7 +63,7 @@ export function EpisodeGroupControls() {
   const selectedImdbId = selected?.imdb_id
   const selectedMediaType = selected?.media_type
   useEffect(() => {
-    if (selectedMediaType !== "tv" || !tvdbApiKey) {
+    if (selectedMediaType !== "tv" || !hasTvdbKey) {
       setTvdbSeasonTypes([])
       setTvdbLoading(false)
       setTvdbError(null)
@@ -71,9 +74,16 @@ export function EpisodeGroupControls() {
     setTvdbError(null)
     // prova con imdb prima (più affidabile per TVDB), poi tmdbId
     const candidates = [selectedImdbId, String(selectedId)].filter(Boolean) as string[]
-    const fetchOne = (id: string) =>
-      fetch(`/api/tvdb/${encodeURIComponent(id)}/seasonTypes?tvdb_key=${encodeURIComponent(tvdbApiKey)}&tmdb_key=${encodeURIComponent(tmdbKey || "")}`, {
-        headers: { "x-api-key": tvdbApiKey, "x-tmdb-key": tmdbKey || "" },
+    const fetchOne = (id: string) => {
+      const sp = new URLSearchParams()
+      if (tvdbApiKey) sp.set("tvdb_key", tvdbApiKey)
+      if (tmdbKey) sp.set("tmdb_key", tmdbKey)
+      const query = sp.toString() ? `?${sp.toString()}` : ""
+      const headers: Record<string, string> = {}
+      if (tvdbApiKey) headers["x-api-key"] = tvdbApiKey
+      if (tmdbKey) headers["x-tmdb-key"] = tmdbKey
+      return userFetch(`/api/tvdb/${encodeURIComponent(id)}/seasonTypes${query}`, {
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
       })
         .then(async (r) => {
           const d = await r.json().catch(() => ({ results: [] }))
@@ -84,6 +94,7 @@ export function EpisodeGroupControls() {
           if (active) setTvdbError(e instanceof Error ? e.message : String(e))
           return []
         })
+    }
 
     ;(async () => {
       for (const cid of candidates) {
@@ -103,7 +114,7 @@ export function EpisodeGroupControls() {
       }
     })()
     return () => { active = false }
-  }, [selectedId, selectedImdbId, selectedMediaType, tvdbApiKey, tmdbKey])
+  }, [selectedId, selectedImdbId, selectedMediaType, hasTvdbKey, tvdbApiKey, tmdbKey])
 
   // Reset "saved" feedback after 2s
   useEffect(() => {
@@ -116,9 +127,9 @@ export function EpisodeGroupControls() {
 
   const handleSaveEpisodeGroup = async () => {
     if (!selected) return
-    if ((ed.episodeGroupId === "tvdb" || ed.episodeGroupId?.startsWith("tvdb:")) && !tvdbApiKey) {
+    if ((ed.episodeGroupId === "tvdb" || ed.episodeGroupId?.startsWith("tvdb:")) && !hasTvdbKey) {
       const { toast } = await import("sonner")
-      toast(t("ui.epKeyMissingToast"))
+      toast.warning(t("ui.epKeyMissingToast"))
       return
     }
 
@@ -168,10 +179,10 @@ export function EpisodeGroupControls() {
 
       setSaved(true)
       const { toast } = await import("sonner")
-      toast(t("ui.epOrderSaved"))
+      toast.success(t("ui.epOrderSaved"))
     } catch {
       const { toast } = await import("sonner")
-      toast(t("ui.saveError"))
+      toast.error(t("ui.saveError"))
     } finally {
       setSaving(false)
     }
@@ -229,7 +240,7 @@ export function EpisodeGroupControls() {
             {ed.episodeGroupId === "standard" && <Check className="w-3.5 h-3.5 text-accent-orange shrink-0" />}
           </button>
 
-          {!tvdbApiKey ? (
+          {!hasTvdbKey ? (
             <button
               type="button"
               disabled

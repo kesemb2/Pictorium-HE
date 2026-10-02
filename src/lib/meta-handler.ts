@@ -1,12 +1,11 @@
 import crypto from "node:crypto"
 import { NextRequest } from "next/server"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
-import { cacheGetShared, cacheSet } from "@/lib/cache"
-import { getServerDefaults } from "@/lib/server-defaults"
+import { cacheGetShared, cacheSet, hashUserFragment } from "@/lib/cache"
+import { getServerDefaults, getServerDefaultsForUser, type ServerDefaults } from "@/lib/server-defaults"
 import { POSTER_URL_VERSION } from "@/lib/render-version"
 import { getById } from "@/lib/store"
 import { decodeConfig, type PictoriumUserConfig } from "@/lib/config-token"
-import { envWithFallback } from "@/lib/env-compat"
 import { selectBestLogo } from "@/lib/logo-selection"
 import {
   getFullDetails,
@@ -16,14 +15,17 @@ import {
   type TMDBEpisodeGroupDetails,
   posterUrl,
   posterUrlOriginal,
-  resolveRequestApiKey,
+  resolveUserApiKeys,
   tmdbFindByImdb,
   tmdbFindByTvdb,
 } from "@/lib/tmdb"
 import { resolveImdbId } from "@/lib/imdb-cache"
 import { getCatalogEpoch } from "@/lib/catalog-epoch"
-import { resolveCatalogRegion } from "@/lib/catalog-handler"
-import { buildStremioPosterUrl } from "@/lib/stremio-poster-url"
+import { buildNoticeDetail, NOTICE_ID_PREFIX } from "@/lib/notice-meta"
+import { resolveCatalogRegionWithDefaults } from "@/lib/catalog-handler"
+import { getScopedUserId, userExists, userRateLimitKey } from "@/lib/user-auth"
+import { touchUserActivity } from "@/lib/user-activity"
+import { buildStremioPosterUrl, stremioPosterShape } from "@/lib/stremio-poster-url"
 import { getOriginFromRequest } from "@/lib/poster-public-url"
 import { enrichVideosWithTvdb } from "@/lib/tvdb"
 import { buildVideosFromAnizip, buildVideosFromGroups, buildVideosFromTvdb, concurrentMap } from "@/lib/episode-ordering"
@@ -55,8 +57,11 @@ export interface StremioMetaDetail {
   name: string
   genres: string[]
   poster: string | null
-  posterShape?: "poster"
+  posterShape?: "poster" | "landscape"
   background?: string
+  /** Render landscape con logo baked-in (solo titoli landscape, vedi
+   *  catalog-handler: NuvioTV non deve sovrapporre il logo separato). */
+  landscapePoster?: string
   logo?: string
   description?: string
   releaseInfo?: string
@@ -112,12 +117,14 @@ async function pictoriumPosterUrl(
   configParam?: string | null,
   userParam?: string | null,
   posterLang = "it",
-): Promise<string> {
-  const serverDefaults = getServerDefaults()
+): Promise<{ poster: string; posterShape: "poster" | "landscape" }> {
+  const scopedUser = getScopedUserId(userParam)
+  const serverDefaults = scopedUser ? await getServerDefaultsForUser(scopedUser) : getServerDefaults()
   const userConfig = configParam ? decodeConfig(configParam) : null
   const defaults = userConfig ? { ...serverDefaults, ...userConfig } : serverDefaults
-  const mapping = await getById(type === "series" ? "tv" : "movie", id)
-  return buildStremioPosterUrl({
+  const mapping = await getById(type === "series" ? "tv" : "movie", id, scopedUser)
+  const posterShape = stremioPosterShape(mapping, defaults)
+  const poster = buildStremioPosterUrl({
     origin: getOriginFromRequest(req),
     type,
     id,
@@ -126,7 +133,9 @@ async function pictoriumPosterUrl(
     lang: posterLang,
     config: configParam || undefined,
     user: userParam || undefined,
+    forceShape: posterShape,
   }).toString()
+  return { poster, posterShape }
 }
 
 
@@ -143,7 +152,10 @@ export async function pictoriumMeta(
   userParam: string | null,
   configParam: string | null,
 ): Promise<Response> {
-  const rl = await rateLimit(rateLimitKey(req), "catalog")
+  // Rate-limit per-utente (multi-user): come i cataloghi, il bucket segue il
+  // namespace così il flood su `?u=vittima` non brucia la quota altrui.
+  const preScopedUser = getScopedUserId(userParam)
+  const rl = await rateLimit(preScopedUser ? userRateLimitKey(req, preScopedUser) : rateLimitKey(req), "catalog")
   if (!rl.ok) return rateLimitResponse(rl.retAfter)
 
   const cleanId = rawId.replace(/\.json$/, "")
@@ -156,24 +168,45 @@ export async function pictoriumMeta(
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
     })
   }
+  // Notice cards (Fase 2): id informativo, nessuna risoluzione TMDB/IMDb,
+  // nessuna chiamata upstream, nessuna scrittura in cache.
+  if (cleanId.startsWith(NOTICE_ID_PREFIX)) {
+    return metaResponse({
+      meta: buildNoticeDetail({
+        id: cleanId,
+        type: stType,
+        poster: `${getOriginFromRequest(req)}/pictorium.png`,
+      }),
+    })
+  }
   const tmdbMediaType = stType === "movie" ? "movie" : "tv"
-  const mdblistKeyParam = req.nextUrl.searchParams.get("mdblist_key") || undefined
-  const tvdbKeyParam = req.nextUrl.searchParams.get("tvdb_key") || undefined
-
-  const apiKey = resolveRequestApiKey(req)
-  const mdblistKey = mdblistKeyParam || envWithFallback("MDBLIST_KEY")
-  const tvdbApiKey = tvdbKeyParam || envWithFallback("TVDB_API_KEY") || process.env.TVDB_API_KEY
+  // Namespace utente (multi-user): null con flag OFF o senza `?u=` → globale.
+  // Spazi inventati → anonimo (v1.23.0): niente cache key separate.
+  let scopedUser = getScopedUserId(userParam)
+  if (scopedUser && !(await userExists(scopedUser))) scopedUser = null
+  // Attività di lettura per il cleanup inattivi (throttled, fire-and-forget).
+  if (scopedUser) touchUserActivity(scopedUser)
+  // Chiavi effettive (slice 2): esplicite della richiesta > namespace utente
+  // (solo con `?u=`) > env d'istanza. Entrano nei cache key (hash) così due
+  // namespace non collidono.
+  const resolvedKeys = await resolveUserApiKeys(req, scopedUser)
+  const apiKey = resolvedKeys.tmdb.key
+  const mdblistKey = resolvedKeys.mdblist.key
+  const tvdbApiKey = resolvedKeys.tvdb.key
+  const effectiveDefaults: ServerDefaults = scopedUser
+    ? await getServerDefaultsForUser(scopedUser)
+    : getServerDefaults()
   let userConfig: Partial<PictoriumUserConfig> | null = null
 
   if (configParam) {
     userConfig = decodeConfig(configParam)
   }
   if (!userConfig) {
-    userConfig = getServerDefaults()
+    userConfig = effectiveDefaults
   }
 
   const episodeMetadataSource = userConfig?.episodeMetadataSource || (tvdbApiKey ? "tvdb" : "tmdb")
-  const region = resolveCatalogRegion(req, userConfig)
+  const region = resolveCatalogRegionWithDefaults(req, userConfig, effectiveDefaults)
   const tmdbLang = region.lang
   const posterLang = tmdbLang.slice(0, 2).toLowerCase()
 
@@ -222,7 +255,7 @@ export async function pictoriumMeta(
   // 500ms) quindi costo minimo. Prima era solo per le serie (F4).
   let preMappingForCache: { episodeGroupId?: string | null; updatedAt?: string } | null = null
   try {
-    const pre = await getById(tmdbMediaType, tmdbId)
+    const pre = await getById(tmdbMediaType, tmdbId, scopedUser)
     if (pre) preMappingForCache = { episodeGroupId: pre.episodeGroupId ?? null, updatedAt: pre.updatedAt }
   } catch { /* ignore — fallback a auto */ }
   const egKey = preMappingForCache ? `${preMappingForCache.episodeGroupId ?? "auto"}:${preMappingForCache.updatedAt ?? ""}` : "auto"
@@ -233,10 +266,10 @@ export async function pictoriumMeta(
   // cambio default (badge/blur/regione) via PUT restava invisibile nei meta
   // (poster URL stantio) fino a 12h, anche cross-instance dove
   // cacheInvalidate("stremio") non arriva.
-  const epoch = await getCatalogEpoch()
-  const sdHash = hashFragment(JSON.stringify(getServerDefaults()))
+  const epoch = await getCatalogEpoch(scopedUser)
+  const sdHash = hashFragment(JSON.stringify(effectiveDefaults))
   const freshness = `:e${epoch}:sd${sdHash}`
-  const cacheKey = `stremio:meta:${stType}:${cleanId}:pv${POSTER_URL_VERSION}${userParam ? `:u${hashFragment(userParam)}` : ""}:ak${apiKey ? hashFragment(apiKey) : "none"}${configParam ? `:cfg${hashFragment(configParam)}` : ""}${mdblistKey ? `:mk${hashFragment(mdblistKey)}` : ""}${tvdbApiKey ? `:tk${hashFragment(tvdbApiKey)}` : ""}:es${episodeMetadataSource}:eg${hashFragment(egKey)}:r${region.code}${stType === "series" ? ":eo2" : ""}${freshness}`
+  const cacheKey = `stremio:meta:${stType}:${cleanId}:pv${POSTER_URL_VERSION}${scopedUser ? `:u${hashUserFragment(scopedUser)}` : ""}:ak${apiKey ? hashFragment(apiKey) : "none"}${configParam ? `:cfg${hashFragment(configParam)}` : ""}${mdblistKey ? `:mk${hashFragment(mdblistKey)}` : ""}${tvdbApiKey ? `:tk${hashFragment(tvdbApiKey)}` : ""}:es${episodeMetadataSource}:eg${hashFragment(egKey)}:r${region.code}${stType === "series" ? ":eo2" : ""}${freshness}`
   const cached = await cacheGetShared<{ meta: StremioMetaDetail }>(cacheKey, ["stremio", "meta"])
   if (cached) return metaResponse(cached)
 
@@ -254,7 +287,10 @@ export async function pictoriumMeta(
     }
 
     const primaryId = imdbId || `tmdb:${tmdbId}`
-    const poster = await pictoriumPosterUrl(req, stType, tmdbId, configParam, userParam, posterLang)
+    const { poster, posterShape } = await pictoriumPosterUrl(req, stType, tmdbId, configParam, userParam, posterLang)
+    // NuvioTV: per i titoli landscape, URL del render con logo baked-in
+    // (stesso profilo del poster), inclusi i titoli forzati dal default.
+    const landscapePoster = posterShape === "landscape" ? poster : undefined
     const background = details.backdrop_path ? posterUrlOriginal(details.backdrop_path) : undefined
 
     // Risoluzione Logo
@@ -288,7 +324,7 @@ export async function pictoriumMeta(
 
     if (stType === "series") {
       videos = []
-      const mapping = await getById("tv", tmdbId)
+      const mapping = await getById("tv", tmdbId, scopedUser)
 
       // TVDB / AniZip ordering sentinel (shared helper) — supporta tvdb:<seasonType>
       const sentinel = mapping?.episodeGroupId || null
@@ -296,7 +332,7 @@ export async function pictoriumMeta(
       if (isTvdbSentinel) {
         const seasonType = sentinel === "tvdb" ? "default" : (sentinel!.slice(5) || "default")
         try {
-          const tvdbVideos = await buildVideosFromTvdb(imdbId, tmdbId, primaryId, tvdbApiKey || "", seasonType)
+          const tvdbVideos = await buildVideosFromTvdb(imdbId, tmdbId, primaryId, tvdbApiKey || "", seasonType, apiKey)
           if (tvdbVideos.length > 0) videos.push(...(tvdbVideos as StremioVideo[]))
         } catch (e) {
           log.warn("TVDB ordering failed, fallback to standard", { error: e instanceof Error ? e.message : String(e) })
@@ -398,7 +434,7 @@ export async function pictoriumMeta(
       // Parti assegnerebbe nome/cover/trama dell'episodio sbagliato.
       const isTvdbOrdering = (mapping?.episodeGroupId === "tvdb" || (mapping?.episodeGroupId?.startsWith("tvdb:") ?? false))
       if (videos.length > 0 && episodeMetadataSource === "tvdb" && tvdbApiKey && !isTvdbOrdering && !videosFromGroup) {
-        await enrichVideosWithTvdb(videos, imdbId, tmdbId, tvdbApiKey, "ita")
+        await enrichVideosWithTvdb(videos, imdbId, tmdbId, tvdbApiKey, "ita", apiKey)
       }
     }
 
@@ -409,9 +445,13 @@ export async function pictoriumMeta(
       name: details.title || details.name || "",
       genres: (details.genres || []).map((g) => g.name),
       poster,
-      posterShape: "poster",
+      posterShape,
       background,
-      logo,
+      landscapePoster,
+      // Titoli landscape: il logo è già baked-in nel landscapePoster —
+      // esporlo separato farebbe sovrapporre a Nuvio un secondo logo
+      // (anche via arricchimento card dal dettaglio).
+      logo: posterShape === "landscape" ? undefined : logo,
       description: details.overview || details.tagline || undefined,
       releaseInfo: (details.release_date || details.first_air_date || "").slice(0, 4) || undefined,
       released: details.release_date ? `${details.release_date}T00:00:00.000Z` : undefined,

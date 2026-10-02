@@ -55,6 +55,12 @@ jobs:
             type=semver,pattern={{version}}
             type=sha,prefix=sha-
 
+      - name: Generate recent-changes for the changelog modal
+        # Il builder Docker non ha .git nel context: si genera qui (checkout
+        # completo) così l'immagine incorpora i commit di questo push. Lo
+        # script non sovrascrive mai senza git (fail-safe per altri builder).
+        run: node scripts/write-recent-changes.mjs
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
@@ -63,5 +69,11 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Versione vera dentro l'immagine: il generator la legge da APP_VERSION
+          # perché il build context esclude .git. Su tag vX.Y.Z metadata-action
+          # restituisce X.Y.Z; su push di branch/sha il valore non è semver e il
+          # generator lo ignora (fallback alla versione base del package.json).
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

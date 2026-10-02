@@ -85,6 +85,30 @@ async function shutdown(exitCode) {
 
 // Stessa chiave di salute del load-smoke: /api/health senza chiave è 503 (S9).
 const healthKey = process.env.BENCH_HEALTH_KEY || "mock-key"
+// Token admin per /api/cache/status (snapshot outbound): inoltrato all'app
+// come PICTORIUM_ADMIN_TOKEN (stesso pattern del load-smoke). Senza, su
+// loopback/dev la route è comunque aperta.
+const adminToken = process.env.BENCH_ADMIN_TOKEN || ""
+const adminHeaders = adminToken ? { "x-admin-token": adminToken } : {}
+
+async function outboundSnapshot() {
+  try {
+    const res = await fetch(`${appUrl}/api/cache/status`, { headers: adminHeaders })
+    if (!res.ok) return null
+    return (await res.json()).outbound || {}
+  } catch {
+    return null
+  }
+}
+
+function outboundDelta(before, after) {
+  const rows = []
+  for (const [host, a] of Object.entries(after || {})) {
+    const b = (before || {})[host] || { requests: 0, errors: 0 }
+    rows.push({ host, req: a.requests - b.requests, err: a.errors - b.errors, avgMs: a.avgMs })
+  }
+  return rows.sort((x, y) => y.req - x.req)
+}
 
 function posterUrl(i, phase) {
   const u = new URL(`${appUrl}/api/poster/movie/424242`)
@@ -147,8 +171,10 @@ async function run() {
         NEXT_PUBLIC_TMDB_IMG_URL: `${mockUrl}/t/p`,
         JUSTWATCH_API_URL: `${mockUrl}/graphql`,
         WIKIDATA_SPARQL_URL: `${mockUrl}/sparql`,
+        WIKIDATA_API_URL: `${mockUrl}/w/api.php`,
         IMDB_CHART_URL: `${mockUrl}/chart/top`,
         MDBLIST_API_URL: `${mockUrl}/mdblist/api`,
+        ...(adminToken ? { PICTORIUM_ADMIN_TOKEN: adminToken } : {}),
       },
     )
     await waitFor(`${appUrl}/api/health`, 120000, "app", { "x-api-key": healthKey })
@@ -162,11 +188,14 @@ async function run() {
   log(`Warmup (1 richiesta per fase, poi ${N} misurate per fase)`)
   await request(posterUrl(0, "A"))
   await request(posterUrl(0, "B"))
+  const out0 = await outboundSnapshot()
 
   const phaseA = []
   for (let i = 1; i <= N; i++) phaseA.push(await request(posterUrl(i, "A")))
+  const outA = await outboundSnapshot()
   const phaseB = []
   for (let i = 1; i <= N; i++) phaseB.push(await request(posterUrl(i, "B")))
+  const outB = await outboundSnapshot()
 
   const aStats = stats(phaseA)
   const bStats = stats(phaseB)
@@ -183,6 +212,19 @@ async function run() {
   const allSameHash = new Set(allSamples.map((s) => s.hash)).size === 1
   log(`Status: tutti 200 = ${allOk ? "sì" : "NO"} (${allSamples.map((s) => s.status).join(",")})`)
   log(`Body sha256: ${allSamples.length}/${allSamples.length} identici → output visivo invariato = ${allSameHash ? "sì" : "NO!"}`)
+
+  // Outbound per fase: dove finisce davvero la rete (richieste uscenti per host).
+  const printOutbound = (label, before, after) => {
+    const rows = outboundDelta(before, after)
+    if (rows.length === 0) {
+      log(`Outbound ${label}: snapshot non disponibile (status route non raggiungibile?)`)
+      return
+    }
+    log(`Outbound ${label} (richieste uscenti per host nella fase):`)
+    for (const r of rows) log(`  ${r.host}: ${r.req} req, ${r.err} err, avg ${r.avgMs}ms`)
+  }
+  printOutbound("fase A", out0, outA)
+  printOutbound("fase B", outA, outB)
 
   let exitCode = 0
   if (!allOk) {

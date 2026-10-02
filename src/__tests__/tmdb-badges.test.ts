@@ -62,15 +62,6 @@ describe("highly rated", () => {
   })
 })
 
-describe("ended", () => {
-  it("covers ended and cancelled, TV only", () => {
-    expect(computeTopBadge({ ...BASE, tvStatus: "Ended" }, t).ended).toBe(true)
-    expect(computeTopBadge({ ...BASE, tvStatus: "Canceled" }, t).ended).toBe(true)
-    expect(computeTopBadge({ ...BASE, tvStatus: "Returning Series" }, t).ended).toBe(false)
-    expect(computeTopBadge({ ...BASE, mediaType: "movie", tvStatus: "Ended" }, t).ended).toBe(false)
-  })
-})
-
 describe("trending label", () => {
   it("uses the media type to pick the wording", () => {
     expect(computeBadge({ ...EMPTY, mediaType: "movie", tmdbTrending: true }, t)?.label).toBe("Di tendenza")
@@ -92,11 +83,10 @@ describe("ladder placement", () => {
   it("keeps the permanent properties at the bottom", () => {
     // Non sono una notizia: non devono mai scavalcare qualcosa che lo è.
     expect(computeBadge({ ...EMPTY, highlyRated: true, studio: "A24" }, t)?.label).toBe("A24")
-    expect(computeBadge({ ...EMPTY, ended: true, highlyRated: true }, t)?.label).toBe("Molto votato")
-    expect(computeBadge({ ...EMPTY, ended: true }, t)?.label).toBe("Conclusa")
+    expect(computeBadge({ ...EMPTY, seriesEnded: "Serie conclusa", highlyRated: true }, t)?.label).toBe("Serie conclusa")
   })
 
-  it("changes nothing when none of the four apply", () => {
+  it("changes nothing when none of the new badges apply", () => {
     expect(computeBadge({ ...EMPTY, award: "Vincitore Oscar" }, t)?.label).toBe("Vincitore Oscar")
     expect(computeBadge({ ...EMPTY }, t)).toBeNull()
   })
@@ -106,12 +96,11 @@ describe("getAllBadgeOptions", () => {
   it("offers the new badges so they can be pinned manually", () => {
     const options = getAllBadgeOptions({
       ...EMPTY, mediaType: "tv", voteAverage: 8.5, tvType: null, tvStatus: null,
-      nextEpisode: "Nuovo episodio 25.12.26", tmdbTrending: true, highlyRated: true, ended: true,
+      nextEpisode: "Nuovo episodio 25.12.26", tmdbTrending: true, highlyRated: true,
     })
     expect(options).toContain("Nuovo episodio 25.12.26")
     expect(options).toContain("__badge.trendingSeries")
     expect(options).toContain("__badge.highlyRated")
-    expect(options).toContain("__badge.ended")
   })
 })
 

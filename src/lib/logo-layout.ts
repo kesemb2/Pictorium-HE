@@ -15,9 +15,21 @@ type LogoLayoutInput = {
    * `fit: "inside"` senza guadagnare spazio utile.
    */
   readonly titleBandH?: number
+  /** Allineamento orizzontale: "center" (default) o "left" (Cinematic). */
+  readonly align?: "left" | "center"
+  /** Cap larghezza logo in % del poster (default 100 = nessun cap). */
+  readonly maxWidthPct?: number
+  /** Cap altezza logo in % dell'altezza poster (default 100 = nessun cap).
+   *  Impedisce ai loghi quadrati/verticali di esplodere in altezza. */
+  readonly maxHeightPct?: number
+  /** Margine inferiore in % dell'altezza poster (default 10). */
+  readonly bottomMarginPct?: number
+  /** Offset Y fisso di calibrazione (es. +55 nel layout landscape,
+   *  +10 portrait via PORTRAIT_LOGO_TOP_OFFSET). */
+  readonly topOffset?: number
 }
 
-type LogoBoxInput = Pick<LogoLayoutInput, "posterW" | "posterH" | "logoW" | "logoH" | "logoScale">
+type LogoBoxInput = Pick<LogoLayoutInput, "posterW" | "posterH" | "logoW" | "logoH" | "logoScale" | "maxWidthPct" | "maxHeightPct">
 
 type LogoBox = {
   readonly width: number
@@ -43,6 +55,33 @@ type LogoOffsetBounds = {
  * lascia respiro alla riga metadati, come nei poster di riferimento.
  */
 const LOGO_BOTTOM_MARGIN_RATIO = 0.2
+/** Cap altezza logo sui canvas portrait: i loghi quadrati/verticali non
+ *  superano il 25% dell'altezza poster (375px su 1500px), in linea con
+ *  `logoDefaultScale` in logo-selection.ts. Solo altezza: la larghezza resta
+ *  libera (uncapped) così i wordmark panoramici possono respirare. */
+export const PORTRAIT_LOGO_MAX_HEIGHT_PCT = 25
+
+/** Calibrazione verticale portrait. Upstream la tiene a +10 (logo 10px più in
+ *  basso); il fork la azzera: la sua geometria portrait è tarata sul margine
+ *  `LOGO_BOTTOM_MARGIN_RATIO` qui sopra e sulla striscia del titolo ebraico,
+ *  e i 10px in più spingerebbero il logo addosso alla riga genere. Resta una
+ *  costante, così render, bound degli slider e auto-fit restano allineati. */
+export const PORTRAIT_LOGO_TOP_OFFSET = 0
+
+/** Vincoli logo sul canvas landscape 16:9 (usati da server, bound slider
+ *  client e auto-fit — Golden Rule: stessa terna ovunque).
+ *  Il fondo del logo resta a ~10px dal bordo, in linea col badge genere. */
+export const LANDSCAPE_LOGO_MAX_WIDTH_PCT = 40
+export const LANDSCAPE_LOGO_MAX_HEIGHT_PCT = 24
+export const LANDSCAPE_LOGO_BOTTOM_MARGIN_PCT = 0
+export const LANDSCAPE_LOGO_TOP_OFFSET = -10
+
+/** Calibrazione geometrica landscape invisibile agli slider (X +10px a destra,
+ *  Y -10px in alto, in aggiunta al TOP_OFFSET sopra): si somma SEMPRE agli
+ *  offset utente/mapping/default (anche 0), come PORTRAIT_LOGO_TOP_OFFSET in
+ *  portrait. Gli slider mostrano 0 ma il render è spostato — è voluto. */
+export const LANDSCAPE_LOGO_SHIFT_X = 10
+export const LANDSCAPE_LOGO_SHIFT_Y = -10
 
 function sanePositive(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback
@@ -58,8 +97,21 @@ export function computeLogoBox(input: LogoBoxInput): LogoBox {
   const logoW = sanePositive(input.logoW, 1)
   const logoH = sanePositive(input.logoH, 1)
   const scalePct = Math.max(input.logoScale, 10) / 100
-  const targetW = Math.min(Math.round(posterW * scalePct), posterW)
-  const targetH = Math.round(logoH * (targetW / logoW))
+  const capPct = input.maxWidthPct != null && Number.isFinite(input.maxWidthPct)
+    ? Math.min(Math.max(input.maxWidthPct, 10), 100) / 100
+    : 1
+  const capHeightPct = input.maxHeightPct != null && Number.isFinite(input.maxHeightPct)
+    ? Math.min(Math.max(input.maxHeightPct, 10), 100) / 100
+    : 1
+  const targetW = Math.min(Math.round(posterW * scalePct), Math.round(posterW * capPct), posterW)
+  let targetH = Math.round(logoH * (targetW / logoW))
+  // Vincolo altezza: i loghi quadrati/verticali scalano per larghezza e
+  // possono superare l'altezza utile (in landscape il canvas è basso).
+  const maxAllowedH = Math.round(posterH * capHeightPct)
+  if (targetH > maxAllowedH) {
+    targetH = Math.max(maxAllowedH, 1)
+    return { width: Math.max(Math.round(logoW * (targetH / logoH)), 1), height: targetH }
+  }
   if (targetH <= posterH) return { width: targetW, height: targetH }
 
   const ratio = posterH / targetH
@@ -69,14 +121,30 @@ export function computeLogoBox(input: LogoBoxInput): LogoBox {
   }
 }
 
+/** Padding sinistro dell'ancoraggio "left", in scala col canvas (36px a 768). */
+export function logoAlignPadX(posterW: number): number {
+  return Math.round(36 * (sanePositive(posterW, 768) / 768))
+}
+
+function bottomMargin(input: { readonly bottomMarginPct?: number }): number {
+  const pct = input.bottomMarginPct
+  // Default portrait del fork: il margine tarato sul layout di riferimento
+  // (upstream usa 0.1). Il landscape passa sempre il suo valore esplicito.
+  return pct != null && Number.isFinite(pct) ? Math.min(Math.max(pct, 0), 50) / 100 : LOGO_BOTTOM_MARGIN_RATIO
+}
+
 export function computeLogoLayout(input: LogoLayoutInput): LogoLayout {
   const posterW = sanePositive(input.posterW, 1000)
   const posterH = sanePositive(input.posterH, 1500)
   const box = computeLogoBox(input)
+  const margin = bottomMargin(input)
   const badgeOffset = input.hasBadges ? 0 : Math.round(40 * posterH / 1500)
+  const left = input.align === "left"
+    ? logoAlignPadX(posterW) + input.logoOffsetX
+    : Math.round((posterW - box.width) / 2 + input.logoOffsetX)
+  // La striscia del titolo tradotto SOLLEVA il logo, non lo rimpicciolisce.
   const titleBandH = Number.isFinite(input.titleBandH) ? Math.max(input.titleBandH!, 0) : 0
-  const left = Math.round((posterW - box.width) / 2 + input.logoOffsetX)
-  const top = Math.max(0, Math.round(posterH - box.height - posterH * LOGO_BOTTOM_MARGIN_RATIO + input.logoOffsetY + badgeOffset - titleBandH))
+  const top = Math.max(0, Math.round(posterH - box.height - posterH * margin + input.logoOffsetY + badgeOffset + (input.topOffset ?? 0) - titleBandH))
   return { ...box, left, top }
 }
 
@@ -89,9 +157,15 @@ export function computeLogoOffsetBounds(input: Omit<LogoLayoutInput, "logoOffset
   const posterW = sanePositive(input.posterW, 1000)
   const posterH = sanePositive(input.posterH, 1500)
   const box = computeLogoBox(input)
+  const margin = bottomMargin(input)
   const badgeOffset = input.hasBadges ? 0 : Math.round(40 * posterH / 1500)
+  const baseTop = Math.round(posterH - box.height - posterH * margin + badgeOffset + (input.topOffset ?? 0))
+  const maxY = Math.round(posterH * margin - badgeOffset - (input.topOffset ?? 0))
+  // Center: corsa simmetrica attorno al centro; left: dal bordo sinistro
+  // (meno padX) al bordo destro (meno padX e larghezza logo).
+  const padX = logoAlignPadX(posterW)
   const halfX = Math.round((posterW - box.width) / 2)
-  const baseTop = Math.round(posterH - box.height - posterH * LOGO_BOTTOM_MARGIN_RATIO + badgeOffset)
-  const maxY = Math.round(posterH * LOGO_BOTTOM_MARGIN_RATIO - badgeOffset)
-  return { minX: cleanZero(-halfX), maxX: cleanZero(halfX), minY: cleanZero(-baseTop), maxY: cleanZero(maxY) }
+  const minX = input.align === "left" ? -padX : -halfX
+  const maxX = input.align === "left" ? posterW - box.width - padX : halfX
+  return { minX: cleanZero(minX), maxX: cleanZero(maxX), minY: cleanZero(-baseTop), maxY: cleanZero(maxY) }
 }

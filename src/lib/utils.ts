@@ -11,7 +11,9 @@ export function cn(...classes: (string | undefined | null | false)[]) {
 export const LANG_FLAGS: Record<string, string> = {
   it: "🇮🇹", en: "🇬🇧", fr: "🇫🇷", de: "🇩🇪", es: "🇪🇸", pt: "🇵🇹",
   ja: "🇯🇵", ko: "🇰🇷", zh: "🇨🇳", ru: "🇷🇺", ar: "🇸🇦", nl: "🇳🇱",
-  pl: "🇵🇱", sv: "🇸🇪", tr: "🇹🇷", hi: "🇮🇳", he: "🇮🇱",
+  pl: "🇵🇱", sv: "🇸🇪", tr: "🇹🇷", hi: "🇮🇳", he: "🇮🇱", ro: "🇷🇴",
+  cs: "🇨🇿", da: "🇩🇰", no: "🇳🇴", fi: "🇫🇮", el: "🇬🇷", hu: "🇭🇺",
+  uk: "🇺🇦", th: "🇹🇭", id: "🇮🇩", vi: "🇻🇳",
 }
 
 export const LANG_NAMES: Record<string, string> = {
@@ -19,7 +21,9 @@ export const LANG_NAMES: Record<string, string> = {
   es: "Español", pt: "Português", ja: "日本語", ko: "한국어",
   zh: "中文", ru: "Русский", ar: "العربية", nl: "Nederlands",
   pl: "Polski", sv: "Svenska", tr: "Türkçe", hi: "हिन्दी",
-  he: "עברית",
+  he: "עברית", ro: "Română", cs: "Čeština", da: "Dansk",
+  no: "Norsk", fi: "Suomi", el: "Ελληνικά", hu: "Magyar",
+  uk: "Українська", th: "ไทย", id: "Bahasa Indonesia", vi: "Tiếng Việt",
   xx: "Senza lingua",
 }
 
@@ -31,6 +35,35 @@ export function getDomain() {
 export function posterUrl(path: string, size = "w342") {
   if (path.startsWith("http")) return path
   return `${IMG_BASE}/${size}${path}`
+}
+
+/** Vero quando il valore è un URL http(s) esterno (base custom), non un path TMDB. */
+export function isCustomPosterUrl(value: string | null | undefined): boolean {
+  if (!value) return false
+  const v = value.trim()
+  return v.startsWith("http://") || v.startsWith("https://")
+}
+
+export interface PosterSaveSplit {
+  /** posterPath da persistere (sempre path TMDB di fallback, mai URL). */
+  readonly posterPath: string
+  /** customPosterUrl da persistere (null = nessuna base custom). */
+  readonly customPosterUrl: string | null
+}
+
+/**
+ * Split del save quando il poster selezionato può essere un tile custom.
+ * Tile custom → posterPath resta il riferimento TMDB (fallback del render se
+ * l'URL muore) e l'URL va in customPosterUrl. Tile TMDB → custom azzerato: il
+ * save congela lo stato mostrato, quindi tornare a un tile TMDB rimuove la
+ * base custom precedentemente salvata.
+ */
+export function splitCustomPosterSave(previewFilePath: string, tmdbRef: string | null): PosterSaveSplit {
+  if (isCustomPosterUrl(previewFilePath)) {
+    const fallback = tmdbRef && !isCustomPosterUrl(tmdbRef) ? tmdbRef : previewFilePath
+    return { posterPath: fallback, customPosterUrl: previewFilePath.trim() }
+  }
+  return { posterPath: previewFilePath, customPosterUrl: null }
 }
 
 export function titleOf(r: SearchResult) {
@@ -68,8 +101,8 @@ export const STREAMING_PLATFORMS = [
 /**
  * Voci del selettore lingua: SOLO le nazionalità supportate (una per
  * regione). `key` è il codice paese (univoco), `code` la lingua UI a 2 lettere
- * (it/en/fr/de/es/ja/ko/pt/he/cs — ja/ko/pt/he/cs ripiegano sull'inglese in
- * `i18n.lookup` per le chiavi che non traducono).
+ * (it/pl/en/fr/de/es/he/ar/tr/nl/sv hanno un dizionario completo — ja/ko/pt/cs/ro
+ * ripiegano sull'inglese in `i18n.lookup` per le chiavi che non traducono).
  */
 export const PICKER_LANGS = REGIONS.map((r) => ({
   key: r.code,
@@ -87,19 +120,55 @@ export interface UiLangOption {
 }
 
 /**
- * Le lingue selezionabili per l'interfaccia. it/en/fr/de/es hanno un
- * dizionario completo; `he` traduce badge/award/sottogeneri e `ja/ko/pt/he/cs`
- * ripiegano sull'inglese per le stringhe `ui.*` (vedi translations/).
+ * Le lingue selezionabili per l'interfaccia. it/pl/en/fr/de/es/he/ar/tr/nl/sv
+ * hanno un dizionario completo; `ja/ko/pt/cs/ro` ripiegano sull'inglese per le
+ * stringhe `ui.*` (vedi translations/).
  */
 export const UI_LANGUAGES: readonly UiLangOption[] = [
   { code: "it", flag: "🇮🇹", name: "Italiano", sub: "IT" },
+  { code: "pl", flag: "🇵🇱", name: "Polski", sub: "PL" },
   { code: "en", flag: "🇬🇧", name: "English", sub: "EN" },
   { code: "fr", flag: "🇫🇷", name: "Français", sub: "FR" },
   { code: "de", flag: "🇩🇪", name: "Deutsch", sub: "DE" },
   { code: "es", flag: "🇪🇸", name: "Español", sub: "ES" },
   { code: "ja", flag: "🇯🇵", name: "日本語", sub: "JA" },
   { code: "ko", flag: "🇰🇷", name: "한국어", sub: "KO" },
-  { code: "pt", flag: "🇧🇷", name: "Português", sub: "PT" },
+  { code: "pt", flag: "🇵🇹", name: "Português", sub: "PT" },
   { code: "he", flag: "🇮🇱", name: "עברית", sub: "HE" },
   { code: "cs", flag: "🇨🇿", name: "Čeština", sub: "CS" },
+  { code: "ro", flag: "🇷🇴", name: "Română", sub: "RO" },
+  { code: "ar", flag: "🇸🇦", name: "العربية", sub: "AR" },
+  { code: "tr", flag: "🇹🇷", name: "Türkçe", sub: "TR" },
+  { code: "nl", flag: "🇳🇱", name: "Nederlands", sub: "NL" },
+  { code: "sv", flag: "🇸🇪", name: "Svenska", sub: "SE" },
 ] as const
+
+export interface ImageLists {
+  posters: TMDBImage[]
+  logos: TMDBImage[]
+  backdrops: TMDBImage[]
+}
+
+/**
+ * Fonde due risposte /images TMDB (default + allargata alla lingua originale),
+ * deduplicando per file_path. La prima lista vince a parità di path.
+ * Spostata qui da context.tsx (move wholesale, logica identica).
+ */
+export function mergeImageLists(base: ImageLists, extra: ImageLists): ImageLists {
+  const merge = (a: TMDBImage[], b: TMDBImage[]): TMDBImage[] => {
+    const seen = new Set(a.map((img) => img.file_path))
+    const out = [...a]
+    for (const img of b) {
+      if (!seen.has(img.file_path)) {
+        seen.add(img.file_path)
+        out.push(img)
+      }
+    }
+    return out
+  }
+  return {
+    posters: merge(base.posters || [], extra.posters || []),
+    logos: merge(base.logos || [], extra.logos || []),
+    backdrops: merge(base.backdrops || [], extra.backdrops || []),
+  }
+}

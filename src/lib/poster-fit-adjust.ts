@@ -1,7 +1,8 @@
 import sharp from "sharp"
 import type { PosterFitResult } from "@/lib/poster-fit-score"
 // Batch B: import shared utilities from image-utils.ts (single source of truth)
-import { STD_W, STD_H, clamp, luma, type RgbData, sliceRgb } from "@/lib/image-utils"
+import { STD_W, STD_H, LAND_W, LAND_H, clamp, luma, type RgbData, sliceRgb } from "@/lib/image-utils"
+import type { PosterShape } from "@/lib/types"
 
 export interface PosterBufferEntry {
   readonly posterPath: string
@@ -31,15 +32,17 @@ export interface RankedFitResult {
 interface FitAdjustmentInput {
   readonly ranked: readonly PosterFitResult[]
   readonly posterEntries: readonly PosterBufferEntry[]
+  readonly shape?: PosterShape
 }
 
 const TEXT_PENALTY_CANDIDATES = 6
 export const MIN_ACCEPTED_FIT_SCORE = 0.45
 
-function posterQualityScore(voteAverage: number, width: number, height: number): number {
+function posterQualityScore(voteAverage: number, width: number, height: number, shape?: PosterShape): number {
   const tmdbVote = clamp((voteAverage - 2) / 8, 0, 1)
-  const aspect = width > 0 && height > 0 ? width / height : 2 / 3
-  const aspectDiff = Math.abs(aspect - 2 / 3)
+  const idealAspect = shape === "landscape" ? LAND_W / LAND_H : 2 / 3
+  const aspect = width > 0 && height > 0 ? width / height : idealAspect
+  const aspectDiff = Math.abs(aspect - idealAspect)
   const aspectRatioScore = clamp(1 - aspectDiff / 0.3, 0, 1)
   const pixels = width * height
   const resolutionScore = pixels >= 500_000 ? 1 : pixels >= 200_000 ? 0.7 : pixels >= 100_000 ? 0.4 : 0.15
@@ -148,17 +151,19 @@ function computeTextPenaltyRgb(rgb: RgbData): number {
 }
 
 /** Fallback decode-and-slice, usato solo quando il poster raw non è disponibile
- *  (es. path di timeout del best-fit). */
-async function computeTextPenalty(posterBuffer: Buffer): Promise<number> {
-  const cropY = Math.round(STD_H * 0.55)
-  const cropH = Math.round(STD_H * 0.33)
-  const cropX = Math.round(STD_W * 0.10)
-  const cropW = Math.round(STD_W * 0.80)
+ *  (es. path di timeout del best-fit). Dimensioni e striscia seguono il formato. */
+async function computeTextPenalty(posterBuffer: Buffer, shape?: PosterShape): Promise<number> {
+  const canvasW = shape === "landscape" ? LAND_W : STD_W
+  const canvasH = shape === "landscape" ? LAND_H : STD_H
+  const cropY = Math.round(canvasH * 0.55)
+  const cropH = Math.round(canvasH * 0.33)
+  const cropX = Math.round(canvasW * 0.10)
+  const cropW = Math.round(canvasW * 0.80)
 
   if (cropW <= 0 || cropH <= 0) return 0
 
   const { data, info } = await sharp(posterBuffer)
-    .resize(STD_W, STD_H, { fit: "fill" })
+    .resize(canvasW, canvasH, { fit: "fill" })
     .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
     .removeAlpha()
     .raw()
@@ -171,10 +176,10 @@ async function computeTextPenalty(posterBuffer: Buffer): Promise<number> {
  *  (decode-once): nessun ri-decode sharp. La regione è il box logo ± pad:
  *  il testo che collide con il logo è quello che conta, non una striscia
  *  globale fissa. Senza `zone` (path timeout senza context) ripiega sulla
- *  striscia titolo storica. */
+ *  striscia titolo storica, dimensionata sul formato. */
 const TEXT_PENALTY_PAD = 24
 
-function computeTextPenaltyFromRaw(raw: RgbData, zone?: { left: number; top: number; width: number; height: number }): number {
+function computeTextPenaltyFromRaw(raw: RgbData, zone?: { left: number; top: number; width: number; height: number }, shape?: PosterShape): number {
   if (zone) {
     const region = sliceRgb(
       raw,
@@ -185,10 +190,12 @@ function computeTextPenaltyFromRaw(raw: RgbData, zone?: { left: number; top: num
     )
     return region ? computeTextPenaltyRgb(region) : 0
   }
-  const cropX = Math.round(STD_W * 0.10)
-  const cropY = Math.round(STD_H * 0.55)
-  const cropW = Math.round(STD_W * 0.80)
-  const cropH = Math.round(STD_H * 0.33)
+  const canvasW = shape === "landscape" ? LAND_W : STD_W
+  const canvasH = shape === "landscape" ? LAND_H : STD_H
+  const cropX = Math.round(canvasW * 0.10)
+  const cropY = Math.round(canvasH * 0.55)
+  const cropW = Math.round(canvasW * 0.80)
+  const cropH = Math.round(canvasH * 0.33)
   const region = sliceRgb(raw, cropX, cropY, cropW, cropH)
   return region ? computeTextPenaltyRgb(region) : 0
 }
@@ -238,6 +245,7 @@ export function selectAcceptedPosterPath(ranked: readonly RankedFitResult[], fal
 
 export async function adjustFitResults(input: FitAdjustmentInput): Promise<RankedFitResult[]> {
   if (input.ranked.length === 0) return []
+  const shape = input.shape
 
   const topCandidates = input.ranked.slice(0, TEXT_PENALTY_CANDIDATES)
   const withPenalty: RankedFitResult[] = await Promise.all(
@@ -250,10 +258,10 @@ export async function adjustFitResults(input: FitAdjustmentInput): Promise<Ranke
         return toRankedFitResult(result, adjustedScore, 0, logoZoneScore, colorConflictPenalty, 0)
       }
       const textPenalty = result.posterRaw
-        ? computeTextPenaltyFromRaw(result.posterRaw, result.logoZone)
-        : await computeTextPenalty(posterEntry.posterBuffer).catch(() => 0)
+        ? computeTextPenaltyFromRaw(result.posterRaw, result.logoZone, shape)
+        : await computeTextPenalty(posterEntry.posterBuffer, shape).catch(() => 0)
       const tmdbQualityBonus = clamp((posterEntry.voteAverage - 4) / 6, 0, 1) * 0.04
-      const qualityScore = posterQualityScore(posterEntry.voteAverage, posterEntry.width, posterEntry.height)
+      const qualityScore = posterQualityScore(posterEntry.voteAverage, posterEntry.width, posterEntry.height, shape)
       const adjustedScore =
         result.score * (1 - textPenalty * 0.38) +
         logoZoneScore * 0.08 +

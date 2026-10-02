@@ -52,7 +52,7 @@ function detailFor(type) {
   const base = {
     credits: { cast: [{ id: 1, name: "Actor One" }], crew: [{ id: 2, name: "Director One", job: "Director" }] },
     videos: { results: [{ id: "v1", key: "abc123", site: "YouTube", type: "Trailer", name: "Trailer" }] },
-    external_ids: { imdb_id: "tt1234567" },
+    external_ids: { imdb_id: "tt1234567", wikidata_id: "Q12345" },
   }
   if (type === "tv") {
     return {
@@ -216,7 +216,7 @@ const server = http.createServer(async (req, res) => {
     const extIdsMatch = pathname.match(/^\/3\/(movie|tv)\/(\d+)\/external_ids$/)
     if (extIdsMatch) {
       // imdb_id volutamente NON in IMDb Top 250, per poster deterministici
-      return json(res, 200, { id: Number(extIdsMatch[2]), imdb_id: "tt1234567" })
+      return json(res, 200, { id: Number(extIdsMatch[2]), imdb_id: "tt1234567", wikidata_id: "Q12345" })
     }
     const kwMatch = pathname.match(/^\/3\/(movie|tv)\/(\d+)\/keywords$/)
     if (kwMatch) {
@@ -372,6 +372,36 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { head: { vars: [] }, results: { bindings: [] } })
     }
 
+    // Wikidata Action API (fast-path REST): payload deterministico per Q12345.
+    // claims → QID finti; labels → label inglesi che matchano le RULES
+    // (Academy Award → Oscar) così il fast-path produce badge in E2E.
+    if (pathname === "/w/api.php") {
+      const ids = (url.searchParams.get("ids") || "").split("|").filter(Boolean)
+      const props = url.searchParams.get("props") || ""
+      if (props.includes("claims")) {
+        const qid = ids[0] || "Q12345"
+        return json(res, 200, {
+          entities: {
+            [qid]: {
+              claims: {
+                P166: [{ mainsnak: { datavalue: { value: { id: "Q109487" } } } }],
+                P1411: [{ mainsnak: { datavalue: { value: { id: "Q109488" } } } }],
+                P57: [{ mainsnak: { datavalue: { value: { id: "Q25191" } } } }],
+              },
+            },
+          },
+        })
+      }
+      const entities = {}
+      for (const id of ids) {
+        // Label distinte per ramo: wins → Oscar, nominations → BAFTA,
+        // regista → allowlist DIRECTORS. Così i test distinguono i rami.
+        const label = id === "Q25191" ? "Christopher Nolan" : id === "Q109488" ? "British Academy Film Award" : "Academy Award"
+        entities[id] = { labels: { en: { value: label } } }
+      }
+      return json(res, 200, { entities })
+    }
+
     // IMDb chart minimale: nessun tt-id → fallback al dataset statico
     if (pathname === "/chart/top/") {
       return respond(res, 200, "<!doctype html><html><body></body></html>", "text/html")
@@ -385,6 +415,76 @@ const server = http.createServer(async (req, res) => {
           { imdb: "tt1740057", title: "Anime Fake #2", year: 2020, tmdb: 88888 },
         ],
       })
+    }
+
+    // MDBList aggregated ratings (lib/ratings.ts → ${MDBLIST_API_URL}/?i=tt...):
+    // voti deterministici per la colonna rating separati (sep=1).
+    // Nota: l'app chiama `${MDBLIST_API_URL}/?i=...` (slash prima del ?),
+    // quindi il pathname arriva con trailing slash.
+    if (method === "GET" && (pathname === "/mdblist/api" || pathname === "/mdblist/api/")) {
+      // tt0000001: MDBList senza imdb (per il test fallback Cinemeta).
+      if (url.searchParams.get("i") === "tt0000001") {
+        return json(res, 200, { ratings: [{ source: "tmdb", score: 79 }] })
+      }
+      return json(res, 200, {
+        ratings: [
+          { source: "imdb", score: 87 },
+          { source: "tmdb", score: 79 },
+          { source: "tomatoes", score: 88 },
+          { source: "popcorntime", score: 92 },
+          { source: "metacritic", score: 75 },
+        ],
+      })
+    }
+
+    // Simkl redirect (stop-at-301): risolve IMDb/TMDB ID nel canonical path Simkl
+    if (method === "GET" && pathname.startsWith("/simkl/redirect")) {
+      res.writeHead(301, {
+        Location: "https://simkl.com/movies/472214/inception",
+        "Content-Length": "0",
+      })
+      return res.end()
+    }
+
+    // Simkl details endpoint: restituisce i ratings con rating.simkl.rating
+    if (method === "GET" && pathname.match(/^\/simkl\/(movies|tv|anime)\/\d+/)) {
+      return json(res, 200, {
+        ratings: {
+          simkl: { rating: 8.6, votes: 14000 },
+          imdb: { rating: 8.8, votes: 2000000 },
+        },
+      })
+    }
+
+    // AniZip mappings (lib/anime-ratings.ts → ${ANIZIP_API_URL}/mappings?...):
+    // solo tt0388629/tmdb 37854 (One Piece) è un anime; resto → 404.
+    if (method === "GET" && pathname === "/anizip/mappings") {
+      const tmdb = url.searchParams.get("themoviedb_id")
+      const imdb = url.searchParams.get("imdb_id")
+      if (tmdb === "37854" || imdb === "tt0388629") {
+        return json(res, 200, {
+          mappings: { anilist_id: 21, kitsu_id: 12, type: "TV" },
+          episodes: { 1: { seasonNumber: 1, episodeNumber: 1 } },
+        })
+      }
+      return json(res, 404, { error: "not found" })
+    }
+
+    // AniList GraphQL (POST ${ANILIST_API_URL}): voto medio 0-100.
+    if (method === "POST" && pathname === "/anilist") {
+      return json(res, 200, { data: { Media: { id: 21, averageScore: 87 } } })
+    }
+
+    // Kitsu REST (${KITSU_API_URL}/anime/:id): averageRating stringa 0-100.
+    if (method === "GET" && pathname.match(/^\/kitsu\/anime\/\d+/)) {
+      return json(res, 200, { data: { id: "12", type: "anime", attributes: { averageRating: "84.01" } } })
+    }
+
+    // Cinemeta meta (${CINEMETA_API_URL}/meta/:type/:id.json): imdbRating gratis.
+    // tt0133093, tt0388629 e tt0000001 risolvono; il resto ha meta vuoto (come il reale).
+    if (method === "GET" && pathname.match(/^\/cinemeta\/meta\/(movie|series)\/tt\d+\.json$/)) {
+      const hit = pathname.includes("tt0133093") || pathname.includes("tt0388629") || pathname.includes("tt0000001")
+      return json(res, 200, hit ? { meta: { id: "tt0133093", type: "movie", name: "Mock", imdbRating: "8.4" } } : { meta: {} })
     }
 
     // Fallback esplicito per chiamate non mockate

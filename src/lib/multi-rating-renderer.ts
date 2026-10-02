@@ -34,6 +34,6 @@ export async function renderMultiRatings(ratings: RatingItem[], maxWidth: number
   width -= PILL_GAP
   const w = Math.min(maxWidth, width)
   const h = Math.max(1, Math.round(PILL_H * w / width))
-  const png = await renderSVG((`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${width} ${PILL_H}">${pills.join("")}</svg>`), w)
+  const png = await renderSVG(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${width} ${PILL_H}">${pills.join("")}</svg>`, w)
   return { png, w, h }
 }

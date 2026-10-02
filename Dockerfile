@@ -19,6 +19,9 @@ WORKDIR /app
 COPY --from=source /src/package.json /src/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY --from=source /src ./
+# Versione di rilascio passata dalle build CI (il context esclude .git, quindi il
+# generator non può contare i commit). Se assente, resta la base del package.json.
+ARG APP_VERSION
 RUN npm run build
 
 FROM node:22-bookworm AS runner

@@ -2,6 +2,8 @@ import type { NextRequest } from "next/server"
 import { cacheGet, cacheGetStale, cacheSet } from "@/lib/cache"
 import { createLogger } from "@/lib/logger"
 import { envWithFallback } from "@/lib/env-compat"
+import { isBadgeStyle, isRankingBadgeStyle } from "@/lib/badge-styles"
+import { POSTER_CACHE_ALLOWLIST } from "./poster-params-hardening"
 
 const log = createLogger("poster-cache")
 
@@ -81,10 +83,45 @@ const MAX_REFRESH_TRACKED = 500
 const INFLIGHT_TIMEOUT_MS = 60_000
 
 export function normalizePosterCacheParams(searchParams: URLSearchParams): URLSearchParams {
-  const params = new URLSearchParams(searchParams)
+  // Allowlist rigida anti cache-busting (v1.23.0): solo i parametri noti
+  // entrano nella chiave — ?x=$RANDOM collassa invece di missare. I repeat
+  // multipli della stessa chiave sono preservati come prima.
+  const params = new URLSearchParams()
+  const seen = new Set<string>()
+  for (const [key, value] of searchParams) {
+    if (!POSTER_CACHE_ALLOWLIST.has(key)) continue
+    // Dedup al primo valore (v1.23.0): il render legge .get() (prima
+    // occorrenza), ma la serializzazione includerebbe i repeat —
+    // ?blur=20&blur=20 sarebbe una chiave diversa a render identico.
+    if (seen.has(key)) continue
+    seen.add(key)
+    params.append(key, value)
+  }
   params.delete("rv")
   params.delete("v")
   params.delete(POSTER_REFRESH_PARAM)
+
+  const ac = params.get("ac")
+  if (ac !== null && !/^#([0-9A-Fa-f]{3}){1,2}$/.test(ac)) {
+    params.delete("ac")
+  }
+  const tl = params.get("tl")
+  if (tl !== null && tl !== "1" && tl !== "0" && tl !== "true" && tl !== "false") {
+    params.delete("tl")
+  }
+  const bl = params.get("bl")
+  if (bl !== null && bl !== "1" && bl !== "0" && bl !== "true" && bl !== "false") {
+    params.delete("bl")
+  }
+  const bs = params.get("bs")
+  if (bs !== null && !isBadgeStyle(bs)) {
+    params.delete("bs")
+  }
+  const rs = params.get("rs")
+  if (rs !== null && !isRankingBadgeStyle(rs)) {
+    params.delete("rs")
+  }
+
   return params
 }
 
@@ -110,6 +147,18 @@ const FORMAT_MIME_TYPES: Record<PosterImageFormat, string> = {
   avif: "image/avif",
 }
 
+// Formato servito ai client che non dichiarano preferenze (Accept generico
+// `*/*` o assente — quasi tutti i client Stremio nativi). Default `webp`
+// (~25-30% più leggero del jpeg a pari qualità); `PICTORIUM_IMAGE_FORMAT=jpeg`
+// torna al jpeg universale per istanze con client datati. Lettura a module
+// level: cambio = restart. `?fmt=` resta override esplicito in entrambi i sensi
+// (via di fuga). Solo `jpeg` è accettato come alternativa: qualsiasi altro
+// valore (incluso `avif`, che costa 3-5× in encode) ricade sul default webp.
+export const DEFAULT_IMAGE_FORMAT: Exclude<PosterImageFormat, "avif"> = (() => {
+  const raw = envWithFallback("IMAGE_FORMAT")
+  return raw && raw.trim().toLowerCase() === "jpeg" ? "jpeg" : "webp"
+})()
+
 export function resolveImageFormat(acceptHeader?: string | null, queryFmt?: string | null): PosterImageFormat {
   if (queryFmt) {
     const q = queryFmt.toLowerCase()
@@ -120,26 +169,37 @@ export function resolveImageFormat(acceptHeader?: string | null, queryFmt?: stri
     if (q === "avif") return "avif"
     if (q === "jpeg" || q === "jpg") return "jpeg"
   }
-  if (!acceptHeader) return "jpeg"
+  if (!acceptHeader) return DEFAULT_IMAGE_FORMAT
   const accept = acceptHeader.toLowerCase()
   if (accept.includes("image/webp")) return "webp"
-  return "jpeg"
+  return DEFAULT_IMAGE_FORMAT
 }
 
 // C3: conversione jpeg canonico → webp on-the-fly. Stesse opzioni
-// dell'encode webp diretto in poster-service (q80, effort 2): byte non
+// dell'encode webp diretto in poster-service (q85, effort 2): byte non
 // identici al render diretto (doppia compressione), ma stessa qualità
 // percepita — il webp esiste solo come variante di risposta, mai come chiave
 // di render. ~20-50ms contro ~2-8s di re-render completo.
+// Con PICTORIUM_IMAGE_FORMAT=webp il verso si inverte (canonico webp,
+// variante jpeg): vedi convertToJpeg sotto.
 export async function convertPosterFormat(jpeg: Buffer): Promise<Buffer> {
   const sharp = (await import("sharp")).default
-  return sharp(jpeg).webp({ quality: 80, effort: 2 }).toBuffer()
+  return sharp(jpeg).webp({ quality: 85, effort: 2 }).toBuffer()
 }
 
-/** ETag deterministico della variante webp derivato da quello canonico. */
-export function variantEtagFor(canonicalEtag: string): string {
+/** Conversione inversa (canonico webp → variante jpeg): stesse opzioni
+ *  dell'encode jpeg diretto in poster-service (q82 + mozjpeg). */
+export async function convertToJpeg(webp: Buffer): Promise<Buffer> {
+  const sharp = (await import("sharp")).default
+  return sharp(webp).jpeg({ quality: 82, mozjpeg: true }).toBuffer()
+}
+
+/** ETag deterministico della variante derivato da quello canonico. Il default
+ *  `webp` conserva gli etag storici byte-identici; le varianti jpeg usano
+ *  suffisso proprio (mai collisione col canonico né tra varianti). */
+export function variantEtagFor(canonicalEtag: string, variant: Exclude<PosterImageFormat, "avif"> = "webp"): string {
   let h = 0x811c9dc5
-  const s = `${canonicalEtag}:webp`
+  const s = `${canonicalEtag}:${variant}`
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i)
     h = Math.imul(h, 0x01000193)
@@ -209,9 +269,9 @@ export interface ServerTimingEntry {
 
 /**
  * Valore `Server-Timing` per le risposte poster (`fetch;dur=123, total;dur=456`,
- * `cache;desc="HIT", total;dur=4`). Diagnostica per-richiesta senza righe di log
- * aggiuntive, leggibile dai devtools del browser. Solo esposizione di tempi,
- * mai dati personali.
+ * `cache;desc="HIT", total;dur=4`). Diagnostica per-request senza righe di log
+ * aggiuntive: la scomposizione fetch/prep/composite vive già nel log
+ * "Poster rendered". Solo esposizione, mai raccolta di dati personali.
  */
 export function serverTimingValue(entries: readonly ServerTimingEntry[]): string {
   return entries
@@ -230,13 +290,21 @@ export function posterResponse(payload: PosterCachePayload, immutable: boolean, 
   })
 }
 
-export function readCachedPoster(cacheKey: string): { readonly payload: PosterCachePayload | null; readonly stale: boolean } {
+export interface PosterHeadersRecord {
+  readonly etag: string
+  readonly ttlSec?: number
+  readonly immutable?: boolean
+}
+
+export function readCachedPoster(cacheKey: string): { readonly payload: PosterCachePayload | null; readonly stale: boolean; readonly ttlSec?: number; readonly immutable?: boolean } {
   const cached = cacheGetStale<Buffer>(cacheKey)
-  const cachedHeaders = cacheGetStale<{ etag: string }>(`${cacheKey}:headers`)
+  const cachedHeaders = cacheGetStale<PosterHeadersRecord>(`${cacheKey}:headers`)
   if (!cached.data || !cachedHeaders.data) return { payload: null, stale: false }
   return {
     payload: { buffer: cached.data, etag: cachedHeaders.data.etag },
     stale: cached.stale || cachedHeaders.stale,
+    ttlSec: cachedHeaders.data.ttlSec,
+    immutable: cachedHeaders.data.immutable,
   }
 }
 
@@ -250,15 +318,32 @@ export function readCachedPoster(cacheKey: string): { readonly payload: PosterCa
 // header dynamic derivano dallo stesso dynamicPosterTtlSec, così header e
 // storage restano sincronizzati.
 
-export function writeCachedPoster(cacheKey: string, payload: PosterCachePayload, mappingTag?: string): void {
+export interface WriteCachedPosterOpts {
+  /** TTL esplicito in ms (es. qualità effimera): vince su default mapping/dinamico. */
+  readonly ttlMs?: number
+  /** Flag immutable effettivo della risposta: persistito per le HIT (M3). */
+  readonly immutable?: boolean
+}
+
+export function writeCachedPoster(cacheKey: string, payload: PosterCachePayload, mappingTag?: string, opts?: WriteCachedPosterOpts): void {
   const tags = mappingTag ? ["poster", mappingTag] : ["poster"]
   // TTL esplicito solo per i non-mappati: per i mappati resta il refresh
   // schedulato giornaliero (immutable per un anno alla CDN, invalido per tag).
   // Jitter deterministico anti-herd: stessa key → stesso TTL ovunque (M3
   // garantito perché gli header derivano dallo stesso dynamicPosterTtlSec).
-  const ttl = mappingTag ? undefined : dynamicPosterTtlMs(cacheKey)
+  // opts.ttlMs (es. qualità effimera dopo timeout upstream) vince su tutto,
+  // anche sul path mappato: un render degradato non deve mai restare 24h.
+  const explicitTtlMs = opts?.ttlMs
+  const ttl = explicitTtlMs ?? (mappingTag ? undefined : dynamicPosterTtlMs(cacheKey))
+  // ttlSec/immutable nel record header: le HIT riusano gli stessi valori dello
+  // storage (M3) invece di sovrastimare max-age/immutable con i default di
+  // richiesta su entry effimere. Record vecchi senza campi → fallback invariato.
+  const ttlSec = explicitTtlMs !== undefined
+    ? Math.max(1, Math.round(explicitTtlMs / 1000))
+    : (mappingTag ? undefined : dynamicPosterTtlSec(cacheKey))
+  const record: PosterHeadersRecord = { etag: payload.etag, ttlSec, immutable: opts?.immutable }
   cacheSet(cacheKey, payload.buffer, tags, ttl)
-  cacheSet(`${cacheKey}:headers`, { etag: payload.etag }, tags, ttl)
+  cacheSet(`${cacheKey}:headers`, record, tags, ttl)
 }
 
 // ---------------------------------------------------------------------------
@@ -407,8 +492,12 @@ const MAX_CONCURRENT_RENDERS = (() => {
 // slot), quindi allungare l'attesa è memory-neutral.
 export const RENDER_SLOT_WAIT_MS = (() => {
   const raw = envWithFallback("RENDER_SLOT_WAIT_MS")
-  const n = raw ? parseInt(raw, 10) : 15000
-  return Number.isFinite(n) && n >= 500 && n <= 60000 ? n : 15000
+  // Vercel Hobby: 10s di limite funzione — con 15s di attesa la piattaforma
+  // chiuderebbe con 504 prima del nostro 503. Default hobby-safe SOLO se
+  // l'utente non ha impostato un valore esplicito (su Pro vale il default).
+  const fallback = process.env.VERCEL && raw === undefined ? 7500 : 15000
+  const n = raw ? parseInt(raw, 10) : fallback
+  return Number.isFinite(n) && n >= 500 && n <= 60000 ? n : fallback
 })()
 // Coda bounded (opzionale): con 0 il comportamento è attuale (i waiter oltre i
 // posti attendono fino a RENDER_SLOT_WAIT_MS). Con N>0 i waiter oltre N
@@ -458,7 +547,7 @@ function releaseRenderSlot(): void {
 }
 
 /** Notifica al limiter che un render è stato abbandonato dalla deadline ma continua in background */
-export function recordZombieRenderStart(): () => void {
+export function recordZombieRenderStart(label?: string): () => void {
   zombieRenders++
   let settled = false
   const settle = (): void => {
@@ -473,7 +562,7 @@ export function recordZombieRenderStart(): () => void {
     settled = true
     zombieRenders = Math.max(0, zombieRenders - 1)
     zombieGraceExpired++
-    log.warn("Zombie render grace expired — slot force-released", { zombies: zombieRenders })
+    log.warn("Zombie render grace expired — slot force-released", label ? { zombies: zombieRenders, render: label } : { zombies: zombieRenders })
     pumpWaiters()
   }, ZOMBIE_GRACE_MS)
   if (typeof grace.unref === "function") grace.unref()

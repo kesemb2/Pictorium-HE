@@ -7,12 +7,22 @@
 
 import { useEffect } from "react"
 import type { TMDBImage } from "./types"
-import { findAccentColor, topEdgeAverage, type AccentHueMode } from "./accent-color"
+import { isCustomPosterUrl } from "./utils"
+import { findAccentColor, topEdgeAverage, bottomEdgeAverage, type AccentHueMode } from "./accent-color"
 
+function parseHexColor(value: unknown): { r: number; g: number; b: number } | null {
+  if (typeof value !== "string" || !/^#[0-9a-f]{6}$/i.test(value)) return null
+  return {
+    r: parseInt(value.slice(1, 3), 16),
+    g: parseInt(value.slice(3, 5), 16),
+    b: parseInt(value.slice(5, 7), 16),
+  }
+}
 interface RootColorsSetters {
   setAccentColor: (v: string | null) => void
   setAutoAccentColor?: (v: string | null) => void
   setTopEdgeColor: (v: string | null) => void
+  setBottomEdgeColor?: (v: string | null) => void
 }
 
 /**
@@ -28,9 +38,15 @@ export function useRootColors(
   previewPoster: TMDBImage | null,
   genreName: string | undefined,
   posterUrl: (path: string, size?: string) => string,
-  { setAccentColor, setAutoAccentColor, setTopEdgeColor }: RootColorsSetters,
-  accentDominant = true,
-  bandFraction: number = ACCENT_BOTTOM_FRACTION,
+  { setAccentColor, setAutoAccentColor, setTopEdgeColor, setBottomEdgeColor }: RootColorsSetters,
+  size = "w342",
+  /**
+   * Accent dalla sola fascia bassa, come il server: `bandFraction` è l'altezza
+   * della fascia sfocata (frazione del poster), `accentDominant` tiene la
+   * tinta del poster invece del complementare. Oggetto in coda e non
+   * posizionali, così la firma a cinque argomenti di upstream resta valida.
+   */
+  { accentDominant = true, bandFraction = ACCENT_BOTTOM_FRACTION }: { accentDominant?: boolean; bandFraction?: number } = {},
 ): void {
   useEffect(() => {
     const root = document.documentElement
@@ -42,17 +58,36 @@ export function useRootColors(
       root.style.setProperty("--color-edge-r", "85")
       root.style.setProperty("--color-edge-g", "85")
       root.style.setProperty("--color-edge-b", "85")
-      setAccentColor(null); setAutoAccentColor?.(null); setTopEdgeColor(null); return
+      setAccentColor(null); setAutoAccentColor?.(null); setTopEdgeColor(null); setBottomEdgeColor?.(null); return
     }
     let cancelled = false
+    // Basi custom (URL esterni: Fanart.tv…): i byte cross-origin non sono
+    // leggibili dal canvas (taint silente → colori stale del poster
+    // precedente). Li calcola il server sugli stessi byte del render.
+    if (isCustomPosterUrl(previewPoster.file_path)) {
+      const ctrl = new AbortController()
+      const genre = genreName || ""
+      fetch(`/api/custom-colors?url=${encodeURIComponent(previewPoster.file_path)}&genre=${encodeURIComponent(genre)}`, { signal: ctrl.signal })
+        .then((res) => (res.ok ? res.json().catch(() => null) : null))
+        .then((data) => {
+          if (cancelled || !data) return
+          const a = parseHexColor((data as Record<string, unknown>).accent)
+          const t = parseHexColor((data as Record<string, unknown>).topEdge)
+          const b = parseHexColor((data as Record<string, unknown>).bottomEdge)
+          if (!a || !t || !b) return
+          setRootColors(a.r, a.g, a.b, t.r, t.g, t.b, b.r, b.g, b.b)
+        })
+        .catch(() => {})
+      return () => { cancelled = true; ctrl.abort() }
+    }
     // C4: niente cache-busting (?cb=Date.now): i path TMDB sono immutabili,
     // quindi la stessa URL è valida per il browser cache tra un poster e
     // l'altro (l'effetto gira solo al cambio poster). Prima ogni cambio
     // riscaricava il w342 anche se già in cache.
-    const url = posterUrl(previewPoster.file_path, "w342")
+    const url = posterUrl(previewPoster.file_path, size)
     const img = new Image()
     img.crossOrigin = "anonymous"
-    const setRootColors = (r: number, g: number, b: number, edgeR: number, edgeG: number, edgeB: number) => {
+    const setRootColors = (r: number, g: number, b: number, edgeR: number, edgeG: number, edgeB: number, bottomR: number, bottomG: number, bottomB: number) => {
       const c = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
       root.style.setProperty("--color-accent", c)
       root.style.setProperty("--color-accent-r", String(r))
@@ -66,6 +101,7 @@ export function useRootColors(
       setAccentColor(c)
       setAutoAccentColor?.(c)
       setTopEdgeColor(edgeC)
+      setBottomEdgeColor?.(`#${bottomR.toString(16).padStart(2, '0')}${bottomG.toString(16).padStart(2, '0')}${bottomB.toString(16).padStart(2, '0')}`)
     }
     img.onload = () => {
       if (cancelled) return
@@ -89,11 +125,12 @@ export function useRootColors(
         const hueMode: AccentHueMode = accentDominant ? "dominant" : "complement"
         const result = findAccentColor(bottomPixels, w, bottomH, genreName || '', hueMode)
         const edge = topEdgeAverage(pixels, w, h)
+        const bottom = bottomEdgeAverage(pixels, w, h)
 
-        setRootColors(result.r, result.g, result.b, edge.r, edge.g, edge.b)
+        setRootColors(result.r, result.g, result.b, edge.r, edge.g, edge.b, bottom.r, bottom.g, bottom.b)
       } catch { /* color detection is non-critical */ }
     }
-    img.onerror = () => { if (!cancelled) { setRootColors(85, 85, 85, 85, 85, 85) } }
+    img.onerror = () => { if (!cancelled) { setRootColors(85, 85, 85, 85, 85, 85, 85, 85, 85) } }
     img.src = url
     return () => { cancelled = true }
     // La semantica dell'effetto originale: gira solo quando cambia il poster
@@ -101,5 +138,5 @@ export function useRootColors(
     // e `bandFraction` invece SÌ: cambiano il colore estratto, e senza di essi
     // toggle e slider non avrebbero effetto finché non si cambia poster.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewPoster, accentDominant, bandFraction])
+  }, [previewPoster, size, accentDominant, bandFraction])
 }

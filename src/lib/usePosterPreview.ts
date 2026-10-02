@@ -1,14 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react"
 import { usePSelector } from "@/lib/context"
-import { useToast } from "@/components/Toast"
+import { t } from "@/lib/i18n"
+import { toast } from "sonner"
 
 export function usePosterPreview() {
   // B2: selettore slice — prima useP() ri-renderizzava il hook (e chi lo usa)
   // a OGNI aggiornamento del context Pictorium, non solo al cambio previewUrl.
   const previewUrl = usePSelector((v) => v.previewUrl)
-  const toast = useToast()
-  const toastRef = useRef(toast)
-  toastRef.current = toast
 
   const [imageError, setImageError] = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -49,6 +47,10 @@ export function usePosterPreview() {
     xhrRef.current = xhr
     xhr.open("GET", url, true)
     xhr.responseType = "blob"
+    // Senza timeout la barra percentuale resta ferma per sempre su render
+    // appeso (Bugonia): peggio dei casi server = slot-wait 15s + watchdog 30s,
+    // quindi 45s lascia arrivare il 503 del server prima di dichiarare errore.
+    xhr.timeout = 45000
     
     xhr.onprogress = (e) => {
       if (e.lengthComputable) {
@@ -86,7 +88,17 @@ export function usePosterPreview() {
       }
       setImageError(true)
       setPreviewLoading(false)
-      toastRef.current.error("Failed to load poster preview")
+      toast.error(t("ui.posterLoadError"))
+    }
+
+    xhr.ontimeout = () => {
+      if (loadDelayRef.current) {
+        clearTimeout(loadDelayRef.current)
+        loadDelayRef.current = null
+      }
+      setImageError(true)
+      setPreviewLoading(false)
+      toast.error(t("ui.posterLoadError"))
     }
     
     xhr.send()

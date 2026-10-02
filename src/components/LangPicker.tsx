@@ -5,6 +5,8 @@ import { PICKER_LANGS } from "@/lib/utils"
 import { REGIONS } from "@/lib/regions"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { ChevronLeft, Lock, ArrowRight, ShieldCheck } from "lucide-react"
+import { isMultiUserServer } from "@/lib/guest-guard"
+import { currentPathUuid } from "@/lib/user-token"
 
 interface SetupWizardProps {
   /** Applica la lingua (codice 2 lettere) senza chiudere il wizard. */
@@ -13,21 +15,39 @@ interface SetupWizardProps {
   onPickRegion: (regionCode: string) => void
   /** Chiude il wizard. */
   onDone: () => void
+  /** Opzionale: salta il passaggio del PIN (es. in modalità multi-user). */
+  skipPin?: boolean
 }
 
 /**
- * Configurazione guidata iniziale in 3 passi:
+ * Configurazione guidata iniziale:
  * 1. lingua dell'interfaccia (12 nazionalità),
  * 2. nazionalità delle liste/classifiche (stesse 12),
- * 3. protezione con PIN (per proteggere l'accesso al pannello).
+ * 3. protezione con PIN (solo in single-user: in multi-user ogni utente ha la sua password).
  */
-export function LangPicker({ onPickLang, onPickRegion, onDone }: SetupWizardProps) {
+export function LangPicker({ onPickLang, onPickRegion, onDone, skipPin }: SetupWizardProps) {
   const { t } = useT()
   const [step, setStep] = useState<"lang" | "region" | "pin">("lang")
   const [pin, setPin] = useState("")
   const [pinError, setPinError] = useState<string | null>(null)
   const [pinLoading, setPinLoading] = useState(false)
   const pinInputRef = useRef<HTMLInputElement>(null)
+  const [multiUser, setMultiUser] = useState(false)
+
+  useEffect(() => {
+    if (skipPin !== undefined) return
+    if (typeof window !== "undefined" && currentPathUuid()) {
+      setMultiUser(true)
+      return
+    }
+    let active = true
+    isMultiUserServer()
+      .then((v) => { if (active) setMultiUser(v) })
+      .catch(() => {})
+    return () => { active = false }
+  }, [skipPin])
+
+  const shouldSkipPin = skipPin ?? multiUser
 
   useEffect(() => {
     if (step === "pin") {
@@ -42,7 +62,11 @@ export function LangPicker({ onPickLang, onPickRegion, onDone }: SetupWizardProp
 
   const pickRegion = (regionCode: string) => {
     onPickRegion(regionCode)
-    setStep("pin")
+    if (shouldSkipPin) {
+      onDone()
+    } else {
+      setStep("pin")
+    }
   }
 
   const handleSavePin = async (e?: React.FormEvent) => {
@@ -106,7 +130,9 @@ export function LangPicker({ onPickLang, onPickRegion, onDone }: SetupWizardProp
           <div className="flex items-center justify-center gap-1.5 mt-4" aria-hidden="true">
             <span className={`h-1.5 rounded-full transition-all duration-300 ${step === "lang" ? "w-6 bg-accent-orange" : "w-1.5 bg-zinc-600"}`} />
             <span className={`h-1.5 rounded-full transition-all duration-300 ${step === "region" ? "w-6 bg-accent-orange" : "w-1.5 bg-zinc-600"}`} />
-            <span className={`h-1.5 rounded-full transition-all duration-300 ${step === "pin" ? "w-6 bg-accent-orange" : "w-1.5 bg-zinc-600"}`} />
+            {!shouldSkipPin && (
+              <span className={`h-1.5 rounded-full transition-all duration-300 ${step === "pin" ? "w-6 bg-accent-orange" : "w-1.5 bg-zinc-600"}`} />
+            )}
           </div>
         </div>
 

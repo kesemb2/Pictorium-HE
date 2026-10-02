@@ -21,6 +21,33 @@ GET {tuaIstanza}/api/poster/{movie|series}/{id}
   indicano tutti le serie TV.
 - `{id}`: id numerico TMDB (`.../movie/550`) oppure id IMDb (`.../movie/tt0133093`,
   risolto lato server in TMDB).
+- Risoluzione degli id IMDb (ordine): alias manuale dell'operatore →
+  `imdbId` del mapping salvato → `/find` di TMDB. Preferisci sempre l'id
+  numerico TMDB quando lo conosci: i `tt...` condivisi da un franchise
+  (es. serie antologiche splittate in entry separate su TMDB) possono non
+  risolversi (`404`) anche se il titolo esiste.
+
+### Pattern con placeholder (AIO / custom URL)
+
+Se il consumer sostituisce placeholder per-titolo (es. AIOMetadata, che
+supporta `{tmdb_id}` e `{imdb_id}`), usali nel path
+(`/api/poster/{type}/{tmdb_id}`):
+
+- `{tmdb_id|imdb_id}` (auto, consigliato per Nuvio e AIOMetadata): il
+  consumer sostituisce l'id disponibile nella vista corrente (Home,
+  Library, More Like This, righe Cast portano id diversi) e tiene il poster
+  originale quando nessuno dei due c'è — verificato sui gruppi di
+  alternanza `{a|b}` di AIOMetadata (vince il primo non vuoto) e sui marker
+  `{a|b}` di Nuvio. Un solo template ovunque — niente scelta per-vista.
+- `{tmdb_id}` (alternativa esatta): nessuna risoluzione — ma solo se il
+  consumer conosce davvero il TMDB id di quell'item.
+- `{imdb_id}` (fallback universale): ogni item ce l'ha, ma paga la
+  risoluzione sopra e fallisce sugli split di franchise.
+  Le sostituzioni tipizzate `tmdb:<num>` si risolvono come path numerico
+  esatto; il resto non risolvibile resta `400`.
+
+Se un titolo rende `404` via `tt...` mentre esiste su TMDB, usa l'id
+numerico o chiedi all'operatore dell'istanza di cucire un alias manuale.
 
 **Non** servono `/catalog/*`, `/meta/*`, l'editor web o altre route di
 Pictorium. Non c'è niente da rimuovere dal codice — semplicemente non
@@ -103,6 +130,20 @@ path `https://image.tmdb.org/t/p/...` (o `file_path` TMDB).
 > Non usare il token `?config=` per integrazioni cross-project: richiede di
 > condividere il `CONFIG_HMAC_SECRET` dell'istanza ed è fail-closed in
 > produzione. I query param espliciti sono debuggabili e versionabili.
+
+### Istanze pubbliche (modalità presets)
+
+Sulle istanze pubbliche (`PICTORIUM_POSTER_PARAMS=presets`, attiva di default
+lì) le richieste diverse dalle preview live dell'editor vengono canonicalizzate
+prima del render:
+
+- Senza un override `poster=` accettato (richiede uno spazio utente), `title`,
+  `genreName`, `year`, `rd`, `fad`, `voteAverage`, `imdbId` e `wikidata_id`
+  sono ignorati: il server usa i dati TMDB e il mapping salvato. Inviarli non
+  fa danni.
+- `rank` è accettato solo come intero da 0 a 100 (0 nasconde il badge rank).
+- `animerank` oltre il limite del badge anime (20) vale come "nessun badge".
+- `rsrc` mantiene solo fonti supportate, senza duplicati.
 
 ## Risposte e comportamento in caso di errore (integrazione fail-safe)
 

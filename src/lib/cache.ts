@@ -1,4 +1,6 @@
+import crypto from "node:crypto"
 import { envWithFallback } from "@/lib/env-compat"
+import { getKv, getStorageMode, withKvTimeout } from "@/lib/kv"
 
 interface CacheEntry<T> {
   data: T
@@ -24,8 +26,9 @@ export type CacheStatus = {
 const store = new Map<string, CacheEntry<unknown>>()
 
 // ---------------------------------------------------------------------------
-// C1: L2 condiviso su Vercel KV (opt-in). La Map resta L1: su VPS/HF senza
-// KV_REST_API_URL/TOKEN non cambia nulla (stesso pattern di store.ts).
+// C1: L2 condivisa su KV (opt-in: Redis nativo o Vercel KV/Upstash via
+// `lib/kv.ts`). La Map resta L1: su VPS/HF senza backend configurato non
+// cambia nulla (stesso pattern di store.ts).
 // Solo JSON piccoli (<=64KB, mai Buffer): i poster/badge PNG resterebbero
 // locali comunque (base64 +33%, limiti di valore e costi KV, latenza sul path
 // caldo). Il premio è per i body catalogo/meta: su multi-istanza la seconda
@@ -36,7 +39,19 @@ const store = new Map<string, CacheEntry<unknown>>()
 // Scrittura fire-and-forget (mai latenza sul path caldo); lettura solo su
 // miss L1 (quando comunque si farebbe upstream lento). Errori KV = miss.
 // ---------------------------------------------------------------------------
-const useKvL2 = !!process.env.KV_REST_API_URL && !!process.env.KV_REST_API_TOKEN
+// Lettura live (mai a module level): i test mutano le env + resetModules.
+// PICTORIUM_KV_CACHE=0 (or false/off/no) keeps the response cache in process
+// memory only while state (users, mappings, settings, epochs) stays in KV.
+// On a public instance write-through lets anonymous requests grow KV: every
+// JSON cacheSet is written, and keys carry caller-controlled parts (api_key
+// hash, config token, region) that live until each entry's TTL (up to ~24h
+// for catalogs). The in-memory L1 is size-capped. Cost: replicas no longer
+// share hits, so each one fetches upstream on its own.
+function isKvL2(): boolean {
+  const flag = (envWithFallback("KV_CACHE") || "").toLowerCase().trim()
+  if (flag === "0" || flag === "false" || flag === "off" || flag === "no") return false
+  return getStorageMode() === "kv"
+}
 const KV_L2_PREFIX = "pictorium:cache:"
 const KV_L2_MAX_BYTES = 64 * 1024
 
@@ -68,8 +83,7 @@ function kvWriteThrough(key: string, json: string, ttlMs?: number, tags: string[
     : (isScheduledRefresh(tags) !== null ? secondsUntilScheduledRefresh() : Math.round(MAX_TTL / 1000));
   (async () => {
     try {
-      const { kv } = await import("@vercel/kv")
-      await kv.set(`${KV_L2_PREFIX}${key}`, json, { ex })
+      await getKv().set(`${KV_L2_PREFIX}${key}`, json, { ex })
     } catch {
       // fail-open: la L1 resta valida, la L2 si ripopola al prossimo set
     }
@@ -78,10 +92,11 @@ function kvWriteThrough(key: string, json: string, ttlMs?: number, tags: string[
 
 async function kvReadThrough<T>(key: string): Promise<T | null> {
   try {
-    const { kv } = await import("@vercel/kv")
-    const raw: unknown = await kv.get(`${KV_L2_PREFIX}${key}`)
+    // Tetto perentorio: una L2 stallata è un miss, mai un hang della route.
+    const raw: unknown = await withKvTimeout(getKv().get(`${KV_L2_PREFIX}${key}`), 1500)
     // C1: il client KV può restituire la stringa così com'è o già parsata
-    // (deserializzazione automatica): accetta entrambi, scarta il resto.
+    // (deserializzazione automatica Upstash / decode `kv.ts` su Redis):
+    // accetta entrambi, scarta il resto.
     if (typeof raw === "string") return JSON.parse(raw) as T
     if (raw !== null && typeof raw === "object") return raw as T
     return null
@@ -95,7 +110,7 @@ async function kvReadThrough<T>(key: string): Promise<T | null> {
 export async function cacheGetShared<T>(key: string, tags: string[] = []): Promise<T | null> {
   const local = cacheGet<T>(key)
   if (local !== null) return local
-  if (!useKvL2) return null
+  if (!isKvL2()) return null
   const shared = await kvReadThrough<T>(key)
   if (shared === null) return null
   // Stessi tag dell'originale → stesse regole (MAX_TTL/scheduled); la
@@ -179,8 +194,16 @@ function startCleanup() {
       cleanupActive = false
       return
     }
+    const now = Date.now()
     for (const [key, entry] of store) {
-      if (isExpired(entry)) deleteEntry(key)
+      if (isExpired(entry)) {
+        const isSwr = entry.tags.includes("poster") || entry.tags.includes("catalog")
+        const graceMs = isSwr ? 24 * 60 * 60 * 1000 : 0
+        const ttl = entry.ttl || ttlForTags(entry.tags)
+        if (now - entry.timestamp > ttl + graceMs) {
+          deleteEntry(key)
+        }
+      }
     }
   }, 60_000)
 }
@@ -264,6 +287,9 @@ export function cacheGetStale<T>(key: string): { data: T | null; stale: boolean 
 export function cacheSet<T>(key: string, data: T, tags: string[] = [], ttlMs?: number): void {
   if (!cleanupActive) startCleanup()
   const incomingBytes = estimateBytes(data)
+  // Entry singola fuori budget: scartata invece di wipeare l'intera cache
+  // (byteTarget 0 in makeSpace svuoterebbe tutto per un solo payload anomalo).
+  if (incomingBytes > MAX_BYTES) return
   if (!store.has(key)) {
     makeSpace(1, incomingBytes)
   } else {
@@ -274,7 +300,7 @@ export function cacheSet<T>(key: string, data: T, tags: string[] = [], ttlMs?: n
   totalBytes += incomingBytes
   store.set(key, { data, timestamp: Date.now(), tags, ttl: ttlMs })
   // C1: write-through L2 (fire-and-forget, mai latenza sul chiamante).
-  if (useKvL2) {
+  if (isKvL2()) {
     const json = toKvPayload(data)
     if (json !== null) kvWriteThrough(key, json, ttlMs, tags)
   }
@@ -288,6 +314,22 @@ export function cacheInvalidate(tag: string): void {
   for (const [key, entry] of store) {
     if (entry.tags.includes(tag)) deleteEntry(key)
   }
+}
+
+/**
+ * Pone timestamp = 0 su tutte le entry che matchano tagOrKey (tag, key esatta o prefisso/substring),
+ * rendendole immediatamente stale per il pattern SWR senza cancellare il payload dalla memoria.
+ * Ritorna il numero di entry scadute.
+ */
+export function cacheExpire(tagOrKey: string): number {
+  let count = 0
+  for (const [key, entry] of store) {
+    if (entry.tags.includes(tagOrKey) || key === tagOrKey || key.startsWith(tagOrKey) || key.includes(tagOrKey)) {
+      entry.timestamp = 0
+      count++
+    }
+  }
+  return count
 }
 
 export function cacheInvalidatePosterData(): void {
@@ -306,20 +348,52 @@ export function cacheInvalidatePosterDataFor(type: string, tmdbId: number): void
   cacheInvalidate(mappingTag)
 }
 
+/**
+ * Come sopra ma solo per il namespace utente (multi-user): il save di A non
+ * invalida i poster cachati di B. Il tag deve coincidere con quello scritto
+ * dalla poster route (`poster:${type}:${id}:u<hash>`): l'UUID viaggia solo
+ * come md5-8, mai in chiaro nei tag (stessa forma della cache key poster).
+ */
+export function cacheInvalidatePosterDataForUser(type: string, tmdbId: number, userId: string): void {
+  cacheInvalidate(`poster:${type}:${tmdbId}:${userTagFragment(userId)}`)
+}
+
+/** Frammento tag/cache per-namespace: md5-8 dell'UUID, mai l'UUID in chiaro. */
+export function userTagFragment(userId: string): string {
+  return `u${crypto.createHash("md5").update(userId).digest("hex").slice(0, 8)}`
+}
+
+/**
+ * Frammento utente per le CACHE KEY (catalog/meta/poster): sha256-16, mai
+ * l'UUID in chiaro. I vecchi 32-bit collidono al ~1% già a 10k utenti
+ * (birthday bound) e una collisione serve a B il render cachato di A
+ * (mapping/default altrui = leak visivo). I tag restano a userTagFragment
+ * (lì una collisione causa solo over-invalidazione, direzione sicura).
+ */
+export function hashUserFragment(userId: string): string {
+  return crypto.createHash("sha256").update(userId).digest("hex").slice(0, 16)
+}
+
 export function cacheStatus(): CacheStatus {
   const tagCounts = new Map<string, number>()
   let totalEntries = 0
   let untaggedEntries = 0
+  let activeBytes = 0
 
-  // Cleanup pass: remove expired entries and adjust byte count
-  const expiredKeys: string[] = []
   for (const [key, entry] of store) {
-    if (isExpired(entry)) expiredKeys.push(key)
-  }
-  for (const key of expiredKeys) deleteEntry(key)
+    if (isExpired(entry)) {
+      // Entry senza supporto SWR: evizione immediata su status pass.
+      // Entry SWR (poster/catalog): non cancellare per consentire la revalidazione in background,
+      // ma escludere dai conteggi di entry attive.
+      const isSwr = entry.tags.includes("poster") || entry.tags.includes("catalog")
+      if (!isSwr) {
+        deleteEntry(key)
+      }
+      continue
+    }
 
-  for (const entry of store.values()) {
     totalEntries += 1
+    activeBytes += estimateBytes(entry.data)
 
     if (entry.tags.length === 0) {
       untaggedEntries += 1
@@ -339,7 +413,7 @@ export function cacheStatus(): CacheStatus {
     totalEntries,
     taggedEntries,
     untaggedEntries,
-    totalBytes,
+    totalBytes: activeBytes,
     maxBytes: MAX_BYTES,
     maxEntries: MAX_ENTRIES,
   }

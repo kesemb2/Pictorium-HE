@@ -3,10 +3,6 @@ import { screen, fireEvent } from "@testing-library/react"
 import { renderWithCtx } from "./test-utils"
 import { PosterPreview } from "@/components/PosterPreview"
 
-vi.mock("@/components/Toast", () => ({
-  useToast: () => ({ error: vi.fn() }),
-}))
-
 // t() che ritorna la key stessa — test non dipendenti dalle traduzioni
 const t = (k: string) => k
 
@@ -53,12 +49,12 @@ describe("PosterPreview", () => {
     expect(img?.getAttribute("src")).toBe("https://example.com/poster.jpg")
   })
 
-  it("shows loading bar when previewLoading is true", () => {
+  it("shows discrete updating status when previewLoading is true", () => {
     renderWithCtx(
       <PosterPreview {...BASE_PROPS} previewLoading loadProgress={45} />,
       { selected: SELECTED_MOVIE, previewUrl: "https://example.com/preview", t },
     )
-    expect(screen.getByText("45%")).toBeTruthy()
+    expect(screen.getByText("ui.previewUpdating")).toBeTruthy()
   })
 
   it("shows error overlay when imageError is true", () => {
@@ -89,5 +85,28 @@ describe("PosterPreview", () => {
     fireEvent.click(screen.getByText("ui.retry"))
     expect(setImageError).toHaveBeenCalledWith(false)
     expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps the old buffer behind until the new image loads", () => {
+    const { container, rerender } = renderWithCtx(
+      <PosterPreview {...BASE_PROPS} imgSrc="https://example.com/a.jpg" />,
+      { selected: SELECTED_MOVIE, previewUrl: "https://example.com/preview", t },
+    )
+    const first = container.querySelector('img[src="https://example.com/a.jpg"]')
+    expect(first).toBeTruthy()
+    fireEvent.load(first!)
+
+    rerender(
+      <PosterPreview {...BASE_PROPS} imgSrc="https://example.com/b.jpg" />,
+    )
+    // Vecchio buffer ancora dietro, nuovo subito visibile (progressivo).
+    expect(container.querySelector('img[src="https://example.com/a.jpg"]')).toBeTruthy()
+    const second = container.querySelector('img[src="https://example.com/b.jpg"]')
+    expect(second).toBeTruthy()
+
+    fireEvent.load(second!)
+    // A load completato il vecchio viene rimosso (un solo buffer).
+    expect(container.querySelector('img[src="https://example.com/a.jpg"]')).toBeNull()
+    expect(container.querySelector('img[src="https://example.com/b.jpg"]')).toBeTruthy()
   })
 })

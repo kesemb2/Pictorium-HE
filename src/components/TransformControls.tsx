@@ -7,7 +7,10 @@ import { useT } from "@/lib/contexts/TranslationContext"
 import { usePosterEditor } from "@/lib/contexts/PosterEditorContext"
 import { logoDefaultScale } from "@/lib/logo-selection"
 import { defaultGradientHeightForPoster } from "@/lib/gradient-defaults"
+import { naturalGradientForPoster } from "@/lib/gradient-presets"
+import { GradientPresetRow } from "@/components/GradientPresetRow"
 import { SliderRow } from "@/components/SliderRow"
+import type { LandscapeBlurState } from "@/lib/contexts/PosterEditorContext"
 
 export function TransformControls() {
   const selectedLogo = usePSelector((v) => v.selectedLogo)
@@ -26,6 +29,74 @@ export function TransformControls() {
     ed.setLogoScale(logoDefaultScale(l) ?? 75)
   }
 
+  // Preset sfumatura: scorciatoie che scrivono gli slider esistenti (nessun
+  // nuovo parametro server — la preview/Stremio ricevono gli stessi valori).
+  // La sezione segue il formato in editing: in landscape scrive il profilo
+  // Orizzontale (landscapeBlur, sfumatura completa di tinta e ombra),
+  // in portrait i flat.
+  const land = ed.landscapeBlur
+  const isLandShape = ed.posterShape === "landscape"
+  interface GradVals {
+    gradientHeight: number
+    blurIntensity: number
+    blurFade: number
+    blurDarkness: number
+    tintStrength: number
+    topShade: number
+    blurEnabled: boolean
+  }
+  const gradVals: GradVals = isLandShape
+    ? {
+        gradientHeight: land.gradientHeight,
+        blurIntensity: land.blurIntensity,
+        blurFade: land.blurFade,
+        blurDarkness: land.blurDarkness,
+        tintStrength: land.tintStrength,
+        topShade: land.topShade,
+        blurEnabled: land.blurEnabled,
+      }
+    : {
+        gradientHeight: ed.gradientHeight,
+        blurIntensity: ed.blurIntensity,
+        blurFade: ed.blurFade,
+        blurDarkness: ed.blurDarkness,
+        tintStrength: ed.tintStrength,
+        topShade: ed.topShade,
+        blurEnabled: ed.blurEnabled,
+      }
+  const setGradVals = (v: Partial<GradVals>) => {
+    if (isLandShape) {
+      const patch: Partial<LandscapeBlurState> = {}
+      if (v.gradientHeight !== undefined) patch.gradientHeight = v.gradientHeight
+      if (v.blurIntensity !== undefined) patch.blurIntensity = v.blurIntensity
+      if (v.blurFade !== undefined) patch.blurFade = v.blurFade
+      if (v.blurDarkness !== undefined) patch.blurDarkness = v.blurDarkness
+      if (v.tintStrength !== undefined) patch.tintStrength = v.tintStrength
+      if (v.topShade !== undefined) patch.topShade = v.topShade
+      if (v.blurEnabled !== undefined) patch.blurEnabled = v.blurEnabled
+      if (Object.keys(patch).length > 0) ed.setLandscapeBlur(patch)
+    } else {
+      if (v.blurEnabled !== undefined) ed.setBlurEnabled(v.blurEnabled)
+      if (v.gradientHeight !== undefined) ed.setGradientHeight(v.gradientHeight)
+      if (v.blurIntensity !== undefined) ed.setBlurIntensity(v.blurIntensity)
+      if (v.blurFade !== undefined) ed.setBlurFade(v.blurFade)
+      if (v.blurDarkness !== undefined) ed.setBlurDarkness(v.blurDarkness)
+      if (v.tintStrength !== undefined) ed.setTintStrength(v.tintStrength)
+      if (v.topShade !== undefined) ed.setTopShade(v.topShade)
+    }
+  }
+  const naturalVals = naturalGradientForPoster(previewPoster, ed.posterShape)
+  const applyGradientPreset = (v: typeof naturalVals) => {
+    setGradVals({
+      blurEnabled: true,
+      gradientHeight: v.gradientHeight,
+      blurIntensity: v.blurIntensity,
+      blurFade: v.blurFade,
+      blurDarkness: v.blurDarkness,
+      tintStrength: v.tintStrength,
+    })
+  }
+
   return (
     <div className="space-y-3.5 text-xs">
       {selectedLogo && (
@@ -33,7 +104,7 @@ export function TransformControls() {
         <div className="flex items-center justify-between px-1">
           <span className="font-semibold text-zinc-200 flex items-center gap-1.5">
             <ImageIcon className="w-3.5 h-3.5 text-accent-orange" />
-            {t("ui.logoSection")}
+            {t("ui.logoSection")} · {isLandShape ? t("ui.posterShapeLandscape") : t("ui.posterShapePortrait")}
           </span>
           <button type="button" aria-label={t("ui.reset")}
                   onClick={() => { defaultLogoScale(); ed.setLogoOffsetX(0); ed.setLogoOffsetY(0) }}
@@ -43,7 +114,7 @@ export function TransformControls() {
         </div>
         <SliderRow icon={<Search className="w-3.5 h-3.5" />} label={t("ui.scale")} value={ed.logoScale} min={10} max={100} boundsMin={10} boundsMax={100} onChange={ed.setLogoScale} onDoubleClick={defaultLogoScale} editingValue={editingValue} editText={editText} setEditingValue={setEditingValue} setEditText={setEditText} editingKey="scale" />
         <SliderRow icon={<ArrowLeftRight className="w-3.5 h-3.5" />} label="X" value={ed.logoOffsetX} min={logoBounds.minX} max={logoBounds.maxX} boundsMin={logoBounds.minX} boundsMax={logoBounds.maxX} onChange={ed.setLogoOffsetX} onDoubleClick={() => ed.setLogoOffsetX(0)} editingValue={editingValue} editText={editText} setEditingValue={setEditingValue} setEditText={setEditText} editingKey="ox" />
-        <SliderRow icon={<ArrowUpDown className="w-3.5 h-3.5" />} label="Y" value={ed.logoOffsetY} min={logoBounds.minY} max={logoBounds.maxY} boundsMin={logoBounds.minX} boundsMax={logoBounds.maxY} onChange={ed.setLogoOffsetY} onDoubleClick={() => ed.setLogoOffsetY(0)} editingValue={editingValue} editText={editText} setEditingValue={setEditingValue} setEditText={setEditText} editingKey="oy" />
+        <SliderRow icon={<ArrowUpDown className="w-3.5 h-3.5" />} label="Y" value={ed.logoOffsetY} min={logoBounds.minY} max={logoBounds.maxY} boundsMin={logoBounds.minY} boundsMax={logoBounds.maxY} onChange={ed.setLogoOffsetY} onDoubleClick={() => ed.setLogoOffsetY(0)} editingValue={editingValue} editText={editText} setEditingValue={setEditingValue} setEditText={setEditText} editingKey="oy" />
       </div>
       )}
 
@@ -52,10 +123,10 @@ export function TransformControls() {
         <div className="flex items-center justify-between px-1">
           <span className="font-semibold text-zinc-200 flex items-center gap-1.5">
             <Trophy className="w-3.5 h-3.5 text-amber-500" />
-            {t("ui.topBadge")}
+            {t("ui.topBadge")} · {isLandShape ? t("ui.posterShapeLandscape") : t("ui.posterShapePortrait")}
           </span>
           <button type="button" aria-label={t("ui.reset")}
-                  onClick={() => { ed.setTopBadgeScale(ed.defaultTopBadgeScale); ed.setTopBadgeOffsetX(ed.defaultTopBadgeOffsetX); ed.setTopBadgeOffsetY(ed.defaultTopBadgeOffsetY) }}
+                  onClick={() => { const land = ed.landscape; ed.setTopBadgeScale(isLandShape ? (land.topBadgeScale ?? ed.defaultTopBadgeScale) : ed.defaultTopBadgeScale); ed.setTopBadgeOffsetX(isLandShape ? (land.topBadgeOffsetX ?? ed.defaultTopBadgeOffsetX) : ed.defaultTopBadgeOffsetX); ed.setTopBadgeOffsetY(isLandShape ? (land.topBadgeOffsetY ?? ed.defaultTopBadgeOffsetY) : ed.defaultTopBadgeOffsetY) }}
                   className="text-xs text-muted hover:text-accent transition-colors px-2 py-0.5 rounded-md border border-border/50 hover:border-accent/30">
             {t("ui.reset")}
           </button>
@@ -69,7 +140,7 @@ export function TransformControls() {
           boundsMin={10}
           boundsMax={200}
             onChange={(v) => ed.setTopBadgeScale(v)}
-            onDoubleClick={() => ed.setTopBadgeScale(ed.defaultTopBadgeScale)}
+            onDoubleClick={() => ed.setTopBadgeScale(isLandShape ? (ed.landscape.topBadgeScale ?? ed.defaultTopBadgeScale) : ed.defaultTopBadgeScale)}
           editingValue={editingValue}
           editText={editText}
           setEditingValue={setEditingValue}
@@ -86,7 +157,7 @@ export function TransformControls() {
           boundsMin={-500}
           boundsMax={500}
             onChange={(v) => ed.setTopBadgeOffsetX(v)}
-            onDoubleClick={() => ed.setTopBadgeOffsetX(ed.defaultTopBadgeOffsetX)}
+            onDoubleClick={() => ed.setTopBadgeOffsetX(isLandShape ? (ed.landscape.topBadgeOffsetX ?? ed.defaultTopBadgeOffsetX) : ed.defaultTopBadgeOffsetX)}
           editingValue={editingValue}
           editText={editText}
           setEditingValue={setEditingValue}
@@ -103,7 +174,7 @@ export function TransformControls() {
           boundsMin={-500}
           boundsMax={500}
             onChange={(v) => ed.setTopBadgeOffsetY(v)}
-            onDoubleClick={() => ed.setTopBadgeOffsetY(ed.defaultTopBadgeOffsetY)}
+            onDoubleClick={() => ed.setTopBadgeOffsetY(isLandShape ? (ed.landscape.topBadgeOffsetY ?? ed.defaultTopBadgeOffsetY) : ed.defaultTopBadgeOffsetY)}
           editingValue={editingValue}
           editText={editText}
           setEditingValue={setEditingValue}
@@ -119,10 +190,10 @@ export function TransformControls() {
         <div className="flex items-center justify-between px-1">
           <span className="font-semibold text-zinc-200 flex items-center gap-1.5">
             <Star className="w-3.5 h-3.5 text-amber-400" />
-            {t("ui.genreRatingBadge")}
+            {t("ui.genreRatingBadge")} · {isLandShape ? t("ui.posterShapeLandscape") : t("ui.posterShapePortrait")}
           </span>
           <button type="button" aria-label={t("ui.reset")}
-                  onClick={() => { ed.setGenreBadgeScale(ed.defaultGenreBadgeScale); ed.setGenreBadgeOffsetX(ed.defaultGenreBadgeOffsetX); ed.setGenreBadgeOffsetY(ed.defaultGenreBadgeOffsetY) }}
+                  onClick={() => { const land = ed.landscape; ed.setGenreBadgeScale(isLandShape ? (land.genreBadgeScale ?? ed.defaultGenreBadgeScale) : ed.defaultGenreBadgeScale); ed.setGenreBadgeOffsetX(isLandShape ? (land.genreBadgeOffsetX ?? ed.defaultGenreBadgeOffsetX) : ed.defaultGenreBadgeOffsetX); ed.setGenreBadgeOffsetY(isLandShape ? (land.genreBadgeOffsetY ?? ed.defaultGenreBadgeOffsetY) : ed.defaultGenreBadgeOffsetY) }}
                   className="text-xs text-muted hover:text-accent transition-colors px-2 py-0.5 rounded-md border border-border/50 hover:border-accent/30">
             {t("ui.reset")}
           </button>
@@ -136,7 +207,7 @@ export function TransformControls() {
           boundsMin={10}
           boundsMax={200}
           onChange={(v) => ed.setGenreBadgeScale(v)}
-          onDoubleClick={() => ed.setGenreBadgeScale(ed.defaultGenreBadgeScale)}
+          onDoubleClick={() => ed.setGenreBadgeScale(isLandShape ? (ed.landscape.genreBadgeScale ?? ed.defaultGenreBadgeScale) : ed.defaultGenreBadgeScale)}
           editingValue={editingValue}
           editText={editText}
           setEditingValue={setEditingValue}
@@ -153,7 +224,7 @@ export function TransformControls() {
           boundsMin={-500}
           boundsMax={500}
           onChange={(v) => ed.setGenreBadgeOffsetX(v)}
-          onDoubleClick={() => ed.setGenreBadgeOffsetX(ed.defaultGenreBadgeOffsetX)}
+          onDoubleClick={() => ed.setGenreBadgeOffsetX(isLandShape ? (ed.landscape.genreBadgeOffsetX ?? ed.defaultGenreBadgeOffsetX) : ed.defaultGenreBadgeOffsetX)}
           editingValue={editingValue}
           editText={editText}
           setEditingValue={setEditingValue}
@@ -170,7 +241,7 @@ export function TransformControls() {
           boundsMin={-500}
           boundsMax={500}
           onChange={(v) => ed.setGenreBadgeOffsetY(v)}
-          onDoubleClick={() => ed.setGenreBadgeOffsetY(ed.defaultGenreBadgeOffsetY)}
+          onDoubleClick={() => ed.setGenreBadgeOffsetY(isLandShape ? (ed.landscape.genreBadgeOffsetY ?? ed.defaultGenreBadgeOffsetY) : ed.defaultGenreBadgeOffsetY)}
           editingValue={editingValue}
           editText={editText}
           setEditingValue={setEditingValue}
@@ -186,10 +257,10 @@ export function TransformControls() {
         <div className="flex items-center justify-between px-1">
           <span className="font-semibold text-zinc-200 flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-            {t("ui.badgeQuality")}
+            {t("ui.badgeQuality")} · {isLandShape ? t("ui.posterShapeLandscape") : t("ui.posterShapePortrait")}
           </span>
           <button type="button" aria-label={t("ui.reset")}
-                  onClick={() => { ed.setQualityBadgeScale(ed.defaultQualityBadgeScale); ed.setQualityBadgeOffsetX(ed.defaultQualityBadgeOffsetX); ed.setQualityBadgeOffsetY(ed.defaultQualityBadgeOffsetY) }}
+                  onClick={() => { const land = ed.landscape; ed.setQualityBadgeScale(isLandShape ? (land.qualityBadgeScale ?? ed.defaultQualityBadgeScale) : ed.defaultQualityBadgeScale); ed.setQualityBadgeOffsetX(isLandShape ? (land.qualityBadgeOffsetX ?? ed.defaultQualityBadgeOffsetX) : ed.defaultQualityBadgeOffsetX); ed.setQualityBadgeOffsetY(isLandShape ? (land.qualityBadgeOffsetY ?? ed.defaultQualityBadgeOffsetY) : ed.defaultQualityBadgeOffsetY) }}
                   className="text-xs text-muted hover:text-accent transition-colors px-2 py-0.5 rounded-md border border-border/50 hover:border-accent/30">
             {t("ui.reset")}
           </button>
@@ -203,7 +274,7 @@ export function TransformControls() {
           boundsMin={10}
           boundsMax={200}
           onChange={(v) => ed.setQualityBadgeScale(v)}
-          onDoubleClick={() => ed.setQualityBadgeScale(ed.defaultQualityBadgeScale)}
+          onDoubleClick={() => ed.setQualityBadgeScale(isLandShape ? (ed.landscape.qualityBadgeScale ?? ed.defaultQualityBadgeScale) : ed.defaultQualityBadgeScale)}
           editingValue={editingValue}
           editText={editText}
           setEditingValue={setEditingValue}
@@ -220,7 +291,7 @@ export function TransformControls() {
           boundsMin={-500}
           boundsMax={500}
           onChange={(v) => ed.setQualityBadgeOffsetX(v)}
-          onDoubleClick={() => ed.setQualityBadgeOffsetX(ed.defaultQualityBadgeOffsetX)}
+          onDoubleClick={() => ed.setQualityBadgeOffsetX(isLandShape ? (ed.landscape.qualityBadgeOffsetX ?? ed.defaultQualityBadgeOffsetX) : ed.defaultQualityBadgeOffsetX)}
           editingValue={editingValue}
           editText={editText}
           setEditingValue={setEditingValue}
@@ -237,7 +308,7 @@ export function TransformControls() {
           boundsMin={-500}
           boundsMax={500}
           onChange={(v) => ed.setQualityBadgeOffsetY(v)}
-          onDoubleClick={() => ed.setQualityBadgeOffsetY(ed.defaultQualityBadgeOffsetY)}
+          onDoubleClick={() => ed.setQualityBadgeOffsetY(isLandShape ? (ed.landscape.qualityBadgeOffsetY ?? ed.defaultQualityBadgeOffsetY) : ed.defaultQualityBadgeOffsetY)}
           editingValue={editingValue}
           editText={editText}
           setEditingValue={setEditingValue}
@@ -253,10 +324,10 @@ export function TransformControls() {
         <div className="flex items-center justify-between px-1">
           <span className="font-semibold text-zinc-200 flex items-center gap-1.5">
             <Tv className="w-3.5 h-3.5 text-sky-400" />
-            {t("ui.networkLogo")}
+            {t("ui.networkLogo")} · {isLandShape ? t("ui.posterShapeLandscape") : t("ui.posterShapePortrait")}
           </span>
           <button type="button" aria-label={t("ui.reset")}
-                  onClick={() => { ed.setNetworkLogoScale(ed.defaultNetworkLogoScale); ed.setNetworkLogoOffsetX(ed.defaultNetworkLogoOffsetX); ed.setNetworkLogoOffsetY(ed.defaultNetworkLogoOffsetY) }}
+                  onClick={() => { const land = ed.landscape; ed.setNetworkLogoScale(isLandShape ? (land.networkLogoScale ?? ed.defaultNetworkLogoScale) : ed.defaultNetworkLogoScale); ed.setNetworkLogoOffsetX(isLandShape ? (land.networkLogoOffsetX ?? ed.defaultNetworkLogoOffsetX) : ed.defaultNetworkLogoOffsetX); ed.setNetworkLogoOffsetY(isLandShape ? (land.networkLogoOffsetY ?? ed.defaultNetworkLogoOffsetY) : ed.defaultNetworkLogoOffsetY) }}
                   className="text-xs text-muted hover:text-accent transition-colors px-2 py-0.5 rounded-md border border-border/50 hover:border-accent/30">
             {t("ui.reset")}
           </button>
@@ -270,7 +341,7 @@ export function TransformControls() {
           boundsMin={10}
           boundsMax={200}
           onChange={(v) => ed.setNetworkLogoScale(v)}
-          onDoubleClick={() => ed.setNetworkLogoScale(ed.defaultNetworkLogoScale)}
+          onDoubleClick={() => ed.setNetworkLogoScale(isLandShape ? (ed.landscape.networkLogoScale ?? ed.defaultNetworkLogoScale) : ed.defaultNetworkLogoScale)}
           editingValue={editingValue}
           editText={editText}
           setEditingValue={setEditingValue}
@@ -287,7 +358,7 @@ export function TransformControls() {
           boundsMin={-500}
           boundsMax={500}
           onChange={(v) => ed.setNetworkLogoOffsetX(v)}
-          onDoubleClick={() => ed.setNetworkLogoOffsetX(ed.defaultNetworkLogoOffsetX)}
+          onDoubleClick={() => ed.setNetworkLogoOffsetX(isLandShape ? (ed.landscape.networkLogoOffsetX ?? ed.defaultNetworkLogoOffsetX) : ed.defaultNetworkLogoOffsetX)}
           editingValue={editingValue}
           editText={editText}
           setEditingValue={setEditingValue}
@@ -304,7 +375,7 @@ export function TransformControls() {
           boundsMin={-500}
           boundsMax={500}
           onChange={(v) => ed.setNetworkLogoOffsetY(v)}
-          onDoubleClick={() => ed.setNetworkLogoOffsetY(ed.defaultNetworkLogoOffsetY)}
+          onDoubleClick={() => ed.setNetworkLogoOffsetY(isLandShape ? (ed.landscape.networkLogoOffsetY ?? ed.defaultNetworkLogoOffsetY) : ed.defaultNetworkLogoOffsetY)}
           editingValue={editingValue}
           editText={editText}
           setEditingValue={setEditingValue}
@@ -315,31 +386,41 @@ export function TransformControls() {
       </div>
       )}
 
-      {ed.blurEnabled && (
+      {gradVals.blurEnabled && (
       <div className="bg-surface/50 border border-surface2/60 rounded-xl p-3 space-y-2.5 shadow-sm animate-fade-in">
         <div className="flex items-center justify-between px-1">
           <span className="font-semibold text-zinc-200 flex items-center gap-1.5">
             <Cloud className="w-3.5 h-3.5 text-cyan-400" />
-            {t("ui.blurSection")}
+            {t("ui.blurSection")} · {isLandShape ? t("ui.posterShapeLandscape") : t("ui.posterShapePortrait")}
           </span>
           <button type="button" aria-label={t("ui.reset")}
-                  onClick={() => { ed.setGradientHeight(defaultGradientHeightForPoster(previewPoster, ed.defaultGradientHeight)); ed.setBlurIntensity(20); ed.setBlurFade(50); ed.setBlurDarkness(30); ed.setTintStrength(20) }}
+                  onClick={() => applyGradientPreset(naturalVals)}
                   className="text-xs text-muted hover:text-accent transition-colors px-2 py-0.5 rounded-md border border-border/50 hover:border-accent/30">
             {t("ui.reset")}
           </button>
         </div>
 
+        <GradientPresetRow
+          current={{ gradientHeight: gradVals.gradientHeight, blurIntensity: gradVals.blurIntensity, blurFade: gradVals.blurFade, blurDarkness: gradVals.blurDarkness, tintStrength: gradVals.tintStrength, blurEnabled: gradVals.blurEnabled }}
+          onApply={applyGradientPreset}
+          naturalLabel={t("ui.gradientPresetNatural")}
+          colorLabel={t("ui.gradientPresetColor")}
+          addTitle={t("ui.gradientPresetAdd")}
+          namePlaceholder={t("ui.gradientPresetName")}
+          deleteLabel={t("ui.gradientPresetDelete")}
+        />
+
         <div className="space-y-1.5 pt-1 animate-fade-in">
             <SliderRow
               icon={<Ruler className="w-3.5 h-3.5" />}
               label={t("ui.height")}
-              value={ed.gradientHeight}
+              value={gradVals.gradientHeight}
               min={5}
               max={100}
               boundsMin={5}
               boundsMax={100}
-              onChange={(v) => ed.setGradientHeight(v)}
-              onDoubleClick={() => ed.setGradientHeight(defaultGradientHeightForPoster(previewPoster, ed.defaultGradientHeight))}
+              onChange={(v) => setGradVals({ gradientHeight: v })}
+              onDoubleClick={() => setGradVals({ gradientHeight: defaultGradientHeightForPoster(previewPoster) })}
               editingValue={editingValue}
               editText={editText}
               setEditingValue={setEditingValue}
@@ -350,13 +431,13 @@ export function TransformControls() {
             <SliderRow
               icon={<Cloud className="w-3.5 h-3.5" />}
               label={t("ui.intensity")}
-              value={ed.blurIntensity}
+              value={gradVals.blurIntensity}
               min={1}
               max={100}
               boundsMin={1}
               boundsMax={100}
-              onChange={(v) => ed.setBlurIntensity(v)}
-              onDoubleClick={() => ed.setBlurIntensity(20)}
+              onChange={(v) => setGradVals({ blurIntensity: v })}
+              onDoubleClick={() => setGradVals({ blurIntensity: 20 })}
               editingValue={editingValue}
               editText={editText}
               setEditingValue={setEditingValue}
@@ -367,13 +448,13 @@ export function TransformControls() {
             <SliderRow
               icon={<Minus className="w-3.5 h-3.5" />}
               label={t("ui.fade")}
-              value={ed.blurFade}
+              value={gradVals.blurFade}
               min={0}
               max={100}
               boundsMin={0}
               boundsMax={100}
-              onChange={(v) => ed.setBlurFade(v)}
-              onDoubleClick={() => ed.setBlurFade(50)}
+              onChange={(v) => setGradVals({ blurFade: v })}
+              onDoubleClick={() => setGradVals({ blurFade: isLandShape ? 70 : 50 })}
               editingValue={editingValue}
               editText={editText}
               setEditingValue={setEditingValue}
@@ -384,13 +465,13 @@ export function TransformControls() {
             <SliderRow
               icon={<Circle className="w-3.5 h-3.5" />}
               label={t("ui.darkness")}
-              value={ed.blurDarkness}
+              value={gradVals.blurDarkness}
               min={0}
               max={100}
               boundsMin={0}
               boundsMax={100}
-              onChange={(v) => ed.setBlurDarkness(v)}
-              onDoubleClick={() => ed.setBlurDarkness(30)}
+              onChange={(v) => setGradVals({ blurDarkness: v })}
+              onDoubleClick={() => setGradVals({ blurDarkness: 30 })}
               editingValue={editingValue}
               editText={editText}
               setEditingValue={setEditingValue}
@@ -401,18 +482,35 @@ export function TransformControls() {
             <SliderRow
               icon={<Cloud className="w-3.5 h-3.5" />}
               label={t("ui.tintStrength")}
-              value={ed.tintStrength}
+              value={gradVals.tintStrength}
               min={0}
               max={100}
               boundsMin={0}
               boundsMax={100}
-              onChange={(v) => ed.setTintStrength(v)}
-              onDoubleClick={() => ed.setTintStrength(20)}
+              onChange={(v) => setGradVals({ tintStrength: v })}
+              onDoubleClick={() => setGradVals({ tintStrength: 20 })}
               editingValue={editingValue}
               editText={editText}
               setEditingValue={setEditingValue}
               setEditText={setEditText}
               editingKey="tintStrength"
+              suffix="%"
+            />
+            <SliderRow
+              icon={<Circle className="w-3.5 h-3.5" />}
+              label={t("ui.topShade")}
+              value={gradVals.topShade}
+              min={0}
+              max={100}
+              boundsMin={0}
+              boundsMax={100}
+              onChange={(v) => setGradVals({ topShade: v })}
+              onDoubleClick={() => setGradVals({ topShade: 50 })}
+              editingValue={editingValue}
+              editText={editText}
+              setEditingValue={setEditingValue}
+              setEditText={setEditText}
+              editingKey="topShade"
               suffix="%"
             />
           </div>

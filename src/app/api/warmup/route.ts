@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import crypto from "node:crypto"
 import { getJWRankings } from "@/lib/justwatch"
+import { warmTop250 } from "@/lib/imdb-top250"
 
 // Vercel: il warmup itera decine di poster in batch → richiede il massimo
 // consentito. Su Hobby (10s) non completa comunque; su Pro vale 60s.
@@ -97,6 +98,9 @@ function buildPosterUrl(input: BuildPosterUrlInput): URL {
   const defaults = getServerDefaults()
   const params = buildStremioPosterSearchParams({
     lang: input.lang,
+    // Stesse chiavi servite dai cataloghi (compact, v1.23.0): scaldare le
+    // URL esplicite scalderebbe chiavi che nessuno richiede più.
+    compactTuning: true,
     globalBadges: defaults.globalBadges,
     rankingBadges: defaults.rankingBadges,
     badgeStyle: defaults.badgeStyle,
@@ -235,6 +239,9 @@ export async function POST(req: NextRequest) {
   const mappingLimit = boundedInt({ value: req.nextUrl.searchParams.get("mappings"), fallback: 50, min: 0, max: 500 })
 
   try {
+    // F4: precarica la chart IMDb Top 250 fuori dal critical path dei render
+    // (primo accesso = download HTML 1-2MB). Non-fatale e idempotente.
+    void warmTop250()
     const [movies, tv, jwMovies, jwShows, mappings] = await Promise.allSettled([
       getTrending("movie", "day", apiKey, 1),
       getTrending("tv", "day", apiKey, 1),

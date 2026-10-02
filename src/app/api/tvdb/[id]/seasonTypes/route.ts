@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { cacheGet, cacheSet } from "@/lib/cache"
 import { getTvdbSeasonTypes, getTvdbSeriesId } from "@/lib/tvdb"
+import { resolveRouteApiKey } from "@/lib/tmdb"
 import crypto from "node:crypto"
 import { envWithFallback } from "@/lib/env-compat"
 
@@ -17,12 +18,12 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
   const rawId = (id || "").trim()
   if (!rawId) return Response.json({ error: "Missing id" }, { status: 400 })
 
-  const rawTvdbKey = req.headers.get("x-api-key") || req.headers.get("x-tvdb-key") || req.nextUrl.searchParams.get("tvdb_key") || envWithFallback("TVDB_API_KEY") || process.env.TVDB_API_KEY || ""
+  const rawTvdbKey = req.headers.get("x-api-key") || (await resolveRouteApiKey(req, "tvdb")) || ""
   const tvdbKey = rawTvdbKey.trim()
   if (!tvdbKey) return Response.json({ results: [], error: "TVDB key missing — imposta in Impostazioni" }, { status: 200 })
 
   // tmdb key opzionale: permette di risolvere tvdb_id via TMDB external_ids (molto più affidabile di search/remoteid per id numerici)
-  const tmdbKey = req.headers.get("x-tmdb-key") || req.nextUrl.searchParams.get("tmdb_key") || req.nextUrl.searchParams.get("api_key") || req.headers.get("x-api-key-tvdb") || envWithFallback("TMDB_KEY") || ""
+  const tmdbKey = req.headers.get("x-tmdb-key") || req.nextUrl.searchParams.get("tmdb_key") || (await resolveRouteApiKey(req)) || req.headers.get("x-api-key-tvdb") || envWithFallback("TMDB_KEY") || ""
   const cacheKey = `tvdb:seasonTypes:raw${rawId}:ak${hashFragment(tvdbKey)}:tk${hashFragment(tmdbKey || "")}`
   const cached = cacheGet<{ results: { id: number; name: string; type: string; alternateName?: string | null }[]; tvdbId?: number | null }>(cacheKey)
   if (cached) return Response.json(cached, { headers: { "Cache-Control": "public, max-age=3600, stale-while-revalidate=3600" } })
@@ -83,7 +84,8 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
     const body = { results: types.map((t) => ({ id: t.id, name: t.name, type: t.type, alternateName: t.alternateName })), tvdbId: tvdbSeriesId }
     cacheSet(cacheKey, body, ["tvdb"], 24 * 60 * 60 * 1000)
     return Response.json(body, { headers: { "Cache-Control": "public, max-age=3600, stale-while-revalidate=3600" } })
-  } catch (e) {
-    return Response.json({ results: [], error: e instanceof Error ? e.message : String(e) }, { status: 200 })
+  } catch {
+    // Mai e.message in chiaro nel body: può contenere URL/chiavi upstream.
+    return Response.json({ results: [], error: "TVDB non disponibile" }, { status: 200 })
   }
 }

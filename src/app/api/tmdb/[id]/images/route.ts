@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
-import { getImages, getExternalIds } from "@/lib/tmdb"
-import { getFanartMovie, getFanartTv, isFanartEnabled, toTmdbShape } from "@/lib/fanart"
+import { getImages, getExternalIds, resolveRouteApiKey } from "@/lib/tmdb"
+import { getFanartMovie, getFanartTv, isFanartEnabled, toTmdbShape } from "@/lib/fanart-artwork"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { cacheGet, cacheSet } from "@/lib/cache"
 import { jsonGzip } from "@/lib/json-response"
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // costruito dalla regione. L'italiano che stava qui privilegiava una lingua
   // sola tra le tredici.
   const languages = req.nextUrl.searchParams.get("languages") || "en,null"
-  const apiKey = req.nextUrl.searchParams.get("api_key") || undefined
+  const apiKey = await resolveRouteApiKey(req)
   // La chiave di cache include fanart: accendere o spegnere la chiave d'istanza
   // deve cambiare la risposta, non riusare quella di prima.
   const cacheKey = `images:${type}:${id}:${languages}:${isFanartEnabled() ? "fa" : "x"}`

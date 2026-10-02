@@ -1,0 +1,2014 @@
+{
+    "meta":  {
+                 "date":  "2026-09-15",
+                 "method":  "flixpatrol_cache*.json locali (nessuna chiave): popular per conteggio chart, niche = pre-1990 poi charts==1. anime-world da curare a parte (serve TMDB key per genere/lingua). anime-world via TMDB discover genre16+JP (chiave valida). anime-world via TMDB discover genre16+JP (chiave valida).",
+                 "strata":  {
+                                "anime-world":  50,
+                                "niche":  100,
+                                "popular-movies":  150,
+                                "popular-series":  100
+                            }
+             },
+    "ids":  [
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  271110,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  6435,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  678512,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1516724,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  718930,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  77174,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1275779,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1464883,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1401778,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1575557,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1198984,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  933260,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  46632,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  910850,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  785398,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1114738,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  315162,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1124,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  22881,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  408842,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  417859,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1234821,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1365884,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1012201,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  620683,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  256591,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1664003,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  324857,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  497,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  12123,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1272129,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1151272,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  796339,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  13001,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  36685,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1319965,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  274857,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  936075,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1502700,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1739206,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  10897,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  923526,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  10138,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  157350,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  44982,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  753342,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1242265,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1734,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1414413,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1039512,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  384018,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  10735,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  91586,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  2539,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  866398,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  10634,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  110415,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  214756,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1858,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  637920,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1360231,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  382200,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1472638,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  567609,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  207932,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  346672,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  898704,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1339713,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  38199,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1127384,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  27205,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  28355,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  934456,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  926393,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1645614,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  82321,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  660120,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  43194,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  8619,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1273221,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1383731,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1007757,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  425274,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1612018,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  9924,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  292431,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  458156,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1096252,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1043808,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1464533,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1122573,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1448560,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1433367,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1136897,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  578,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1116201,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1760262,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  4935,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1102493,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  346685,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  4588,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  774370,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  458293,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1559123,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1523067,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1059064,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  45070,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  54138,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  739405,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  129,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1052005,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  652,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1341422,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  12437,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  974950,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  28,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  412117,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  126889,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1290821,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  12445,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  8952,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  9007,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1825,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1288445,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  10794,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  336149,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  9297,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  533535,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1361292,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1293286,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  2048,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  454639,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  11036,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  439056,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  502356,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1327819,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  558,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  258216,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  844069,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1029475,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1330421,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  42360,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  59952,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1114967,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  155,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  176,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  718497,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  980431,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  1420,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-movies",
+                    "tmdbId":  616,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  260862,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  214478,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  325605,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  4278,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  275202,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  12754,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  220102,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  56389,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  62652,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  67997,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  136105,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  325021,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  255590,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  86349,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  31390,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  198085,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  128722,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  89905,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  252,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  300954,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  199332,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  73048,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  236235,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  39416,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  332863,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  99363,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  208015,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  248361,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  37606,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  296286,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  32206,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  1054,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  287267,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  10222,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  14956,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  99489,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  79054,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  66402,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  194764,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  76479,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  312979,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  67824,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  306479,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  316992,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  103516,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  153312,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  273240,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  258230,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  1558,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  96580,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  257018,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  34524,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  278165,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  315054,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  14808,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  111110,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  330417,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  262388,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  287620,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  291306,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  70284,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  229256,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  125909,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  2286,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  25760,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  549,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  57092,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  68760,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  106322,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  301412,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  62415,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  72974,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  119845,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  114463,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  126027,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  333544,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  69501,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  87917,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  203614,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  85702,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  90399,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  46080,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  95396,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  91768,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  241882,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  54344,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  211288,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  301329,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  114501,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  295780,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  279644,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  279542,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  65930,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  241833,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  95350,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  61056,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  332415,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  324581,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  329428,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "popular-series",
+                    "tmdbId":  205599,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  2391,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  1667,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  110057,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  4386,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  19494,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  938,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  5922,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  2410,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  429,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  8392,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  11357,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  15196,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  26182,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  279,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  12102,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  326,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  3107,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  252,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  188734,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  2384,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  156249,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  987,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  11951,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  948,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  7406,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  5548,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  20621,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  4011,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  1908,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  744,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  113136,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  27085,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  47,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  3266,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  1606441,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  48769,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  199481,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  393061,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  1321008,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  1284465,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  603692,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  30991,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  317555,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  63601,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  211564,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  70881,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  92592,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  278178,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  20921,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  85552,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  155673,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  317883,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  31910,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  286346,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  40821,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  277044,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  70828,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  302173,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  87428,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  74823,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  71712,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  46234,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  186,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  7723,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  312650,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  65733,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  318445,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  216009,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  97604,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  4379,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  1061240,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  893723,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  205082,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  1295400,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  219759,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  330438,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  848439,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  1010581,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  685274,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  502425,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  667538,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  897160,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  72570,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  13027,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  727333,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  393624,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  1221404,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  13576,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  4238,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  1168190,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  1429,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  13635,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  834,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  285143,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  32829,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  279089,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  333484,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  82369,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  231503,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "niche",
+                    "tmdbId":  131709,
+                    "mediaType":  "tv"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  1311031,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  256838,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  822653,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  1218925,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  372058,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  128,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  35648,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  508883,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  1539104,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  149,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  10494,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  1244492,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  1598766,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  81,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  635302,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  1545621,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  83389,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  1679730,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  1530941,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  378064,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  37797,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  31649,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  1575337,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  16859,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  916224,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  9323,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  18491,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  1363974,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  12429,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  1654313,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  1542877,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  10515,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  1542261,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  1586876,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  553966,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  51739,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  810693,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  1159311,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  53064,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  149871,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  242828,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  568160,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  283566,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  592350,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  149870,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  900667,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  1333100,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  812225,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  15370,
+                    "mediaType":  "movie"
+                },
+                {
+                    "stratum":  "anime-world",
+                    "tmdbId":  1209217,
+                    "mediaType":  "movie"
+                }
+            ]
+}

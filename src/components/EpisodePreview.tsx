@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, Film, Calendar, Star } from "lucide-react"
 import { usePSelector } from "@/lib/context"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { usePosterEditor } from "@/lib/contexts/PosterEditorContext"
+import { userFetch } from "@/lib/http"
 
 interface PreviewVideo {
   id: string
@@ -30,6 +31,7 @@ interface PreviewPayload {
   totalEpisodes: number
   totalSeasons: number
   autoDefault?: { groupId: string; name: string } | null
+  error?: string
 }
 
 export function EpisodePreview() {
@@ -37,6 +39,8 @@ export function EpisodePreview() {
   const selected = usePSelector((v) => v.selected)
   const tmdbKey = usePSelector((v) => v.tmdbKey)
   const tvdbApiKey = usePSelector((v) => v.tvdbApiKey)
+  const serverKeyStatus = usePSelector((v) => v.serverKeyStatus)
+  const hasTvdbKey = !!tvdbApiKey || !!serverKeyStatus?.tvdb
   const ed = usePosterEditor()
 
   const [data, setData] = useState<PreviewPayload | null>(null)
@@ -45,6 +49,7 @@ export function EpisodePreview() {
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
 
   const episodeGroupId = ed.episodeGroupId
+  const isTvdbSource = episodeGroupId === "tvdb" || episodeGroupId?.startsWith("tvdb:") || ed.episodeMetadataSource === "tvdb" || ed.defaultEpisodeMetadataSource === "tvdb"
 
   useEffect(() => {
     if (!selected || selected.media_type !== "tv") {
@@ -69,19 +74,23 @@ export function EpisodePreview() {
     // applica il default automatico Parts quando rilevato (meta-handler sync)
     if (tvdbApiKey) params.set("tvdb_key", tvdbApiKey)
     // per l'anteprima TVDB mostra sempre thumbnail TVDB se disponibile
-    if (episodeGroupId === "tvdb" || episodeGroupId?.startsWith("tvdb:")) params.set("source", "tvdb")
+    if (isTvdbSource) params.set("source", "tvdb")
 
-    fetch(`/api/preview/episodes?${params.toString()}`, {
+    userFetch(`/api/preview/episodes?${params.toString()}`, {
       headers: tmdbKey ? { "x-api-key": tmdbKey } : undefined,
     })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         return r.json()
       })
-      .then((json) => {
+      .then((json: PreviewPayload) => {
         if (!active) return
-        setData(json)
-        setExpanded(new Set())
+        if (json.error && (!json.videos || json.videos.length === 0)) {
+          setError(json.error)
+        } else {
+          setData(json)
+          setExpanded(new Set())
+        }
       })
       .catch((e) => {
         if (!active) return
@@ -95,7 +104,7 @@ export function EpisodePreview() {
       active = false
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- selected is object identity, we want id+type
-  }, [selected?.id, selected?.media_type, episodeGroupId, tmdbKey, tvdbApiKey])
+  }, [selected?.id, selected?.media_type, episodeGroupId, tmdbKey, tvdbApiKey, isTvdbSource])
 
   if (!selected || selected.media_type !== "tv") return null
 
@@ -143,7 +152,7 @@ export function EpisodePreview() {
         </div>
       )}
 
-      {(episodeGroupId === "tvdb" || episodeGroupId?.startsWith("tvdb:")) && !tvdbApiKey && (
+      {isTvdbSource && !hasTvdbKey && (
         <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-3 py-2">
           <p className="text-[11px] text-amber-300">{t("ui.tvdbKeyMissingWarn")}</p>
         </div>

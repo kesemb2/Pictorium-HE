@@ -50,12 +50,23 @@ describe("posterQuerySchema", () => {
     expect(validatePosterQuery(params({ genreName: "x".repeat(61) }))).toContain("genreName")
     expect(validatePosterQuery(params({ quality: "x".repeat(17) }))).toContain("quality")
     expect(validatePosterQuery(params({ lang: "x".repeat(21) }))).toContain("lang")
+    expect(validatePosterQuery(params({ ac: "x".repeat(11) }))).toContain("ac")
+    expect(validatePosterQuery(params({ tl: "x".repeat(9) }))).toContain("tl")
+    expect(validatePosterQuery(params({ bl: "x".repeat(9) }))).toContain("bl")
+    expect(validatePosterQuery(params({ bs: "x".repeat(17) }))).toContain("bs")
+    expect(validatePosterQuery(params({ rs: "x".repeat(17) }))).toContain("rs")
   })
 
   it("rejects oversized image paths", () => {
-    expect(validatePosterQuery(params({ poster: `/${"x".repeat(200)}.jpg` }))).toContain("poster")
+    expect(validatePosterQuery(params({ poster: `/${"x".repeat(2100)}.jpg` }))).toContain("poster")
     expect(validatePosterQuery(params({ logo: `/${"x".repeat(200)}.png` }))).toContain("logo")
     expect(validatePosterQuery(params({ backdrop: `/${"x".repeat(200)}.jpg` }))).toContain("backdrop")
+  })
+
+  it("accepts custom image URLs in poster (same cap as the mapping)", () => {
+    expect(
+      validatePosterQuery(params({ poster: "https://i.pinimg.com/originals/ab/12/abcdef1234567890.jpg" })),
+    ).toBeNull()
   })
 
   it("rejects malformed rank/imdbId", () => {

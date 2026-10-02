@@ -1,11 +1,19 @@
 import { z } from "zod"
-import { BADGE_STYLES, RANKING_BADGE_STYLES } from "./badge-styles"
+import { BADGE_STYLES, RANKING_BADGE_STYLES, QUALITY_BADGE_STYLES } from "./badge-styles"
+import { BADGE_PRESET_ID_RE, BADGE_PRESET_REV_RE } from "./badge-preset"
 
 export const mappingSchema = z.object({
   tmdbId: z.number().int().positive(),
   mediaType: z.enum(["movie", "tv"]),
   title: z.string().min(1),
   posterPath: z.string().min(1),
+  // Base image esterna (custom URL import): solo http/https, max 2000 char.
+  // La sicurezza SSRF non dipende dallo schema ma dai check al render
+  // (allowlist + DNS/IP + redirect manuali): qui si rifiuta solo il non-URL.
+  customPosterUrl: z.string().url().max(2000).refine(
+    (v) => v.startsWith("http://") || v.startsWith("https://"),
+    { message: "Only HTTP/HTTPS URLs allowed" },
+  ).nullable().optional(),
   logoPath: z.string().nullable().optional(),
   originalPosterPath: z.string().nullable().optional(),
   language: z.string().nullable().optional(),
@@ -30,7 +38,14 @@ export const mappingSchema = z.object({
   badgeYear: z.boolean().nullable().optional(),
   badgeRating: z.boolean().nullable().optional(),
   customRatings: z.boolean().nullable().optional(),
+  // Fonti voto medio per-titolo: lasco al save (max 20 char come il token),
+  // strict al render via parseRatingSources (whitelist SUPPORTED_RATING_SOURCES).
+  ratingSources: z.array(z.string().max(20)).nullable().optional(),
+  separateRatings: z.boolean().nullable().optional(),
   imdbId: z.string().regex(/^tt\d{1,20}$/).nullable().optional(),
+  // QID Wikidata per il fast-path REST awards (stesso pattern imdbId).
+  // Opzionale: i mapping vecchi senza campo restano validi (SPARQL-fallback).
+  wikidataId: z.string().regex(/^Q\d{1,20}$/).nullable().optional(),
   genreName: z.string().nullable().optional(),
   voteAverage: z.number().min(0).max(10).nullable().optional(),
   trendRank: z.number().int().min(0).nullable().optional(),
@@ -48,6 +63,8 @@ export const mappingSchema = z.object({
   // di mostrare il badge Anime anche senza chiave MDBList/profilo lato server.
   animeRank: z.number().int().min(1).nullable().optional(),
   customBadge: z.string().max(40).nullable().optional(),
+  badgePresetId: z.string().regex(BADGE_PRESET_ID_RE).nullable().optional(),
+  badgePresetRev: z.string().regex(BADGE_PRESET_REV_RE).nullable().optional(),
   releaseDate: z.string().nullable().optional(),
   firstAirDate: z.string().nullable().optional(),
   backdropPath: z.string().nullable().optional(),
@@ -62,13 +79,21 @@ export const mappingSchema = z.object({
   blurFade: z.number().nullable().optional(),
   blurDarkness: z.number().nullable().optional(),
   tintStrength: z.number().nullable().optional(),
+  topShade: z.number().nullable().optional(),
   gradientHeight: z.number().nullable().optional(),
   badgeStyle: z.enum(BADGE_STYLES).nullable().optional(),
   rankingBadgeStyle: z.enum(RANKING_BADGE_STYLES).nullable().optional(),
+  qualityBadgeStyle: z.enum(QUALITY_BADGE_STYLES).nullable().optional(),
+  videoFormats: z.array(z.enum(["dv", "hdr", "hdr10plus", "atmos", "imax"])).nullable().optional(),
   cleanPosters: z.array(z.string()).nullable().optional(),
   cleanPosterIndex: z.number().int().min(0).nullable().optional(),
   cleanPosterUpdatedAt: z.string().nullable().optional(),
   autoRotateClean: z.boolean().nullable().optional(),
+  cleanBackdrops: z.array(z.string()).nullable().optional(),
+  cleanBackdropIndex: z.number().int().min(0).nullable().optional(),
+  cleanBackdropUpdatedAt: z.string().nullable().optional(),
+  autoRotateBackdrop: z.boolean().nullable().optional(),
+  excludedBackdrops: z.array(z.string()).nullable().optional(),
   excludedPosters: z.array(z.string()).nullable().optional(),
   logoDisabled: z.boolean().nullable().optional(),
   networkLogo: z.boolean().nullable().optional(),
@@ -77,7 +102,36 @@ export const mappingSchema = z.object({
   badgeBottomScale: z.number().nullable().optional(),
   badgeTopOffset: z.number().nullable().optional(),
   badgeBottomOffset: z.number().nullable().optional(),
+  networkLogoPosition: z.enum(["auto", "top"]).nullable().optional(),
   ribbonSide: z.enum(["left", "right"]).nullable().optional(),
+  ribbonEnabled: z.boolean().nullable().optional(),
+  posterShape: z.enum(["poster", "landscape"]).nullable().optional(),
+  // Profilo di tuning landscape 16:9 (vedi LandscapeSettings in types.ts):
+  // stessi bound dei campi flat. Chiavi assenti/null = fallback al flat.
+  landscape: z.object({
+    logoScale: z.number().int().min(10).max(200).nullable().optional(),
+    logoOffsetX: z.number().int().nullable().optional(),
+    logoOffsetY: z.number().int().nullable().optional(),
+    topBadgeScale: z.number().int().min(10).max(200).nullable().optional(),
+    topBadgeOffsetX: z.number().int().nullable().optional(),
+    topBadgeOffsetY: z.number().int().nullable().optional(),
+    genreBadgeScale: z.number().int().min(10).max(200).nullable().optional(),
+    genreBadgeOffsetX: z.number().int().nullable().optional(),
+    genreBadgeOffsetY: z.number().int().nullable().optional(),
+    qualityBadgeScale: z.number().int().min(10).max(200).nullable().optional(),
+    qualityBadgeOffsetX: z.number().int().nullable().optional(),
+    qualityBadgeOffsetY: z.number().int().nullable().optional(),
+    networkLogoScale: z.number().int().min(10).max(200).nullable().optional(),
+    networkLogoOffsetX: z.number().int().nullable().optional(),
+    networkLogoOffsetY: z.number().int().nullable().optional(),
+    gradientHeight: z.number().nullable().optional(),
+    blurEnabled: z.boolean().nullable().optional(),
+    blurIntensity: z.number().nullable().optional(),
+    blurFade: z.number().nullable().optional(),
+    blurDarkness: z.number().nullable().optional(),
+    tintStrength: z.number().nullable().optional(),
+    topShade: z.number().nullable().optional(),
+  }).nullable().optional(),
   networkLogoPath: z.string().nullable().optional(),
   networkLogoName: z.string().nullable().optional(),
   defaultBadgeStyle: z.enum(BADGE_STYLES).nullable().optional(),
@@ -86,6 +140,18 @@ export const mappingSchema = z.object({
 })
 
 export type MappingInput = z.infer<typeof mappingSchema>
+
+// Alias manuale IMDb → TMDB per-namespace (corpo POST /api/mappings/aliases).
+// Cuce i casi che TMDB /find non può risolvere (franchise-tt su entry di
+// stagione splittata): vince sul /find nella poster route. Stessi bound del
+// mapping (imdbId sopra, tmdbId positivo).
+export const aliasSchema = z.object({
+  imdbId: z.string().regex(/^tt\d{1,20}$/),
+  mediaType: z.enum(["movie", "tv"]),
+  tmdbId: z.number().int().positive(),
+})
+
+export type AliasInput = z.infer<typeof aliasSchema>
 
 // Query string del poster: bound anti-DoS/cache-flood (R1). La cache key
 // contiene i raw params e i testi finiscono negli SVG: una stringa da 10KB
@@ -104,13 +170,23 @@ export const posterQuerySchema = z.object({
   label: boundedQueryString(80),
   title: boundedQueryString(200),
   genreName: boundedQueryString(60),
-  poster: boundedQueryString(160),
+  // Base custom da URL esterno (tile custom in preview / mapping salvato):
+  // bound largo come il mapping (customPosterUrl max 2000) — gli URL diretti
+  // dei CDN superano i 160 char dei path TMDB. Resta un bound anti-flood:
+  // ogni valore distinto è una entry cache separata.
+  poster: boundedQueryString(2048),
   logo: boundedQueryString(160),
   backdrop: boundedQueryString(160),
   quality: boundedQueryString(16),
+  formats: boundedQueryString(64),
+  qmin: boundedQueryString(8),
   lang: boundedQueryString(20),
   rsrc: boundedQueryString(200),
+  rw: boundedQueryString(12),
+  sash: boundedQueryString(64),
   imdbId: z.string().regex(/^tt\d{1,20}$/).optional(),
+  // QID Wikidata per il fast-path REST awards (validato anche al sito d'uso).
+  wikidata_id: z.string().regex(/^Q\d{1,20}$/).optional(),
   rank: intQueryString(7),
   animerank: intQueryString(7),
   scale: boundedQueryString(12),
@@ -146,6 +222,17 @@ export const posterQuerySchema = z.object({
   // sito d'uso), ma i bound tengono fuori le stringhe assurde.
   dtx: boundedQueryString(8),
   halo: boundedQueryString(8),
+  shape: boundedQueryString(16),
+  align: boundedQueryString(8),
+  ac: boundedQueryString(10),
+  tl: boundedQueryString(8),
+  bl: boundedQueryString(8),
+  bs: boundedQueryString(16),
+  rs: boundedQueryString(16),
+  df: boundedQueryString(8),
+  badgePreset: boundedQueryString(24),
+  prv: boundedQueryString(8),
+  netPos: boundedQueryString(8),
 })
 
 export type PosterQuery = z.infer<typeof posterQuerySchema>

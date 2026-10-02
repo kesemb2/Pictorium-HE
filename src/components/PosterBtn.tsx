@@ -12,9 +12,13 @@ interface PosterBtnProps {
   onSelect: (img: TMDBImage) => void
   title?: string
   staggerIndex?: number
+  /** Miniatura orizzontale 16:9 (sfondi TMDB). */
+  landscape?: boolean
+  /** Tier dimensionale TMDB (default w154 da poster; w300 per i backdrop). */
+  imgSize?: string
 }
 
-export const PosterBtn = React.memo(function PosterBtn({ img, active, onSelect, title, staggerIndex }: PosterBtnProps) {
+export const PosterBtn = React.memo(function PosterBtn({ img, active, onSelect, title, staggerIndex, landscape, imgSize = "w154" }: PosterBtnProps) {
   const { t } = useT()
   return (
     <button type="button"
@@ -23,9 +27,9 @@ export const PosterBtn = React.memo(function PosterBtn({ img, active, onSelect, 
       title={title || ""}
       style={staggerIndex !== undefined ? { animation: `fade-scale-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) ${staggerIndex * 40}ms both` } : undefined}
     >
-      <div className="aspect-[2/3] relative overflow-hidden">
+      <div className={`relative overflow-hidden ${landscape ? "aspect-video" : "aspect-[2/3]"}`}>
         {/* eslint-disable-next-line @next/next/no-img-element -- TMDB dynamic URL */}
-        <img src={posterUrl(img.file_path, "w154")} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+        <img src={posterUrl(img.file_path, imgSize)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
         {active && (
           <>
             <div className="absolute inset-0 bg-accent-orange/10" />

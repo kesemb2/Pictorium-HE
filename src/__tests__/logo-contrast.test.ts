@@ -107,7 +107,10 @@ describe("posterLogoZoneLuminance con la fascia", () => {
       blurEnabled: true,
       blurHeight: 50,
       blurIntensity: 8,
-      blurFade: 20,
+      // Fade 0 = fascia piena: con la rampa ease-out di upstream un fade basso
+      // scurisce la parte alta della fascia molto meno di prima, e qui serve
+      // una fascia che copra davvero la zona del logo.
+      blurFade: 0,
       blurDarkness,
     })
   }
@@ -130,7 +133,7 @@ describe("posterLogoZoneLuminance con la fascia", () => {
     const bare = logoContrast(ink, await posterLogoZoneLuminance(buf, ZONE))
     const covered = logoContrast(ink, await posterLogoZoneLuminance(buf, ZONE, await band("#e8e4dd", 40)))
 
-    expect(logoScrimStrength(bare)).toBeGreaterThan(0.3)
+    expect(logoScrimStrength(bare)).toBeGreaterThan(LOGO_SCRIM_MAX * 0.5)
     expect(covered).toBeGreaterThan(bare)
     // Quel che resta è sotto il 2% di alpha: nessun alone visibile.
     expect(logoScrimStrength(covered)).toBeLessThan(0.02)

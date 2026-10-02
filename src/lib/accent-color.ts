@@ -1,4 +1,5 @@
 import { GENRE_FALLBACK } from "./badges"
+import { TOP_LIGHT_LUMINANCE } from "./constants"
 
 export interface AccentResult { r: number; g: number; b: number }
 
@@ -44,6 +45,26 @@ export function textColorForBg(hex: string, dark: string = "#ffffff", light: str
     .sort((a, b) => b.ratio - a.ratio)[0]
 
   return best.color
+}
+
+/**
+ * True se l'hex è un giallo/ambra/arancio saturo che uccide la stella oro del
+ * badge (gradiente #FCD34D → #F59E0B, hue ~40°): in quel caso la stella va
+ * resa nel colore del testo invece che in oro. Zona hue [20, 70] con
+ * saturazione HSL > 0.35 — sotto soglia (freddi, grigi, pastelli spenti)
+ * l'oro resta.
+ */
+export function isWarmGoldAccent(hex: string | null | undefined): boolean {
+  if (!hex || !hex.startsWith("#")) return false
+  const [r, g, b] = parseColor(hex)
+  const rn = r / 255, gn = g / 255, bn = b / 255
+  const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn)
+  const l = (max + min) / 2, d = max - min
+  if (d === 0) return false
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+  if (s < 0.35) return false
+  const hue = fastHue(rn, gn, bn, d, max)
+  return hue >= 20 && hue <= 70
 }
 
 /** Parsea "#rrggbb" o "rgba(r,g,b,a)" restituendo [r,g,b,alpha]. Hex: alpha=1 */
@@ -121,6 +142,7 @@ export function analyzeBuckets(
   pixels: Uint8ClampedArray | Buffer,
   width: number,
   height: number,
+  tintMode: "badge" | "scene" = "badge",
 ): BucketAnalysis {
   const step = 2
   let sumR = 0, sumG = 0, sumB = 0, countLuma = 0
@@ -136,6 +158,14 @@ export function analyzeBuckets(
 
   for (let y = 0; y < height; y += step) {
     for (let x = 0; x < width; x += step) {
+      // Modalità scena: campiona SOLO la cornice esterna (stile Ambilight).
+      // Facce/loghi/titoli stanno al centro e hijackerebbero il voto (pelle
+      // arancione su Silo); i bordi vedono quasi sempre lo sfondo/atmosfera.
+      if (tintMode === "scene") {
+        const bx = Math.max(8, Math.floor(width * 0.15))
+        const by = Math.max(8, Math.floor(height * 0.15))
+        if (x >= bx && x < width - bx && y >= by && y < height - by) continue
+      }
       const i = (y * width + x) * 4
       const pr = pixels[i], pg = pixels[i + 1], pb = pixels[i + 2]
       const alpha = pixels[i + 3]
@@ -153,8 +183,12 @@ export function analyzeBuckets(
       const hue = fastHue(r, g, b, d, max)
       const bucketIdx = Math.floor(hue / 30) % 12
       const bkt = buckets[bucketIdx]
-      // Penalità per scuro/chiaro: al badge serve contrasto per il testo.
-      const weight = Math.pow(s, 1.5) * (1 - Math.abs(l - 0.5) * 1.5)
+      // Badge: penalità per scuro/chiaro (serve contrasto per il testo).
+      // Scena: vince l'area satura e SCURA (lo scrim vive nel fondo scuro;
+      // pelli e cieli chiari non devono hijackare la tinta).
+      const weight = tintMode === "scene"
+        ? Math.pow(s, 1.5) * (1 - l)
+        : Math.pow(s, 1.5) * (1 - Math.abs(l - 0.5) * 1.5)
       bkt.count += weight
       bkt.totalSat += s * weight
       bkt.hueSin += Math.sin(hue * Math.PI / 180) * weight
@@ -299,11 +333,15 @@ const MAX_SCENE_SAT = 0.55
  * e la luminosità è quella misurata, così a scurire la fascia resta solo
  * `blurDarkness`, nella misura configurata.
  *
+ * Convive con `findSceneTint` di upstream (sotto), che serve ai colori dei
+ * poster custom: quella campiona tutto il poster e ripiega su un colore di
+ * genere, ed è proprio la "scelta di colori strana" che qui non si vuole.
+ *
  * Restituisce `null` quando la striscia è sostanzialmente acromatica: un poster
  * senza colore non deve riceverne uno. `applyBlur` tratta l'assenza di
  * `accentColor` come fascia non tinta, quindi resta sfocatura più shade.
  */
-export function findSceneTint(
+export function findBandTint(
   pixels: Uint8ClampedArray | Buffer,
   width: number,
   height: number,
@@ -362,6 +400,43 @@ export function findSceneTint(
   const hue = ((Math.atan2(hueSin, hueCos) * 180 / Math.PI) % 360 + 360) % 360
   const sat = Math.min(MAX_SCENE_SAT, meanC / span)
   const res = hslToRgb(hue, sat, tintL)
+  return {
+    r: Math.max(0, Math.min(255, res.r)),
+    g: Math.max(0, Math.min(255, res.g)),
+    b: Math.max(0, Math.min(255, res.b)),
+  }
+}
+
+/**
+ * Calcola la tinta di scena naturale (same-hue) per la sfocatura di fondo.
+ *
+ * A differenza di findAccentColor:
+ * - NESSUNA rotazione a +150°: preserva la famiglia cromatica della scena.
+ * - Saturazione preservata in [0.30, 0.80]: scene sature (ori, teal) restano
+ *   sature invece di schiacciarsi a oliva spento; scene piatte restano sobrie.
+ * - Luminosità L = 0.26: tinta profonda ma luminosa come gli scrim di riferimento.
+ * - NESSUNA ricerca dicotomica di contrasto: deve fondersi armoniosamente con l'immagine.
+ * - Fallback monocromatico: GENRE_FALLBACK puro senza pushContrast.
+ */
+export function findSceneTint(
+  pixels: Uint8ClampedArray | Buffer,
+  width: number,
+  height: number,
+  genre: string,
+): AccentResult {
+  const analysis = analyzeBuckets(pixels, width, height, "scene")
+  if (analysis.vibrantWeight < 1) {
+    const fb = GENRE_FALLBACK[genre] || "#555555"
+    const [r, g, b] = parseColor(fb)
+    return { r, g, b }
+  }
+
+  // Same-hue: estrazione diretta della famiglia cromatica nativa della scena.
+  // L medio-scuro (0.26): la tinta di scrim/badge nasce profonda ma luminosa
+  // (riferimento concorrenza ~#7f5401 per Pluribus); lo shade del blur la
+  // porta poi a fondo campo quando la velatura è attiva.
+  const sat = Math.min(0.80, Math.max(0.30, analysis.avgSat))
+  const res = hslToRgb(analysis.hue, sat, 0.26)
   return {
     r: Math.max(0, Math.min(255, res.r)),
     g: Math.max(0, Math.min(255, res.g)),
@@ -445,4 +520,63 @@ export function topEdgeAverage(pixels: Uint8ClampedArray | Buffer, width: number
     }
   }
   return { r: Math.round(r / n), g: Math.round(g / n), b: Math.round(b / n) }
+}
+
+/** Media del bordo inferiore (ultimo 8% delle righe): speculare a topEdgeAverage. */
+export function bottomEdgeAverage(pixels: Uint8ClampedArray | Buffer, width: number, height: number): { r: number; g: number; b: number } {
+  const rowCount = Math.max(Math.round(height * 0.08), 3)
+  let r = 0, g = 0, b = 0, n = 0
+  for (let y = height - rowCount; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4
+      r += pixels[i]; g += pixels[i + 1]; b += pixels[i + 2]
+      n++
+    }
+  }
+  return { r: Math.round(r / n), g: Math.round(g / n), b: Math.round(b / n) }
+}
+
+/**
+ * Luminanza Rec.709 di un hex "#rrggbb", null se assente/malformato.
+ * Stessi coefficienti di computeTopLight (poster-url.ts) e soglia condivisa
+ * TOP_LIGHT_LUMINANCE: il client deve accordarsi col server.
+ */
+export function hexLuminance(hexColor: string | null | undefined): number | null {
+  if (!hexColor || hexColor.length < 7) return null
+  const r = parseInt(hexColor.slice(1, 3), 16) / 255
+  const g = parseInt(hexColor.slice(3, 5), 16) / 255
+  const b = parseInt(hexColor.slice(5, 7), 16) / 255
+  if (![r, g, b].every(Number.isFinite)) return null
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+/**
+ * Polarità del badge inferiore (true = fondo chiaro → pill scura).
+ * Come topLight ma corretta per la banda blur: la banda scurisce il fondo in
+ * proporzione a blurDarkness, quindi una striscia chiara con blur intenso conta
+ * come scura. Approssimazione documentata: la banda è un blend non uniforme,
+ * qui modellato come velo nero uniforme (stima conservativa: preferisce la
+ * pill chiara, sempre leggibile sullo scuro).
+ */
+export function computeBottomLight(lum: number | null, blurDarkness: number, blurEnabled: boolean): boolean | null {
+  if (lum === null || !Number.isFinite(lum)) return null
+  const d = Math.max(0, Math.min(100, blurDarkness)) / 100
+  const effective = blurEnabled ? lum * (1 - d) : lum
+  return effective > TOP_LIGHT_LUMINANCE
+}
+
+/**
+ * Vero solo quando l'utente ha scelto un colore diverso da quello
+ * auto-rilevato: l'auto-rilevamento scrive lo stesso valore in entrambi gli
+ * stati a ogni cambio poster, quindi un `ac=` emesso sempre scavalcerebbe il
+ * calcolo server anche quando l'utente non ha toccato nulla (preview e
+ * mapping salvato congelerebbero il thumb client invece della tinta di scena).
+ */
+export function isManualAccent(
+  accentColor: string | null | undefined,
+  autoAccentColor: string | null | undefined,
+): boolean {
+  if (!accentColor) return false
+  if (!autoAccentColor) return true
+  return accentColor.toLowerCase() !== autoAccentColor.toLowerCase()
 }

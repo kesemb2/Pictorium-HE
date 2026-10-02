@@ -22,24 +22,32 @@ vi.mock("@/lib/rate-limit", () => ({
 }))
 
 vi.mock("@/lib/store", () => ({
+  getAll: vi.fn(async () => []),
   getById: vi.fn(async () => null),
   upsert: vi.fn(),
+  getImdbAlias: vi.fn(async () => null),
 }))
 
-vi.mock("@/lib/server-defaults", () => ({
-  getServerDefaults: vi.fn(() => ({
+vi.mock("@/lib/server-defaults", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/lib/server-defaults")>()
+  return {
+    ...mod,
+    getServerDefaults: vi.fn(() => ({
     defaultLogoFitEnabled: true,
     badgeStyle: "shadow",
     rankingBadgeStyle: "default",
     region: "IT",
     badgeQuality: false,
     preRelease: false,
-  })),
-}))
+    })),
+  }
+})
 
 let posterPng: Buffer
 let logoPng: Buffer
 const requestedUrls: string[] = []
+// Flag per-test: artwork TVDB con testo incorporato (invece che textless).
+let tvdbWithText = false
 
 function tmdbDetails(id: number) {
   return {
@@ -54,6 +62,9 @@ function tmdbDetails(id: number) {
     backdrop_path: null,
     networks: [],
     production_companies: [],
+    // Il vero TMDB con append_to_response=external_ids include sempre gli
+    // external_ids (come il mock e2e): senza, il rescue non vedrebbe tvdb_id.
+    external_ids: { imdb_id: `tt${id}`, tvdb_id: 75710 },
   }
 }
 
@@ -82,7 +93,7 @@ async function router(input: unknown): Promise<Response> {
       return Response.json({
         status: "success",
         data: [
-          { id: 1, image: "https://artworks.thetvdb.com/banners/v4/poster/1.jpg", language: "eng", type: 2, width: 680, height: 1000, includesText: false, score: 9 },
+          { id: 1, image: "https://artworks.thetvdb.com/banners/v4/poster/1.jpg", language: "eng", type: 2, width: 680, height: 1000, includesText: tvdbWithText ? true : false, score: 9 },
           { id: 2, image: "https://artworks.thetvdb.com/banners/v4/fanart/2.jpg", language: "eng", type: 3, width: 1920, height: 1080, includesText: false, score: 9.9 },
         ],
       })
@@ -118,15 +129,7 @@ async function router(input: unknown): Promise<Response> {
     })
   }
   if (url.includes("/keywords")) return Response.json({ id, keywords: [] })
-  if (/\/3\/(?:movie|tv)\/\d+/.test(url)) {
-    // Come TMDB: con append_to_response=external_ids il blocco arriva DENTRO
-    // i details, che è il motivo per cui la route non fa più la seconda call.
-    const details: Record<string, unknown> = { ...tmdbDetails(id) }
-    if (url.includes("append_to_response=external_ids")) {
-      details.external_ids = { id, imdb_id: `tt${id}`, tvdb_id: 75710 }
-    }
-    return Response.json(details)
-  }
+  if (/\/3\/(?:movie|tv)\/\d+/.test(url)) return Response.json(tmdbDetails(id))
   throw new Error(`tvdb-rescue router: URL non gestito ${url.slice(0, 120)}`)
 }
 
@@ -149,6 +152,7 @@ describe("B1 TVDB poster rescue (no TMDB clean + logo + key)", () => {
     __resetCircuitBreaker()
     clearTvdbCache()
     requestedUrls.length = 0
+    tvdbWithText = false
     posterPng = await sharp({
       create: { width: 500, height: 750, channels: 3, background: "#28304a" },
     })
@@ -170,7 +174,7 @@ describe("B1 TVDB poster rescue (no TMDB clean + logo + key)", () => {
   it("renders 200 with the TVDB textless poster and keeps the logo", async () => {
     const { res, buf } = await getPoster("tv", 630101, "&tvdb_key=K")
     expect(res.status).toBe(200)
-    expect(res.headers.get("content-type")).toContain("image/jpeg")
+    expect(res.headers.get("content-type")).toContain("image/webp")
     const meta = await sharp(buf).metadata()
     expect(meta.width).toBe(500)
     expect(meta.height).toBe(750)
@@ -187,5 +191,36 @@ describe("B1 TVDB poster rescue (no TMDB clean + logo + key)", () => {
     const meta = await sharp(buf).metadata()
     expect(meta.width).toBe(500)
     expect(meta.height).toBe(750)
+  })
+
+  it("rescue con testo: niente logo sopra (no doppio logo), blur forzato a 20/80", async () => {
+    tvdbWithText = true
+    // Stile Stremio unmapped: default globali iniettati nell'URL.
+    const res = await posterGET(
+      new NextRequest("http://localhost:3000/api/poster/tv/630103?api_key=test&tvdb_key=K&gradHeight=30&bf=50&debug=1"),
+      { params: Promise.resolve({ type: "tv", id: "630103" }) },
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    // Base TVDB con testo, logo azzerato.
+    expect(String(body.images.poster)).toContain("artworks.thetvdb.com")
+    expect(body.images.logo).toBeNull()
+    // Poster finale non-clean: i default 30/50 non vincono sul profilo 20/80.
+    expect(body.appearance.blurHeight).toBe(20)
+    expect(body.appearance.blurFade).toBe(80)
+  })
+
+  it("rescue textless: logo tenuto e blur ai default (base clean)", async () => {
+    const res = await posterGET(
+      new NextRequest("http://localhost:3000/api/poster/tv/630104?api_key=test&tvdb_key=K&gradHeight=30&bf=50&debug=1"),
+      { params: Promise.resolve({ type: "tv", id: "630104" }) },
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(String(body.images.poster)).toContain("artworks.thetvdb.com")
+    expect(body.images.logo).toContain("/logo630104.png")
+    // Base clean-equivalente: nessuna forzatura.
+    expect(body.appearance.blurHeight).toBe(30)
+    expect(body.appearance.blurFade).toBe(50)
   })
 })

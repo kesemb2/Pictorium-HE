@@ -14,6 +14,7 @@ vi.mock("@/lib/rate-limit", () => ({
 
 vi.mock("@/lib/tmdb", () => ({
   getImages: vi.fn(),
+  resolveRouteApiKey: vi.fn(async () => undefined),
 }))
 
 const { GET } = await import("@/app/api/tmdb/[id]/images/route")

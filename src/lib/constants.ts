@@ -12,3 +12,11 @@ export const GENRE_BAR_PADDING_FACTOR = 0.5
 export const POSTER_WIDTH_BASE = 380
 export const RANKING_FONT_SIZE_BASE = 23
 export const GENRE_FONT_SIZE_BASE = 24
+
+// Canvas poster (browser-safe: questo modulo non importa sharp né Node API,
+// quindi è importabile dai componenti client).
+// Portrait standard 500×750 vive in image-utils.ts (server, con sharp);
+// qui solo le dimensioni landscape 16:9, necessarie anche al client
+// (slider logo, preview) senza trascinare sharp nel bundle browser.
+export const LAND_W = 768
+export const LAND_H = 432

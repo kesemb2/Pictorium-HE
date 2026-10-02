@@ -4,10 +4,12 @@ import { NextResponse } from "next/server"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { DATA_DIR } from "@/lib/data-dir"
 import { getAll, getStorageMode } from "@/lib/store"
-import { checkTmdbEndpoint } from "@/lib/tmdb"
+import { getStorageBackend } from "@/lib/kv"
+import { checkTmdbEndpoint, resolveUserApiKeys } from "@/lib/tmdb"
 import { getJWRankings } from "@/lib/justwatch"
 import { getTop10 } from "@/lib/flixpatrol"
-import { getFanartMovie, isFanartEnabled } from "@/lib/fanart"
+import { getFanartMovie, isFanartEnabled } from "@/lib/fanart-artwork"
+import { extractUserParam, getScopedUserId, checkUserAuth, userDir } from "@/lib/user-auth"
 
 // Fix L15: i campi streaming devono testare DAVVERO JustWatch e FlixPatrol
 // (prima testavano due endpoint TMDB, fuorviante). I probe girano solo con
@@ -113,12 +115,18 @@ export async function GET(request: Request) {
   const rl = await rateLimit(rateLimitKey(request), "default")
   if (!rl.ok) return rateLimitResponse(rl.retAfter)
 
-  // S9: la chiave arriva via header x-api-key (solo richiesta: non esiste più
-  // chiave d'istanza), MAI dalla query string: un health-check come
-  // `GET /api/health?api_key=<REAL>` registrerebbe la chiave nei log di
-  // accesso di proxy/CDN/host. Nell'URL OUTBOUND verso api.themoviedb.org la
-  // chiave resta in query perché la v3 TMDB la richiede così (vedi tmdb.ts).
-  const apiKey = request.headers.get("x-api-key") || ""
+  const rawUser = extractUserParam(request)
+  // Anti-oracle (v1.23.0): ?u=<uuid> senza credenziale dello spazio veniva
+  // usato per testare le chiavi TMDB private altrui e contarne i mapping.
+  // Il namespace vale solo con auth verificata, altrimenti stato globale.
+  const claimedUser = getScopedUserId(rawUser)
+  const scopedUserId = claimedUser && (await checkUserAuth(request, claimedUser)) ? claimedUser : null
+
+  // Risolve la chiave da header x-api-key, namespace utente (?u= o /u/), o fallback d'istanza.
+  // Il namespace vale solo se autenticato (scopedUserId sopra): passare
+  // l'override esplicito impedisce a resolveRouteApiKey di ri-derivare ?u=
+  // da sola e testare chiavi private altrui (anti-oracle).
+  const apiKey = (await resolveUserApiKeys(request, scopedUserId)).tmdb.key || ""
 
   const [tmdbTrending, tmdbSearch, tmdbPopular, externalIds] = apiKey
     ? await Promise.all([
@@ -144,12 +152,15 @@ export async function GET(request: Request) {
   // il suo stato va detto anche a chi non ha ancora messo la chiave TMDB.
   const fanart = await probeFanart()
 
-  const mappingsFile = path.join(DATA_DIR, "mappings.json")
-  const defaultsFile = path.join(DATA_DIR, "defaults.json")
+  const targetDir = scopedUserId ? userDir(scopedUserId) : DATA_DIR
+  const mappingsFile = path.join(targetDir, "mappings.json")
+  const defaultsFile = path.join(targetDir, "defaults.json")
 
-  await fsp.mkdir(DATA_DIR, { recursive: true }).catch(() => {})
+  if (!scopedUserId) {
+    await fsp.mkdir(DATA_DIR, { recursive: true }).catch(() => {})
+  }
 
-  const mappings = await getAll().catch(() => [])
+  const mappings = await getAll(scopedUserId).catch(() => [])
   const lastMappingUpdatedAt = mappings
     .map((m) => m.updatedAt)
     .filter(Boolean)
@@ -157,19 +168,23 @@ export async function GET(request: Request) {
     .at(-1) ?? null
 
   const storageMode = getStorageMode()
+  const dirToCheck = (await fileExists(targetDir)) ? targetDir : DATA_DIR
 
   const storage = {
     mode: storageMode,
+    // Diagnostica: quale backend KV è attivo ("redis" nativo, "upstash" REST, null = file).
+    // `mode` resta il contratto ("kv" | "file"): Redis conta come "kv".
+    storageBackend: getStorageBackend(),
     // dataDir NON esposto: rivelerebbe il path assoluto del filesystem (info leak)
-    dataDirExists: storageMode === "file" ? await fileExists(DATA_DIR) : null,
-    dataDirWritable: storageMode === "file" ? await canWriteDir(DATA_DIR) : null,
+    dataDirExists: storageMode === "file" ? await fileExists(targetDir) : null,
+    dataDirWritable: storageMode === "file" ? await canWriteDir(dirToCheck) : null,
     mappingsFileExists: storageMode === "file" ? await fileExists(mappingsFile) : null,
     dataFileExists: storageMode === "file" ? await fileExists(mappingsFile) : null,
     mappingsReadable: storageMode === "file" ? await canRead(mappingsFile) : null,
-    mappingsWritable: storageMode === "file" ? await canWriteDir(DATA_DIR) : null,
+    mappingsWritable: storageMode === "file" ? await canWriteDir(dirToCheck) : null,
     defaultsFileExists: storageMode === "file" ? await fileExists(defaultsFile) : null,
     defaultsReadable: storageMode === "file" ? await canRead(defaultsFile) : null,
-    defaultsWritable: storageMode === "file" ? await canWriteDir(DATA_DIR) : null,
+    defaultsWritable: storageMode === "file" ? await canWriteDir(dirToCheck) : null,
     mappingCount: mappings.length,
     mappingsCount: mappings.length,
     lastMappingUpdatedAt,

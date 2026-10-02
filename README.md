@@ -12,27 +12,35 @@ pinned: false
   <img src="public/pictorium.png" alt="Pictorium" width="380" />
 </p>
 
-<h3 align="center">Generatore Dinamico di Poster Cinematografici per Stremio & Media Center</h3>
+<h3 align="center">Dynamic Movie & TV Poster Generator for Stremio & Media Centers</h3>
 
 <p align="center">
-  <a href="README.md"><b>🇮🇹 Leggi in Italiano</b></a> • <a href="README.en.md"><b>🇬🇧 Read in English</b></a>
+  <a href="README.md"><b>🇬🇧 Read in English</b></a> • <a href="README.it.md"><b>🇮🇹 Leggi in Italiano</b></a>
 </p>
 
 <p align="center">
-  Locandine clean senza testo, loghi vettoriali ad alta definizione, rating IMDb/TMDB/Rotten Tomatoes, badge qualità streaming 4K, classifiche Netflix Top 10 e ordinamento stagioni intelligente. Tutto renderizzato al volo con Sharp C++ & SVG.
+  Textless clean posters, high-definition vector logos, IMDb/TMDB/Rotten Tomatoes ratings, 4K streaming quality badges, live Netflix Top 10 ribbons, and smart season splitting. All rendered on the fly with Sharp C++ & SVG.
 </p>
 
 <p align="center">
+  <a href="https://discord.gg/sYfWyXYVUp"><img src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord Community" /></a>
   <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FEful97%2FPictorium"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
   <a href="#-docker--compose"><img src="https://img.shields.io/badge/Docker-Supported-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker" /></a>
   <img src="https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js&logoColor=white" alt="Next.js 16" />
-  <img src="https://img.shields.io/badge/Node.js-%3E%3D20-green?style=flat-square&logo=node.js&logoColor=white" alt="Node.js" />
+  <img src="https://img.shields.io/badge/Node.js-%3E%3D22-green?style=flat-square&logo=node.js&logoColor=white" alt="Node.js" />
   <img src="https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square" alt="License AGPLv3" />
+  <a href="https://github.com/Eful97/Pictorium/actions/workflows/ci.yml"><img src="https://github.com/Eful97/Pictorium/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
 </p>
+
+> [!TIP]
+> 🚀 **Free public instances**: create your personal space with your TMDB key on **[pictorium.duckdns.org](https://pictorium.duckdns.org)** (community VPS) or on **[pictorium.elfhosted.com](https://pictorium.elfhosted.com/)** (ElfHosted).  
+> 🧝 **Hosted private instance**: deploy your own dedicated instance 1-click on **[ElfHosted](https://store.elfhosted.com/product/pictorium/)**.  
+> 💬 **Join the community on [Discord](https://discord.gg/sYfWyXYVUp)** for support, updates, bug reports, and feature requests.  
+> ☕ Support the project on [Ko-fi](https://ko-fi.com/eful97) to help keep the public VPS running.
 
 ---
 
-## 📸 Anteprima
+## 📸 Preview
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/Eful97/Pictorium/master/public/Screen/home.png" alt="Pictorium Home" width="100%" style="border-radius: 8px; margin-bottom: 8px;" />
@@ -44,224 +52,201 @@ pinned: false
     <td width="50%"><img src="https://raw.githubusercontent.com/Eful97/Pictorium/master/public/Screen/myposters.png" alt="Pictorium My Posters" style="border-radius: 6px;" /></td>
   </tr>
   <tr>
-    <td align="center"><em>Editor WYSIWYG & Anteprima Live</em></td>
-    <td align="center"><em>I Miei Poster & Libreria Personale</em></td>
+    <td align="center"><em>WYSIWYG Editor & Live Preview</em></td>
+    <td align="center"><em>My Posters & Personal Library</em></td>
   </tr>
   <tr>
     <td colspan="2"><img src="https://raw.githubusercontent.com/Eful97/Pictorium/master/public/Screen/catalogs.png" alt="Pictorium Catalogs" style="border-radius: 6px; margin-top: 8px;" /></td>
   </tr>
   <tr>
-    <td align="center" colspan="2"><em>Cataloghi Dinamici & Classifiche Streaming JustWatch</em></td>
+    <td align="center" colspan="2"><em>Dynamic Catalogs & JustWatch Streaming Charts</em></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="https://raw.githubusercontent.com/Eful97/Pictorium/master/public/Screen/landscape-editor.png" alt="Landscape 16:9 Editor — Ted Lasso" style="border-radius: 6px; margin-top: 8px;" /></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2"><em>Landscape 16:9 Editor: backdrops, baked-in logo & Live Preview</em></td>
   </tr>
 </table>
 
 <div align="center" style="margin-top: 12px;">
-  <img src="https://raw.githubusercontent.com/Eful97/Pictorium/master/public/Screen/1405.jpg" alt="Poster Demo" width="32%" style="border-radius: 6px;" />
-  <img src="https://raw.githubusercontent.com/Eful97/Pictorium/master/public/Screen/155.jpg" alt="Poster Demo — The Dark Knight" width="32%" style="border-radius: 6px;" />
-  <img src="https://raw.githubusercontent.com/Eful97/Pictorium/master/public/Screen/66732.jpg" alt="Poster Demo — Stranger Things" width="32%" style="border-radius: 6px;" />
+  <img src="https://raw.githubusercontent.com/Eful97/Pictorium/master/public/Screen/1405.jpg" alt="Poster Demo — Dexter" width="31%" style="border-radius: 6px; margin: 1%;" />
+  <img src="https://raw.githubusercontent.com/Eful97/Pictorium/master/public/Screen/155.jpg" alt="Poster Demo — The Dark Knight" width="31%" style="border-radius: 6px; margin: 1%;" />
+  <img src="https://raw.githubusercontent.com/Eful97/Pictorium/master/public/Screen/66732.jpg" alt="Poster Demo — Stranger Things" width="31%" style="border-radius: 6px; margin: 1%;" />
 </div>
 
-<div align="center" style="margin-top: 12px;">
-  <img src="https://raw.githubusercontent.com/Eful97/Pictorium/master/public/Screen/1368337.jpg" alt="Effetto Pre-Digitale — Coming Soon" width="32%" style="border-radius: 6px;" />
+<div align="center" style="margin-top: 8px;">
+  <img src="https://raw.githubusercontent.com/Eful97/Pictorium/master/public/Screen/landscape.jpg" alt="Landscape 16:9 Poster Demo — Lanterns (HBO)" width="64%" style="border-radius: 6px;" />
   <br />
-  <em>Effetto Pre-Digitale: velo scuro + nastro "Coming Soon" sui film non ancora in streaming</em>
+  <em>16:9 landscape poster with baked-in logo, rank ribbon and genre badge</em>
+</div>
+
+<div align="center" style="margin-top: 8px;">
+  <img src="https://raw.githubusercontent.com/Eful97/Pictorium/master/public/Screen/1368337.jpg" alt="Pre-Digital Effect — Coming Soon" width="31%" style="border-radius: 6px;" />
+  <br />
+  <em>Pre-Digital Effect: dark veil + "Coming Soon" ribbon on movies not yet streaming</em>
 </div>
 
 ---
 
-## ⚡ Caratteristiche Principali
+## ⚡ Key Features
 
-| Funzionalità | Descrizione |
+| Feature | Description |
 |---|---|
-| 🎯 **Motore Grafico WYSIWYG** | Un unico endpoint (`/api/poster/{type}/{id}`) basato su Sharp C++ ed SVG serve l'anteprima web in tempo reale e il poster finale su Stremio con pixel-perfect sync. |
-| 📦 **Addon 100% Autonomo** | Fornisce direttamente a Stremio schede dettagliate, trame localizzate, loghi trasparenti, sfondi 4K, trailer YouTube e tutte le stagioni con thumbnail ed episodi tradotti. |
-| 📺 **Ordinamento Intelligente Parti & Anime** | Rileva automaticamente i gruppi **Original Parts** (es. *La Casa di Carta*, *Lupin*) e spacchetta le mega-stagioni uniche degli anime su TMDB (es. *Re:ZERO*, *Jujutsu Kaisen*) nelle vere stagioni con cui sono distribuiti. |
-| 🏷️ **Badge Qualità & Voti** | Visualizza in tempo reale risoluzione video (4K/FHD/HD), voti aggregati da oltre 16 fonti (IMDb, TMDB, Rotten Tomatoes, Letterboxd, MAL), premi Oscar/Cannes e nastri Netflix Top 10. |
-| 🌐 **Cataloghi Personalizzati** | Importa watchlist e collezioni da **Letterboxd, Trakt, TMDb, TheTVDB, MDBList** e classifiche trend in tempo reale tramite JustWatch GraphQL. |
-| 🌍 **Interfaccia Multilingua Dinamica** | Interfaccia localizzata (Italiano, English, Français, Deutsch, Español, Português, 日本語, 한국어) con cambio lingua istantaneo in tempo reale senza ricaricare la pagina. |
-| 🔒 **Protezione con PIN & Sicurezza** | Protezione ad ogni avvio e ricaricamento (F5) per l'editor, configurabile subito nel wizard iniziale (Step 3) o nelle Impostazioni. Locandine, manifest e cataloghi per Stremio restano 100% aperti e sempre funzionanti. |
-| ⚡ **Zero Conflitti di Cache** | Versioning deterministico con `RENDER_VERSION` e `APP_VERSION` automatiche. Se cambi uno stile, Stremio aggiorna istantaneamente le immagini. |
+| 🎯 **WYSIWYG Graphics Engine** | A single endpoint (`/api/poster/{type}/{id}`) powered by Sharp C++ and SVG serves both the real-time web preview and the final poster on Stremio, Nuvio, and media centers with pixel-perfect sync. |
+| 📦 **100% Standalone Addon** | Directly delivers rich metadata cards, multilingual synopses, transparent logos, 4K backdrops, YouTube trailers, and full seasons with thumbnails and translated episodes to Stremio. |
+| 📺 **Smart Parts & Anime Splitting** | Automatically detects **Original Parts** (*Money Heist*, *Lupin*) and splits giant single-season anime entries on TMDB (*Re:ZERO*, *Jujutsu Kaisen*) into their true release seasons. |
+| 🏷️ **Quality Badges & Ratings** | Real-time video resolution detection (4K/FHD/HD), aggregated ratings from over 16 sources (IMDb, TMDB, Rotten Tomatoes, Letterboxd, MAL), Academy/Cannes awards, and Netflix Top 10 ribbons. |
+| 🌐 **Custom Catalogs & Lists** | Import watchlists and custom lists from **Letterboxd, Trakt, TMDb, TheTVDB (your API key), MDBList**, plus official IMDb CSV exports, along with real-time trending charts via JustWatch GraphQL. |
+| 🌍 **Dynamic Multilingual UI** | Fully localized interface in 16 languages with instant real-time language switching without page refresh. |
+| 🔒 **PIN Protection & User Spaces** | PIN code lock protection for single instances, or full multi-user support with isolated spaces, AES-256-GCM encryption, and full-space backup/restore. Stremio manifests and posters remain permanently functional. |
+| ⚡ **Zero Cache Conflicts** | Deterministic versioning with automated `RENDER_VERSION` and `APP_VERSION`. Change any styling parameter and Stremio updates cached images immediately. |
 
 ---
 
-## 🛠️ Funzionalità in Dettaglio
+## 🛠️ Detailed Features
 
-### 🖼️ Locandine, Loghi & Grafica
-* **Selezione Poster Clean**: Scegli in un click la locandina senza testo tra i candidati ufficiali TMDB (`iso_639_1 === null`).
-* **Algoritmo Best-Fit Intelligente**: Analizza luminosità e zone vuote per scalare e posizionare il logo evitando di coprire i volti.
-* **Sfocatura Progressiva (Sharp C++)**: blur a intensità crescente verso il fondo con tinta di scena same-hue, scurimento quadratico e anti-seam, in pochi ms e a basso consumo di RAM. Intensità tinta regolabile per-titolo e globale (default 20%).
-* **Rotazione Automatica 24h**: Alterna automaticamente ogni giorno più poster salvati per lo stesso titolo.
-* **Loghi Network Ufficiali**: Riconoscimento ed embedding automatico per Netflix, Prime Video, Disney+, Apple TV+, HBO Max, Paramount+, Sky/NOW, Crunchyroll, Rai, Mediaset e oltre 30 studi (Marvel, Pixar, Ghibli, Warner Bros, A24).
+### 🖼️ Posters, Logos & Graphics
+* **Clean Poster Selection**: Select textless posters with one click from official TMDB candidates (`iso_639_1 === null`).
+* **Custom Poster URL Import**: Import any artwork via direct URL, Pinterest, Imgur, or Reddit with live preview, tile management, and persistent custom artwork.
+* **Smart Best-Fit Algorithm**: Analyzes brightness and empty space to automatically scale and position logos without obscuring faces.
+* **Cinematic Background Blur (Sharp C++)**: Progressive intensity toward the base with same-hue scene tint, quadratic darkening and anti-seam, in a few ms with minimal RAM usage.
+* **24h Auto-Rotation**: Automatically rotates through multiple saved clean posters daily for the same title.
+* **Official Network Logos**: Automatic detection and embedding for Netflix, Prime Video, Disney+, Apple TV+, HBO Max, Paramount+, Sky/NOW, Crunchyroll, Rai, Mediaset and 30+ studios (Marvel, Pixar, Ghibli, Warner Bros, A24).
 
-### 🏷️ Badge, Rating & Riconoscimenti
-* **✨ Qualità Streaming (4K / FHD / HD / SD)**: Rilevata in tempo reale dai flussi di Stremio con fallback automatico su JustWatch.
-* **7 Stili Badge Genere & Voto**: *Shadow, Pill, Bar, Colored, Bordo, Vetro, Minimal* (`Genere | Voto | Anno`) con palette adattiva alla locandina.
-* **Nastro Verticale Netflix Top 10**: Il caratteristico nastro rosso laterale con posizione live (supporto dedicato anche per Anime).
-* **Premi Cinematografici**: Riconoscimento automatico Oscar, Cannes, BAFTA, Emmy e badge *"Absolute Cinema"* per i titoli della IMDb Top 250.
-* **Classifiche Sempre Sincronizzate**: Il badge Top 10/20 segue la classifica live; se un titolo esce dalla chart, il badge si aggiorna da solo.
-* **✨ Effetto Pre-Digitale (Coming Soon)**: Per i film usciti al cinema ma non ancora in streaming (rilevati via JustWatch con fallback alla data digitale TMDB): velo scuro sul poster e nastro rosso "Coming Soon". Solo film, default OFF, attivabile per-titolo, via `?pre=1`, config-token o variabile d'ambiente.
-* **🔌 Rating Custom Esterni**: Riga di pill con i voti di qualsiasi API esterna (via IMDb ID di TMDB): formati decimali/percentuali, autenticazione su header (solo HTTPS), display per-titolo e endpoint configurabile dall'editor — la chiave API resta sempre variabile d'ambiente.
+### 🏷️ Badges, Ratings & Accolades
+* **✨ Streaming Quality (4K / FHD / HD / SD)**: Detected live from Stremio video streams with automatic fallback to JustWatch.
+* **7 Genre & Rating Badge Styles**: *Shadow, Pill, Bar, Colored, Border, Glass, Minimal* (`Genre | Rating | Year`) with adaptive palette matching the poster.
+* **Vertical Netflix Top 10 Ribbon**: The iconic red side ribbon with live rank position (dedicated support for Anime series).
+* **Film Awards & Accolades**: Automatic recognition of Oscars, Cannes, BAFTA, Emmy, and the *"Absolute Cinema"* badge for IMDb Top 250 titles.
+* **Always-in-Sync Charts**: Top 10/20 badges track live charts; if a title leaves the ranking, its badge updates automatically.
+* **✨ Pre-Digital Effect (Coming Soon)**: For movies out in theaters but not yet streaming (detected via JustWatch/TMDB): darkened poster with a red "Coming Soon" corner ribbon.
+* **🔌 Custom Rating Provider**: Display external ratings from any HTTP(S) API (via IMDb ID) with dedicated pills. See [docs/custom-rating.md](docs/custom-rating.md).
 
-### 📺 Stagioni, Episodi & Anime
-* **✨ Rilevamento Automatico Parti**: Passa in automatico da stagioni standard a Parti originali per serie come *La Casa di Carta* (5 parti) e *Lupin* (4 parti).
-* **🌀 Spacchettamento Anime**: Risolve la catalogazione TMDB che comprime intere serie anime in una sola stagione (es. *Re:ZERO* 85 episodi, *Jujutsu Kaisen* 59 episodi), ripristinando la corretta suddivisione stagionale (S1, S2, S3, S4 + Speciali in S0).
-* **Supporto TVDB & AniZip**: Possibilità di selezionare manualmente gli ordinamenti alternativi TheTVDB (*Aired, DVD, Absolute, Alternate*) o AniZip (*AniList / AniDB*).
-* **Anteprima Episodi Live**: Visualizza prima di salvare esattamente come appariranno le stagioni, i titoli e le miniature in Stremio.
+### 📺 Seasons, Episodes & Anime
+* **✨ Smart Parts Detection**: Automatically detects split-part series like *Money Heist* (5 parts) or *Lupin* (4 parts).
+* **🌀 Anime Season Unpacking**: Fixes TMDB's compression of multi-season anime into a single season, restoring official seasons (S1, S2, S3, S4 + Specials in S0).
+* **TVDB & AniZip Support**: Manually select alternate ordering from TheTVDB (*Aired, DVD, Absolute, Alternate*) or AniZip (*AniList / AniDB*).
+* **Live Episode Preview**: See exactly how seasons, episode titles, and thumbnails will appear on Stremio before saving.
+ 
+### 🗂️ Library, Automation & Backups
+* **Batch Poster Management**: Multi-select saved posters in "My Posters" to perform batch deletions and keep your collection tidy.
+* **Full Space Backup & Restore**: One-click export and import of your entire space configuration, saved posters, custom presets, and preferences.
+* **Nuvio & AIOMetadata Auto URL**: Dedicated poster template URLs for external catalog managers (e.g. Nuvio and AIOMetadata) with automatic TMDB ID resolution.
 
-### 🔌 Custom Rating Provider
+### 🔒 Security: PIN & Multi-User Spaces
 
-Pictorium può mostrare i voti di qualsiasi API esterna usando l'IMDb ID del titolo.
+#### PIN Lock (Single / Personal Instances)
+* **Lock on Launch & Refresh**: Password prompt appears on app launch and page reload (F5) to protect your settings and saved posters.
+* **Quick Setup**: Configure your PIN code in seconds during Step 3 of the setup wizard, or manage it anytime in Settings.
+* **Zero Stremio Impact**: PIN only protects the web editor; Stremio endpoints (`/manifest.json`, `/api/poster/*`, `/catalog/*`) remain open and functional.
+* **Rotation**: when a PIN is set using an admin token, rotating `PICTORIUM_ADMIN_TOKEN` automatically invalidates it (cryptographic binding against persistence). After rotating the token, simply set a new PIN if desired.
 
-Endpoint di esempio (il segnaposto `{imdbId}` viene sostituito):
-```text
-https://example.com/ratings/{imdbId}
-```
+#### Multi-User Spaces (Public / Shared Instances)
+When `PICTORIUM_MULTI_USER=1` is enabled, multiple users can share a single server with complete isolation:
+* **Personal Space via UUID**: Each user has their own URL (`/u/<uuid>/configure`) with separate mappings, preferences, and API keys (TMDB, MDBList, TVDB, Simkl, Fanart.tv).
+* **Encrypted at Rest**: User API keys are stored encrypted on disk using AES-256-GCM via `PROFILE_ENCRYPTION_KEY`.
+* **Authentication & Recovery**:
+  * **Session Password**: Required on each visit to unlock the editor (never stored permanently in the browser).
+  * **Recovery Key (Secret)**: Single-use code shown upon account creation to recover access or rotate credentials.
+* **Anti-Brute-Force Protection**: Automatic rate limiting on incorrect password attempts to prevent attacks.
 
-Risposta attesa:
-```json
-{
-  "ratings": [
-    { "id": "source1", "name": "Source 1", "value": 8.8, "format": "decimal" },
-    { "id": "source2", "name": "Source 2", "value": 87, "format": "percent" }
-  ]
-}
-```
-
-I voti appaiono in una riga di pill sopra il badge genere/voto (max 5 mostrate). Il provider non blocca mai il render: errori, timeout (1.5s) e risposte invalide danno riga vuota. La chiave API viaggia solo in header e solo su HTTPS (HTTP + chiave = rifiutato); gli indirizzi privati/loopback sono bloccati. I poster con rating attivi non usano la cache immutable annuale, così i voti si aggiornano alla scadenza del TTL.
-
-Configurazione: endpoint dall'editor (Impostazioni, vince sull'env) o via env; chiave API e header restano sempre env (mai in UI, token o URL). Il display è per-titolo (`?cr=0`, mapping, config-token, default ON) in AND con il provider abilitato (`PICTORIUM_CUSTOM_RATING_ENABLED`).
-
-Dettagli completi in [docs/custom-rating.md](docs/custom-rating.md).
-
-### 🔒 Sicurezza & Protezione Pannello (PIN)
-* **Blocco Pannello ad Ogni Avvio & Ricarica (F5)**: Richiesta automatica del codice PIN all'avvio dell'app e ad ogni ricaricamento di pagina per proteggere i tuoi poster salvati e le modifiche.
-* **Configurazione Guidata Iniziale**: Al primo avvio, lo Step 3 del wizard iniziale ti consente di impostare subito il PIN di protezione in pochi secondi (o saltare il passaggio).
-* **Tastierino Virtuale & Tastiera Fisica**: Inserimento agevole sia da smartphone/tablet che da desktop, con feedback di sicurezza visivo ed errore su codice errato.
-* **Gestione Flessibile**: Modifica o rimozione del PIN in qualsiasi momento dalla sezione *Dati & Cache* nel pannello Impostazioni.
-* **Stremio 100% Invariato**: Il PIN protegge esclusivamente l'editor web: gli endpoint Stremio (`/manifest.json`, `/api/poster/*`, `/catalog/*`, `/api/health`) rimangono sempre accessibili e senza alcuna interruzione.
+> 📢 To report vulnerabilities privately (never via public issues), see [SECURITY.md](SECURITY.md).
 
 ---
 
-## 🚀 Deploy Rapido
+## 🚀 Quick Deploy
 
-Scegli la modalità più comoda per la tua installazione:
-
-| Piattaforma | Costo | Tipologia | Persistenza | Ideale per |
+| Platform | Cost | Type | Persistence | Best For |
 |---|---|---|---|---|
-| [▲ **Vercel**](#-vercel) | **Gratis** | Serverless | Upstash Redis (KV) | **Consigliato**: 1 click, zero manutenzione, CDN globale ([📺 Video Guida](https://www.youtube.com/watch?v=FP6VJ2vGYiY)) |
-| [🐳 **Docker Compose**](#-docker--compose) | **Gratis** | Container | Volume locale (`/data`) | NAS, Home Server, mini-PC (Unraid/TrueNAS) |
-| [🤗 **Hugging Face**](#-hugging-face-spaces) | **Gratis** | Docker (16GB RAM) | Storage Bucket | Ottima RAM gratuita per istanze condivise |
-| [🦾 **Oracle Cloud**](#-altre-modalit-di-installazione) | **Gratis** | VPS ARM (24GB RAM) | Disco Locale | Sempre online con risorse dedicate a costo zero |
+| [▲ **Vercel**](#-vercel-recommended) | **Free** | Serverless | Upstash Redis (KV) | **Recommended**: 1-click, zero maintenance, global CDN ([📺 Video Guide](https://www.youtube.com/watch?v=FP6VJ2vGYiY)) |
+| [🐳 **Docker Compose**](#-docker--compose) | **Free** | Container | Local Volume (`/data`) | NAS, Home Server, mini-PC (Unraid, TrueNAS, CasaOS) |
+| [🤗 **Hugging Face**](#-other-installation-methods) | **Free** | Docker (16GB RAM) | Storage Bucket | Great free RAM for shared instances |
+| [🦾 **Oracle Cloud**](#-other-installation-methods) | **Free** | VPS ARM (24GB RAM) | Local Disk | Dedicated free always-on cloud server |
 
 ---
 
-### ☁️ Vercel (Gratuito & Consigliato)
+### ▲ Vercel (Recommended)
 
-[![Video Guida YouTube](https://img.shields.io/badge/YouTube-Video_Guida_Setup-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=FP6VJ2vGYiY)
+[![YouTube Video Guide](https://img.shields.io/badge/YouTube-Setup_Video_Guide-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=FP6VJ2vGYiY)
 
-> 📺 **Video Tutorial Passo-Passo**: preferisci seguire la procedura a video? Guarda la [**Video Guida su YouTube**](https://www.youtube.com/watch?v=FP6VJ2vGYiY) per completare il setup in meno di 2 minuti.
+> 📺 **Video Tutorial**: Follow the [step-by-step YouTube guide](https://www.youtube.com/watch?v=FP6VJ2vGYiY) to complete setup in under 2 minutes.
 
-Ideale se non hai un server domestico. Setup in 2 minuti a costo zero con aggiornamenti automatici a 1 click:
-
-1. **Ottieni la tua API Key TMDB (gratis)**:
-   * Crea un account su [themoviedb.org](https://www.themoviedb.org/signup).
-   * Vai in **Impostazioni → API** ([themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)) e genera una chiave API (*Developer*).
-   * Copia la **Chiave API (autenticazione v3)** (stringa di 32 caratteri, *non* il token di lettura lungo).
-2. **Fai il Fork della Repository**:
-   * Vai su [**github.com/Eful97/Pictorium**](https://github.com/Eful97/Pictorium).
-   * Clicca sul pulsante **Fork** in alto a destra e poi su **Create fork** (puoi lasciarla sia pubblica che privata).
-3. **Importa il progetto su Vercel**:
-   * Vai su [vercel.com](https://vercel.com) ed effettua l'accesso con il tuo account GitHub.
-   * Clicca in alto su **Add New…** → **Project**.
-   * Trova la tua repository **Pictorium** appena forkata e clicca su **Import**.
-   * Nella sezione **Environment Variables**, inserisci:
-     * `PICTORIUM_TMDB_KEY` = la tua chiave TMDB v3 (32 caratteri).
+1. **Get your free TMDB API Key**:
+   * Sign up at [themoviedb.org](https://www.themoviedb.org/signup) and head to **Settings → API**.
+   * Copy the **API Key (v3 auth)** (32-character string).
+2. **Fork the repository**:
+   * Click **Fork** at the top right of [github.com/Eful97/Pictorium](https://github.com/Eful97/Pictorium).
+3. **Import to Vercel**:
+   * Sign in to [vercel.com](https://vercel.com) and click **Add New… → Project**.
+   * Import your Pictorium fork and configure Environment Variables:
+     * `PICTORIUM_TMDB_KEY` = *your TMDB v3 key*
      * `PICTORIUM_PUBLIC_INSTANCE` = `1`
-   * Clicca su **Deploy**.
-4. **Collega Upstash Redis (database gratuito per salvare i tuoi poster)**:
-   * A fine deploy, vai nella dashboard del progetto su Vercel.
-   * Clicca sulla scheda **Storage** in alto → **Connect Store** (o **Create Database**) → seleziona **Upstash (Redis)**.
-   * Scegli una regione vicina e clicca **Create & Connect** (Vercel imposterà automaticamente `KV_REST_API_URL` e `KV_REST_API_TOKEN`).
-5. **Redeploy (Passaggio fondamentale!)**:
-   * Vai nella scheda **Deployments** del progetto.
-   * Clicca sui **tre puntini (⋯)** dell'ultimo deployment e seleziona **Redeploy**.
-   * *(Nota: Vercel applica il database Upstash solo dal redeploy in poi)*.
-6. **Installazione su Stremio & PIN iniziale**:
-   * Apri l'URL generato (es. `https://tuo-pictorium.vercel.app`).
-   * Completa la configurazione guidata (Lingua, Regione e imposta il tuo **PIN di sicurezza**).
-   * Clicca su **Installa su Stremio**! *(Puoi verificare che tutto sia ok aprendo `/api/health`, che deve indicare `"storage": "kv"` e `"status": "ok"`)*.
+   * Click **Deploy**.
+4. **Connect Upstash Redis Database (Free)**:
+   * Once deployed, open the project dashboard on Vercel.
+   * Go to **Storage → Connect Store → Upstash (Redis)** and click Create & Connect.
+5. **Redeploy**:
+   * Under the **Deployments** tab, click the three dots (**⋯**) on the latest deployment and select **Redeploy**.
+6. **Install on Stremio**:
+   * Open your instance URL (e.g. `https://your-pictorium.vercel.app`), complete the initial setup wizard, and click **Install to Stremio**!
 
----
-
-#### 🔄 Come Aggiornare in Futuro (1 Click con Sync Fork)
-Avendo fatto il Fork al punto 2, aggiornare la tua istanza quando escono nuove versioni richiede un solo click, senza dover riconfigurare nulla:
-1. Apri la pagina del tuo fork su GitHub (`https://github.com/<tuo-username>/Pictorium`).
-2. Sotto il titolo del repository clicca sul pulsante **Sync fork** → **Update branch**.
-3. Vercel rileva subito il nuovo commit e **compila ed effettua il deploy automatico in 60 secondi** mantenendo intatti il database Upstash, le impostazioni, il PIN e i tuoi poster!
+> **Future Updates**: To update your instance, simply open your GitHub fork and click **Sync fork → Update branch**. Vercel will automatically redeploy in 60 seconds while preserving your database and settings.
 
 ---
 
 ### 🐳 Docker & Compose
 
-Crea un file `docker-compose.yml`:
+Use the `docker-compose.yml` already included in the repo (hardening, healthcheck and persistent `posterium-data` volume preconfigured) — no need to write one by hand:
 
-```yaml
-services:
-  pictorium:
-    image: eful97/pictorium:latest # o build locale: .
-    container_name: pictorium
-    restart: unless-stopped
-    ports:
-      - "${PICTORIUM_HOST_PORT:-8080}:8080" # porta host configurabile (es. PICTORIUM_HOST_PORT=9090)
-    environment:
-      - PICTORIUM_PUBLIC_INSTANCE=1
-      - PICTORIUM_TMDB_KEY=la_tua_chiave_tmdb
-      # Rating custom esterni (opzionale): endpoint anche dall'editor, chiave solo env.
-      - PICTORIUM_CUSTOM_RATING_ENABLED=1
-      - PICTORIUM_CUSTOM_RATING_ENDPOINT=https://example.com/ratings/{imdbId}
-      - PICTORIUM_CUSTOM_RATING_API_KEY=la_chiave_del_provider
-    volumes:
-      - pictorium-data:/data
-
-volumes:
-  pictorium-data:
+```bash
+git clone https://github.com/Eful97/Pictorium && cd Pictorium
+cp .env.example .env
 ```
 
-Avvia il container:
+Fill in at least `PICTORIUM_TMDB_KEY` and `PICTORIUM_ADMIN_TOKEN` (a long secret of your choice) in `.env`, then:
+
 ```bash
 docker compose up -d
 ```
-Il manifest per Stremio sarà disponibile su: `http://<IP-SERVER>:8080/manifest.json`.
+
+> The first start builds the image locally (a few minutes, longer on ARM). To start immediately with the prebuilt image: `docker compose pull pictorium && docker compose up -d --no-build`. Admin routes are closed by default: paste the token in **Settings → Admin token** (session only) to use warmup, cache and saves from the UI. Only on a trusted LAN you may use `PICTORIUM_PUBLIC_INSTANCE=1` instead of the token.
+>
+> If you came from the old example with a `pictorium-data` volume and already have saves, copy them before switching to the repo compose: `docker run --rm -v pictorium-data:/from -v posterium-data:/to alpine cp -a /from/. /to/`
+
+Your instance and Stremio manifest will be accessible at `http://<SERVER-IP>:8080`.
 
 ---
 
 <details>
-<summary><strong>👉 Altre modalità di installazione (Hugging Face, Oracle Cloud, VPS Caddy, Termux)</strong></summary>
+<summary><strong>👉 Other installation methods (ElfHosted, Hugging Face, Oracle Cloud, VPS Caddy, Termux)</strong></summary>
+
+#### 🧝 ElfHosted (Managed 1-Click / Hosted App)
+For users who prefer not to manage servers, ports, or Docker: launch a private, hosted Pictorium instance on Kubernetes directly from [ElfHosted](https://store.elfhosted.com/product/pictorium/), with automatic HTTPS, persistent storage, and zero-maintenance updates.
 
 #### 🤗 Hugging Face Spaces
-1. Crea una Space su Hugging Face con SDK **Docker** collegata al repo `Eful97/Pictorium`.
-2. In **Settings → Variables and secrets**:
+1. Create a Space on Hugging Face using the **Docker** SDK pointing to `Eful97/Pictorium`.
+2. Under **Settings → Variables and secrets**:
    * `NODE_OPTIONS` = `--max-old-space-size=1024`
    * `PICTORIUM_PUBLIC_INSTANCE` = `1`
-   * `PICTORIUM_TMDB_KEY` = *la tua chiave TMDB*
-3. In **Settings → Storage**, collega uno Storage Bucket montato su `/data`.
-4. Manifest Stremio: `https://<tua-space>.hf.space/manifest.json`.
+   * `PICTORIUM_TMDB_KEY` = *your TMDB key*
+3. Under **Settings → Storage**, attach a Storage Bucket mounted to `/data`.
 
 #### 🦾 Oracle Cloud Always Free (ARM Ampere)
 ```bash
 sudo apt update && sudo apt install -y docker.io docker-compose-v2
 git clone https://github.com/Eful97/Pictorium && cd Pictorium
-echo "PICTORIUM_PUBLIC_INSTANCE=1" > .env
-echo "PICTORIUM_TMDB_KEY=la_tua_chiave" >> .env
-sudo docker compose up -d
+cp .env.example .env
 ```
+Fill in `PICTORIUM_TMDB_KEY` and `PICTORIUM_ADMIN_TOKEN` in `.env`, then `sudo docker compose up -d` (uses the repo compose). Then paste the token in **Settings → Admin token** (session only). On an exposed instance do not use `PICTORIUM_PUBLIC_INSTANCE=1`.
 
-#### 🖥️ VPS + Caddy (HTTPS Automatico)
+#### 🖥️ VPS + Caddy (Automatic HTTPS)
 ```caddyfile
-tuodominio.com {
+yourdomain.com {
     reverse_proxy pictorium:8080
 }
 ```
+On a public domain protect the editor with `PICTORIUM_ADMIN_TOKEN` (unlock in Settings → Admin token), not with `PICTORIUM_PUBLIC_INSTANCE=1`.
 
 #### 📱 Termux (Android)
 ```bash
@@ -273,91 +258,108 @@ npm install --ignore-scripts && npm run build && npm start
 
 ---
 
-## 🔑 Configurazione & Variabili d'Ambiente
+## 🔑 Environment Variables
 
-### Variabili Essenziali
+### Core Variables
 
-> [!NOTE]
-> Tutte le variabili supportano il prefisso `PICTORIUM_*` (consigliato, es. `PICTORIUM_TMDB_KEY`) con pieno supporto retrocompatibile alle vecchie variabili `POSTERIUM_*`.
-
-| Variabile | Default | Descrizione |
+| Variable | Default | Description |
 |---|:---:|---|
-| `PICTORIUM_PUBLIC_INSTANCE` | `0` | Imposta a `1` su Vercel/HF per consentire il salvataggio dei poster e l'uso dell'editor senza token admin. |
-| `PICTORIUM_TMDB_KEY` | *(opzionale)* | Chiave API TMDB d'istanza per generare poster e cataloghi senza doverla inserire nei client. |
-| `PICTORIUM_TVDB_API_KEY` | *(opzionale)* | Chiave TheTVDB per ordinamenti stagioni alternativi e descrizioni episodi. |
-| `PICTORIUM_MDBLIST_KEY` | *(opzionale)* | Chiave MDBList per liste personalizzate e cataloghi anime. |
-| `PICTORIUM_REGION` | `IT` | Paese delle classifiche JustWatch/FlixPatrol e lingua dei titoli (`IT`, `US`, `GB`, `FR`, `DE`, `ES`, `MX`, `IL`, `JP`, `KR`, `BR`, `IN`, `CA`, `AU`, `CZ`). Overridabile per-richiesta con `?region=` e per-utente via config-token/default salvati. |
-| `PICTORIUM_DATA_DIR` | `./data` | Cartella di persistenza su disco per database e file salvati. |
-| `KV_REST_API_URL` / `TOKEN` | *(vuoto)* | Parametri di connessione Upstash Redis per deploy serverless su Vercel. |
+| `PICTORIUM_PUBLIC_INSTANCE` | `0` | Set `1` to leave admin routes open without a token (trusted LAN, public demos). On exposed instances keep `0` and use the token below. |
+| `PICTORIUM_ADMIN_TOKEN` | *(optional)* | Secret for private instances (`PUBLIC_INSTANCE=0`): paste it in Settings → Admin token (session only, dies with the tab) to enable warmup, cache clear and saves from the UI. |
+| `PICTORIUM_TMDB_KEY` | *(optional)* | Server-side TMDB API key to render posters and catalogs without client keys. |
+| `PICTORIUM_TVDB_API_KEY` | *(optional)* | TheTVDB key for alternate season ordering, episode descriptions, and TheTVDB custom lists (BYOK: request header, `tvdb_key` query, or user profile key win over this). |
+| `PICTORIUM_MDBLIST_KEY` | *(optional)* | MDBList key for custom lists and anime catalogs. |
+| `PICTORIUM_FANART_KEY` | *(optional)* | Fanart.tv project key for the vertical-posters section in the editor (server-only, never exposed to the browser). Without it the section explains it is not configured. |
+| `PICTORIUM_TRAKT_CLIENT_ID` | *(optional)* | Trakt API client ID (single Pictorium app registration) for public Trakt lists as custom catalogs. Public lists only, no OAuth. |
+| `PICTORIUM_REGION` | `IT` | Default country for streaming charts and availability (`IT`, `US`, `GB`, `FR`, `DE`, `ES`, etc.). |
+| `PICTORIUM_DATA_DIR` | `./data` | Directory path for persisting settings and saved posters on disk. In Docker it must point at a persistent volume (`/data`, `posterium-data` volume, writable by uid 1000): the data file is created on first save, so "not found" with 0 posters on a fresh install is normal. |
+| `PICTORIUM_REDIS_URL` | *(empty)* | Native Redis (TCP) for multi-replica HA without a `/data` volume: mappings, defaults, profiles, epochs and rate limits become shared across replicas. Wins over `KV_REST_*` when both are set (no automatic migration). On ElfHosted/K8s plain `REDIS_URL` is enough (read as fallback). |
+| `KV_REST_API_URL` / `TOKEN` | *(empty)* | Upstash Redis credentials for Vercel serverless deployments. |
+| `PICTORIUM_KV_CACHE` | *(on with KV)* | With Redis/KV, set `0` to keep the response cache in memory only (state stays in KV). Useful on public instances, where cache keys include caller-controlled parts; each replica then fetches upstream on its own. Not recommended on Vercel/serverless. |
+| `PICTORIUM_HOSTED_BY` | *(empty)* | Public hosting sponsor: `elfhosted` shows the ElfHosted banner on the home page (auto-detected from an `elfhosted.com` host as fallback). Empty = no banner. |
+| `PICTORIUM_POSTER_PARAMS` | *(auto)* | Poster cache-busting hardening: `presets` restricts non-preview requests to a finite render set (cache-key allowlist, coarse 5/10/5px numeric steps, palette-only `ac`, no anonymous free-text/keyless overrides), `free` is the historic behavior. Auto-`presets` on public instances (`PUBLIC_INSTANCE=1`, `HOSTED_BY=elfhosted` or `MULTI_USER=1`); the WYSIWYG preview stays live for user spaces and unlocked sessions. |
+| `PICTORIUM_PREVIEW_AUTH` | *(auto)* | Preview hardening: on public instances anonymous previews (`preview=1` without a space or session) are downgraded and cached like normal requests (no bot bypass). Existing user spaces and unlocked sessions stay live. Auto-on on public instances (`PUBLIC_INSTANCE=1`, `HOSTED_BY=elfhosted`, `MULTI_USER=1`); `0` forces OFF, `1` forces ON. |
+| `PICTORIUM_FRAME_ANCESTORS` | *(HF default)* | Overrides the CSP `frame-ancestors` (default is HF Spaces compatible). E.g. `'self'` for public instances that should never be embedded. |
+| `PICTORIUM_IMAGE_FORMAT` | `webp` | Poster format for clients that declare no preference (generic `Accept`, almost all native Stremio apps): `webp` (~25–30% lighter at equal quality) or `jpeg` (universal, for instances with dated clients that cannot decode webp). `?fmt=` remains a per-request override in both directions. Requires restart; switching invalidates the cache once. |
 
----
+### Multi-User Mode
+
+| Variable | Default | Description |
+|---|:---:|---|
+| `PICTORIUM_MULTI_USER` | `0` | Set `1` to enable isolated user spaces on `/u/<uuid>/configure`. |
+| `PROFILE_ENCRYPTION_KEY` | *(empty)* | **Required** when `MULTI_USER=1`. 64-character hex key (AES-256-GCM, generate via `openssl rand -hex 32`). |
+| `PICTORIUM_MAX_MAPPINGS_PER_USER` | `500` | Maximum number of saved posters allowed per user space. |
+| `PICTORIUM_MAX_USERS` | *(unlimited)* | Maximum number of user spaces that can be created. |
+| `PICTORIUM_PUBLIC_STATS` | `1` | Set `0` to return user counts from `/api/status` only to admins (the home "spaces" strip is then hidden for visitors). |
 
 <details>
-<summary><strong>⚙️ Variabili Avanzate, Stili Predefiniti & Pipeline di Rendering</strong></summary>
+<summary><strong>⚙️ Advanced Variables, Default Styles & Performance Pipeline</strong></summary>
 
-### Stili Grafici Predefiniti per i Cataloghi
-| Variabile | Valori | Effetto |
-|---|---|---|
-| `PICTORIUM_BADGE_STYLE` | `shadow`, `pill`, `bar`, `colored`, `bordo`, `vetro` | Stile dei badge genere/voto. |
-| `PICTORIUM_RANKING_BADGE_STYLE` | `default`, `bar`, `colored`, `pill`, `netflix` | Stile del badge per le classifiche. |
-| `PICTORIUM_RIBBON_SIDE` | `left` / `right` | Lato del nastro verticale Netflix Top 10. |
-| `PICTORIUM_BLUR_ENABLED` | `1` / `0` | Attiva o disattiva lo sfondo sfocato. |
-| `PICTORIUM_TINT_STRENGTH` | `0` – `100` | Intensità tinta di scena dello sfondo (default `20`). |
-| `PICTORIUM_BADGE_QUALITY` | `1` / `0` | Mostra/nasconde il badge qualità streaming (4K/FHD). |
-| `PICTORIUM_NETWORK_LOGO` | `1` / `0` | Mostra/nasconde il logo del network (Netflix, Prime, ecc.). |
-| `PICTORIUM_PRE_RELEASE` | `1` / `0` | Velo scuro + nastro "Coming Soon" sui film non ancora disponibili in digitale (default OFF). |
-| `PICTORIUM_GRADIENT_HEIGHT` | `5` – `100` | Altezza percentuale del gradiente nero inferiore. |
-| `PICTORIUM_TOP_BADGE_SCALE` | `10` – `200` | Scala % del badge superiore rank/extra (default `100`). |
-| `PICTORIUM_TOP_BADGE_OFFSET_X` / `_Y` | `±2000` px | Spostamento del badge superiore, solo stili centrati (default `0`). |
-| `PICTORIUM_GENRE_BADGE_SCALE` | `10` – `200` | Scala % del badge genere/voto (default `100`, base nativa 120%). |
-| `PICTORIUM_GENRE_BADGE_OFFSET_X` / `_Y` | `±2000` px | Spostamento del badge genere/voto, solo stili non-barra (default `0`). |
-| `PICTORIUM_QUALITY_BADGE_SCALE` | `10` – `200` | Scala % del badge qualità streaming (default `100`, base nativa 120%). |
-| `PICTORIUM_QUALITY_BADGE_OFFSET_X` / `_Y` | `±2000` px | Spostamento del badge qualità (default `0`). |
-| `PICTORIUM_NETWORK_LOGO_SCALE` | `10` – `200` | Scala % del logo network (default `100`). |
-| `PICTORIUM_NETWORK_LOGO_OFFSET_X` / `_Y` | `±2000` px | Spostamento del logo network (default `0`). |
-| `PICTORIUM_CUSTOM_RATING_ENABLED` | `0` | Abilita il provider rating custom (`1`/`true`). |
-| `PICTORIUM_CUSTOM_RATING_ENDPOINT` | *(vuoto)* | URL con `{imdbId}` (vince il valore salvato via editor). Solo HTTPS se c'è chiave. |
-| `PICTORIUM_CUSTOM_RATING_API_KEY` | *(vuoto)* | Chiave API inviata solo in header (mai in UI/URL). |
-| `PICTORIUM_CUSTOM_RATING_API_KEY_HEADER` | `X-API-Key` | Nome dell'header della chiave (vince il valore salvato via editor). |
-| `PICTORIUM_CUSTOM_RATINGS` | `1` | Default display riga rating (`1`/`0`, overridabile per-titolo). |
-
-### Concorrenza & Protezione Memoria
-| Variabile | Default | Descrizione |
+### Catalog Render Styles
+| Variable | Default | Description |
 |---|:---:|---|
-| `PICTORIUM_MAX_CONCURRENT_RENDERS` | `4` | Massimo numero di render paralleli su Sharp (protezione OOM). |
-| `PICTORIUM_RENDER_TIMEOUT_MS` | `30000` | Timeout massimo per completare un render (ms). |
-| `PICTORIUM_CACHE_MAX_MB` | `150` | Memoria RAM massima riservata alla cache delle immagini. |
-| `PICTORIUM_SELF_WARMUP` | `1` | Preriscaldamento automatico dei cataloghi all'avvio. |
-| `PICTORIUM_LOG_LEVEL` | `info` | Livello di log (`debug`, `info`, `warn`, `error`). |
+| `PICTORIUM_BADGE_STYLE` | `shadow` | Genre & rating badge style (`shadow`, `pill`, `bar`, `colored`, `bordo`, `vetro`). |
+| `PICTORIUM_RANKING_BADGE_STYLE` | `default` | Ranking badge style (`default`, `bar`, `colored`, `pill`, `netflix`). |
+| `PICTORIUM_RIBBON_SIDE` | `left` | Netflix Top 10 ribbon side (`left` / `right`). |
+| `PICTORIUM_RIBBON_ENABLED` | `1` | Netflix-style corner ribbon (`1` = corner ribbon, `0` = centered rank badge). |
+| `PICTORIUM_BLUR_ENABLED` | `1` | Enable or disable cinematic background blur. |
+| `PICTORIUM_TINT_STRENGTH` | `20` | Scene tint strength for background blur (0–100). |
+| `PICTORIUM_TOP_SHADE` | `50` | Top linear shade over the upper 25% of the poster (0–100, 0 = off). |
+| `PICTORIUM_BADGE_QUALITY` | `1` | Show or hide video streaming resolution badges (4K/FHD). |
+| `PICTORIUM_QUALITY_SOURCE` | `torrentio` | Streaming quality source: `torrentio` (with JustWatch fallback), `justwatch` (JW only), `none` (badge never shown, zero upstream). |
+| `PICTORIUM_NETWORK_LOGO` | `1` | Show or hide production network/studio logos. |
+| `PICTORIUM_PRE_RELEASE` | `0` | Dark veil + "Coming Soon" ribbon for movies not yet streaming. |
+| `PICTORIUM_GRADIENT_HEIGHT` | `65` | Percentage height of the bottom dark gradient. |
+
+### Concurrency & Performance
+| Variable | Default | Description |
+|---|:---:|---|
+| `PICTORIUM_MAX_CONCURRENT_RENDERS` | `4` | Max concurrent Sharp renders to prevent OOM. |
+| `PICTORIUM_RENDER_TIMEOUT_MS` | `30000` | Max render timeout before falling back (ms). |
+| `PICTORIUM_CACHE_MAX_MB` | `150` | Maximum RAM allocated for in-memory image cache. |
+| `PICTORIUM_SELF_WARMUP` | `1` | Automatically pre-warm core catalogs on server start. |
 </details>
 
 ---
 
-## 🧪 Sviluppo in Locale
+## ⚠️ Known Limitations
+
+Deliberate architectural choices, not bugs:
+
+* **In-process poster JPEG cache** (RAM/disk, 32 MB default via `PICTORIUM_IMG_CACHE_MB`): never in Redis/KV, which holds only lightweight metadata and catalogs. Pushing JPEG binaries into KV would bloat RAM and saturate internal bandwidth.
+* **JustWatch pagination**: the upstream GraphQL only pages via `$first` — the server overfetches (max 60) + slices locally. Deep `skip` may cost more than one upstream fetch.
+* **Chromium-only visual E2E suite**: deterministic snapshots on a single browser; Firefox/WebKit intentionally out of scope.
+* **HSTS at the reverse proxy**: the container does not force `Strict-Transport-Security` with preload (it would break LAN/Docker over HTTP). TLS+HSTS belong to Caddy / Cloudflare / Nginx — on VPS see the Caddy deploy above.
+* **Limited warmup**: only 8 core catalogs are pre-warmed at boot (`WARMUP_CATALOG_IDS`). Warming everything would trigger TMDB 429s and push boot past liveness probes.
+
+---
+
+## 🧪 Local Development
 
 ```bash
-# 1. Clona il repository
-git clone https://github.com/Eful97/Pictorium && cd Pictorium
+# 1. Clone the repository
+git clone https://github.com/Eful97/Pictorium.git && cd Pictorium
 
-# 2. Installa le dipendenze
+# 2. Install dependencies
 npm install
 
-# 3. Avvia il server di sviluppo
+# 3. Start development server
 npm run dev
 
-# 4. Esegui i test unitari (Vitest)
+# 4. Run unit test suite (Vitest)
 npm test
 
-# 5. Verifica completa del codice (Typecheck + Lint + Unit test + Build)
+# 5. Full project verification (Typecheck + Lint + Tests + Build)
 npm run verify
 ```
 
 ---
 
-## 📄 Licenza & Crediti
+## 📄 License & Credits
 
-* Rilasciato sotto licenza open-source **GNU Affero General Public License v3.0 (AGPL-3.0)**.
-* Integratori terzi (solo endpoint poster): vedi [`docs/INTEGRAZIONE.md`](docs/INTEGRAZIONE.md) per contratto stabile, chiavi API, comportamento fail-safe e regole di attribuzione.
-* Ispirato al progetto [erdb](https://github.com/realbestia1/erdb) di realbestia1.
-* Dati e metadati forniti da [TMDb](https://www.themoviedb.org/), [TheTVDB](https://thetvdb.com/) e [JustWatch](https://www.justwatch.com/).
-* Loghi network e studi cinematografici per gentile concessione di [Wikimedia Commons](https://commons.wikimedia.org/).
+* Released under open-source **GNU Affero General Public License v3.0 (AGPL-3.0)** — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+* Copyright (C) 2025 **Eful97** — https://github.com/Eful97/Pictorium
+* Forks and derivatives must preserve attribution per [NOTICE](NOTICE) (AGPL-3.0 §5a/§7b): keep the copyright notice, credit Pictorium by Eful97 with a link, and state prominently what you changed and when. On GitHub, please use the **Fork** button so provenance stays connected.
+* Inspired by the [erdb](https://github.com/realbestia1/erdb) project by realbestia1.
+* Metadata provided by [TMDb](https://www.themoviedb.org/), [TheTVDB](https://thetvdb.com/) and [JustWatch](https://www.justwatch.com/).
+* Network and studio logos courtesy of [Wikimedia Commons](https://commons.wikimedia.org/).

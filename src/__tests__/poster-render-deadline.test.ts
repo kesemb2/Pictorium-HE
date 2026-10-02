@@ -18,20 +18,22 @@ vi.mock("@/lib/rate-limit", () => ({
 }))
 
 vi.mock("@/lib/store", () => ({
+  getAll: vi.fn(async () => []),
   getById: vi.fn(),
   upsert: vi.fn(),
+  getImdbAlias: vi.fn(async () => null),
 }))
 
-vi.mock("@/lib/server-defaults", () => ({
-  getServerDefaults: vi.fn(() => ({ defaultLogoFitEnabled: true, badgeStyle: "shadow", rankingBadgeStyle: "default" })),
-}))
+vi.mock("@/lib/server-defaults", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/lib/server-defaults")>()
+  return { ...mod, getServerDefaults: vi.fn(() => ({ defaultLogoFitEnabled: true, badgeStyle: "shadow", rankingBadgeStyle: "default" })) }
+})
 
 vi.mock("@/lib/poster-auto-fit", () => ({
   selectBestLogoFitPosterPath: vi.fn(async () => ({ posterPath: "/best-fit.jpg" })),
 }))
 
 vi.mock("@/lib/svg-badge", () => ({
-  warmFonts: vi.fn(),
   renderGenreBadge: vi.fn(async () => null),
   renderRankingBadge: vi.fn(async () => null),
   renderExtraBadge: vi.fn(async () => null),
@@ -51,8 +53,11 @@ vi.mock("@/lib/awards", () => ({
   fetchAllWikidata: vi.fn(async () => ({ awards: [], nominations: [], studios: [], director: null, directorHe: null })),
   getAwardBadgeLabel: vi.fn(),
   getNominationBadgeLabel: vi.fn(),
-  directorBadgeLabel: vi.fn(() => null),
   matchTMDBStudios: vi.fn(() => []),
+  matchDirectorName: vi.fn((name: string | null) => name),
+  directorBadgeLabel: vi.fn((name: string | null) => name),
+  // La route lo importa davvero: senza, la chain wikidataId lancia TypeError.
+  isValidWikidataQid: (v: unknown): v is string => typeof v === "string" && /^Q\d+$/.test(v),
 }))
 
 vi.mock("@/lib/mdblist", () => ({
@@ -74,6 +79,13 @@ vi.mock("@/lib/tmdb", () => ({
   getExternalIds: vi.fn(async () => ({ imdb_id: null })),
   getKeywords: vi.fn(async () => []),
   resolveRequestApiKey: vi.fn(() => undefined),
+  // La route risolve le chiavi via resolveUserApiKeys (namespace incluso):
+  // mock fedele = nessuna chiave in questo test.
+  resolveUserApiKeys: vi.fn(async () => ({
+    tmdb: { key: undefined, source: "none" },
+    mdblist: { key: undefined, source: "none" },
+    tvdb: { key: undefined, source: "none" },
+  })),
 }))
 
 vi.mock("@/lib/imdb-resolver", () => ({

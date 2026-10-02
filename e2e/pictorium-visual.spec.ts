@@ -223,6 +223,24 @@ test.describe("poster API — functional", () => {
     expect(res.headers()["content-type"]).toMatch(/image\/(?:png|webp|jpeg)/)
   })
 
+  test("explicit fmt=jpeg — jpeg response in any default mode", async ({ request }) => {
+    // Sotto default webp è la variante convertita dal canonico webp, sotto
+    // PICTORIUM_IMAGE_FORMAT=jpeg è il canonico: il contratto è identico.
+    const url = posterUrl({ genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "0", fmt: "jpeg" })
+    const res = await request.get(url)
+    expect(res.ok()).toBeTruthy()
+    expect(res.headers()["content-type"]).toBe("image/jpeg")
+    expect((await res.body()).length).toBeGreaterThan(1000)
+  })
+
+  test("explicit fmt=webp — webp response in any default mode", async ({ request }) => {
+    const url = posterUrl({ genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "0", fmt: "webp" })
+    const res = await request.get(url)
+    expect(res.ok()).toBeTruthy()
+    expect(res.headers()["content-type"]).toBe("image/webp")
+    expect((await res.body()).length).toBeGreaterThan(1000)
+  })
+
   test("badge style: pill — valid image", async ({ request }) => {
     const url = posterUrl({ genreName: "Action", voteAverage: "7.8", bs: "pill", badges: "1", ranking: "0" })
     const res = await request.get(url)
@@ -287,7 +305,8 @@ test.describe("poster API — functional", () => {
     expect(buffer.length).toBeGreaterThan(1000)
   })
 
-  test("ranking badge (bar) + label — valid image", async ({ request }) => {
+  test("ranking badge (removed bar style degrades to default) — valid image", async ({ request }) => {
+    // Stile "bar" rimosso: ?rs=bar degrada a default senza 400.
     const url = posterUrl({ genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "1", rank: "3", label: "Top 3", rs: "bar" })
     const res = await request.get(url)
     expect(res.ok()).toBeTruthy()
@@ -321,6 +340,24 @@ test.describe("poster API — functional", () => {
     expect(buffer.length).toBeGreaterThan(1000)
   })
 
+  test("top shade (ts) — default 50, off needs explicit ts=0", async ({ request }) => {
+    // Default 50: senza parametro e con ts=50 i byte sono identici;
+    // con ts=0 (spenta) il render differisce.
+    const base = { genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "0" }
+    const defRes = await request.get(posterUrl(base))
+    expect(defRes.ok()).toBeTruthy()
+    const defBuffer = await defRes.body()
+    expect(defBuffer.length).toBeGreaterThan(1000)
+    const fiftyRes = await request.get(posterUrl({ ...base, ts: "50" }))
+    expect(fiftyRes.ok()).toBeTruthy()
+    expect(Buffer.compare(defBuffer, await fiftyRes.body())).toBe(0)
+    const offRes = await request.get(posterUrl({ ...base, ts: "0" }))
+    expect(offRes.ok()).toBeTruthy()
+    const offBuffer = await offRes.body()
+    expect(offBuffer.length).toBeGreaterThan(1000)
+    expect(Buffer.compare(defBuffer, offBuffer)).not.toBe(0)
+  })
+
   test("all badges off (clean poster) — valid image", async ({ request }) => {
     const url = posterUrl({ badges: "0", ranking: "0" })
     const res = await request.get(url)
@@ -330,7 +367,7 @@ test.describe("poster API — functional", () => {
   })
 
   test("full config — valid image", async ({ request }) => {
-    const url = posterUrl({ genreName: "Action", voteAverage: "8.0", badges: "1", ranking: "1", rank: "5", label: "Top 5", bs: "pill", rs: "bar", gradHeight: "25", blur: "5", bf: "50", bd: "30" })
+    const url = posterUrl({ genreName: "Action", voteAverage: "8.0", badges: "1", ranking: "1", rank: "5", label: "Top 5", bs: "pill", rs: "pill", gradHeight: "25", blur: "5", bf: "50", bd: "30" })
     const res = await request.get(url)
     expect(res.ok()).toBeTruthy()
     const buffer = await res.body()
@@ -343,6 +380,89 @@ test.describe("poster API — functional", () => {
     expect(res.ok()).toBeTruthy()
     const buffer = await res.body()
     expect(buffer.length).toBeGreaterThan(1000)
+  })
+
+  test("separate ratings (sep=1) — column replaces average — valid image", async ({ request }) => {
+    // Colonna separati: imdbId in query → aggregated dal mock MDBList, media ★
+    // sostituita dalla colonna a destra (mai sommate). I byte devono differire
+    // dalla media: altrimenti lo stack non è stato renderizzato (fallback).
+    const sepUrl = posterUrl({ genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "0", imdbId: "tt0133093", sep: "1", rsrc: "imdb,tmdb,tomatoes" })
+    const avgUrl = posterUrl({ genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "0", imdbId: "tt0133093", rsrc: "imdb,tmdb,tomatoes" })
+    const sepRes = await request.get(sepUrl)
+    expect(sepRes.ok()).toBeTruthy()
+    const sepBuffer = await sepRes.body()
+    expect(sepBuffer.length).toBeGreaterThan(1000)
+    const avgRes = await request.get(avgUrl)
+    expect(avgRes.ok()).toBeTruthy()
+    const avgBuffer = await avgRes.body()
+    expect(Buffer.compare(sepBuffer, avgBuffer)).not.toBe(0)
+  })
+
+  test("separate ratings off by default — average kept — valid image", async ({ request }) => {
+    const url = posterUrl({ genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "0", imdbId: "tt0133093", rsrc: "imdb,tmdb,tomatoes" })
+    const res = await request.get(url)
+    expect(res.ok()).toBeTruthy()
+    const buffer = await res.body()
+    expect(buffer.length).toBeGreaterThan(1000)
+  })
+
+  test("anime ratings (anilist+kitsu) — aggregated + separate column — valid image", async ({ request }) => {
+    // imdbId anime in query → AniZip mock mappa tt0388629 (il tmdbId mock fa
+    // 404 e scatta il fallback imdb), voti AniList/Kitsu dal mock, colonna
+    // separati renderizzata (byte diversi dalla media ★ sola).
+    const sepUrl = posterUrl({ genreName: "Animation", voteAverage: "7.8", badges: "1", ranking: "0", imdbId: "tt0388629", sep: "1", rsrc: "anilist,kitsu" })
+    const avgUrl = posterUrl({ genreName: "Animation", voteAverage: "7.8", badges: "1", ranking: "0", imdbId: "tt0388629", rsrc: "anilist,kitsu" })
+    const sepRes = await request.get(sepUrl)
+    expect(sepRes.ok()).toBeTruthy()
+    const sepBuffer = await sepRes.body()
+    expect(sepBuffer.length).toBeGreaterThan(1000)
+    const avgRes = await request.get(avgUrl)
+    expect(avgRes.ok()).toBeTruthy()
+    const avgBuffer = await avgRes.body()
+    expect(Buffer.compare(sepBuffer, avgBuffer)).not.toBe(0)
+  })
+
+  test("anime ratings on non-anime — graceful miss — valid image", async ({ request }) => {
+    // tt0133093 non è mappato dal mock AniZip (404) → fallback media, mai 500.
+    const url = posterUrl({ genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "0", imdbId: "tt0133093", sep: "1", rsrc: "anilist,kitsu" })
+    const res = await request.get(url)
+    expect(res.ok()).toBeTruthy()
+    const buffer = await res.body()
+    expect(buffer.length).toBeGreaterThan(1000)
+  })
+
+  test("cinemeta imdb fallback (no mdblist imdb) — separate column — valid image", async ({ request }) => {
+    // tt0000001: il mock MDBList non ha imdb → Cinemeta riempie 8.4, la colonna
+    // separati rende (byte diversi dalla media ★ sola). Senza fallback la
+    // colonna sarebbe vuota e i byte identici.
+    const sepUrl = posterUrl({ genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "0", imdbId: "tt0000001", sep: "1", rsrc: "imdb" })
+    const avgUrl = posterUrl({ genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "0", imdbId: "tt0000001", rsrc: "imdb" })
+    const sepRes = await request.get(sepUrl)
+    expect(sepRes.ok()).toBeTruthy()
+    const sepBuffer = await sepRes.body()
+    expect(sepBuffer.length).toBeGreaterThan(1000)
+    const avgRes = await request.get(avgUrl)
+    expect(avgRes.ok()).toBeTruthy()
+    const avgBuffer = await avgRes.body()
+    expect(Buffer.compare(sepBuffer, avgBuffer)).not.toBe(0)
+  })
+
+  test("landscape shape — 16:9 image rendered from backdrop", async ({ page }) => {
+    // ?shape=landscape usa lo sfondo TMDB come base invece del poster
+    // verticale: l'immagine risultante è 768×432.
+    const url = posterUrl({ backdrop: "/mocked/backdrop.jpg", shape: "landscape", genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "0" })
+    const poster = await renderPoster(page, url)
+    const size = await poster.evaluate((img: HTMLImageElement) => ({ w: img.naturalWidth, h: img.naturalHeight }))
+    expect(size).toEqual({ w: 768, h: 432 })
+  })
+
+  test("landscape shape without backdrop — pillarbox fallback, valid image", async ({ page }) => {
+    // Senza sfondo TMDB la base diventa pillarbox dal poster: mai 404,
+    // nessun riquadro rotto su Stremio. Dimensioni sempre 768×432.
+    const url = posterUrl({ shape: "landscape", badges: "0", ranking: "0" })
+    const poster = await renderPoster(page, url)
+    const size = await poster.evaluate((img: HTMLImageElement) => ({ w: img.naturalWidth, h: img.naturalHeight }))
+    expect(size).toEqual({ w: 768, h: 432 })
   })
 })
 
@@ -415,12 +535,6 @@ test.describe("poster API — visual regression", () => {
     await expect(poster).toHaveScreenshot("poster-ranking-default.png", { maxDiffPixelRatio: 0.10 })
   })
 
-  test("ranking badge + label — screenshot", async ({ page }) => {
-    const url = posterUrl({ genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "1", rank: "3", label: "Top 3", rs: "bar" })
-    const poster = await renderPoster(page, url)
-    await expect(poster).toHaveScreenshot("poster-ranking.png", { maxDiffPixelRatio: 0.10 })
-  })
-
   test("anime ranking (netflix ribbon) — screenshot", async ({ page }) => {
     // media_type=tv + id 19995 (Avatar) nella MDBList anime mockata → animeRankResult=1.
     // Il mock MDBList anime (mock-server.mjs) mette Avatar in posizione #1.
@@ -429,10 +543,9 @@ test.describe("poster API — visual regression", () => {
     await expect(poster).toHaveScreenshot("poster-anime.png", { maxDiffPixelRatio: 0.10 })
   })
 
-  test("movie ranking (netflix ribbon) + label — screenshot", async ({ page }) => {
-    // Nastro Netflix per film/serie: il label del rank per media type ("Film")
-    // appare sotto il numero — stesso sistema del badge anime. Nessun label
-    // esplicito: si testa il default server-side (badge.movie).
+  test("movie ranking (netflix ribbon) without media label — screenshot", async ({ page }) => {
+    // The standard ranking ribbon shows only TOP and the rank, including
+    // when the server resolves a media-type label (badge.movie).
     const url = posterUrl({ genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "1", rank: "3", rs: "netflix" })
     const poster = await renderPoster(page, url)
     await expect(poster).toHaveScreenshot("poster-ranking-netflix.png", { maxDiffPixelRatio: 0.10 })
@@ -465,7 +578,7 @@ test.describe("poster API — visual regression", () => {
   })
 
   test("full feature poster — screenshot", async ({ page }) => {
-    const url = posterUrl({ genreName: "Action", voteAverage: "8.0", badges: "1", ranking: "1", rank: "5", label: "Top 5", bs: "pill", rs: "bar", gradHeight: "25", blur: "5", bf: "50", bd: "30" })
+    const url = posterUrl({ genreName: "Action", voteAverage: "8.0", badges: "1", ranking: "1", rank: "5", label: "Top 5", bs: "pill", rs: "pill", gradHeight: "25", blur: "5", bf: "50", bd: "30" })
     const poster = await renderPoster(page, url)
     await expect(poster).toHaveScreenshot("poster-full-feature.png", { maxDiffPixelRatio: 0.10 })
   })
@@ -476,5 +589,51 @@ test.describe("poster API — visual regression", () => {
     const url = posterUrl({ genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "1", rank: "3", rs: "netflix", side: "right", quality: "4K" })
     const poster = await renderPoster(page, url)
     await expect(poster).toHaveScreenshot("poster-quality-stremio-left.png", { maxDiffPixelRatio: 0.10 })
+  })
+
+  test("landscape shape — screenshot", async ({ page }) => {
+    // Formato orizzontale 16:9 da sfondo TMDB (stile Nuvio): base backdrop +
+    // logo/badge adattati al canvas landscape.
+    const url = posterUrl({ backdrop: "/mocked/backdrop.jpg", shape: "landscape", genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "0" })
+    const poster = await renderPoster(page, url)
+    await expect(poster).toHaveScreenshot("poster-landscape.png", { maxDiffPixelRatio: 0.10 })
+  })
+
+  test("landscape shape with rank badge — screenshot", async ({ page }) => {
+    // Il badge superiore centrale in landscape è reso al 120% (topBadgePw).
+    const url = posterUrl({ backdrop: "/mocked/backdrop.jpg", shape: "landscape", genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "1", rank: "3", label: "Top 3", rs: "pill" })
+    const poster = await renderPoster(page, url)
+    await expect(poster).toHaveScreenshot("poster-landscape-rank.png", { maxDiffPixelRatio: 0.10 })
+  })
+
+  test("landscape bakes the logo, genre badge bottom-right - screenshot", async ({ page }) => {
+    // Layout landscape con logo baked-in (coi vincoli 16:9) e badge genere
+    // a destra: il logo passato via query finisce nel composite.
+    const url = posterUrl({ backdrop: "/mocked/backdrop.jpg", logo: "/mocked/logo.png", shape: "landscape", genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "0" })
+    const poster = await renderPoster(page, url)
+    await expect(poster).toHaveScreenshot("poster-landscape-logo.png", { maxDiffPixelRatio: 0.10 })
+  })
+
+  test("separate ratings column (3 providers) — screenshot", async ({ page }) => {
+    // Colonna a destra con logo sopra / punteggio sotto (IMDb 8.7, TMDB 7.9,
+    // 88%), badge genere senza segmento ★.
+    const url = posterUrl({ genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "0", imdbId: "tt0133093", sep: "1", rsrc: "imdb,tmdb,tomatoes", quality: "4K" })
+    const poster = await renderPoster(page, url)
+    await expect(poster).toHaveScreenshot("poster-separate-ratings.png", { maxDiffPixelRatio: 0.10 })
+  })
+
+  test("separate ratings without quality badge (stack rises) — screenshot", async ({ page }) => {
+    // Senza badge qualità lo stack parte dall'alto invece che sotto il 4K.
+    const url = posterUrl({ genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "0", bq: "0", imdbId: "tt0133093", sep: "1", rsrc: "imdb,tmdb" })
+    const poster = await renderPoster(page, url)
+    await expect(poster).toHaveScreenshot("poster-separate-ratings-noquality.png", { maxDiffPixelRatio: 0.10 })
+  })
+
+  test("separate ratings column in landscape (average replaced) — screenshot", async ({ page }) => {
+    // La colonna segue il badge qualità anche in 16:9 (il badge genere
+    // nasconde il segmento ★ come in portrait).
+    const url = posterUrl({ backdrop: "/mocked/backdrop.jpg", shape: "landscape", genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "0", imdbId: "tt0133093", sep: "1", rsrc: "imdb,tmdb,tomatoes" })
+    const poster = await renderPoster(page, url)
+    await expect(poster).toHaveScreenshot("poster-separate-ratings-landscape.png", { maxDiffPixelRatio: 0.10 })
   })
 })

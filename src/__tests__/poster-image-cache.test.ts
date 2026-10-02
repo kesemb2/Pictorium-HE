@@ -14,6 +14,10 @@ vi.mock("@/lib/poster-render-helpers", async (importOriginal) => {
 
 import { extractBadgeColor } from "@/lib/poster-render-helpers"
 import {
+  bottomLuminance,
+  topLuminance,
+} from "@/lib/poster-render-helpers"
+import {
   backdropMetaCached,
   resizeBackdropCached,
   resizeLogoCached,
@@ -144,5 +148,37 @@ describe("backdropMetaCached (cache metadata backdrop)", () => {
     const backdrop = Buffer.from("not-an-image")
 
     await expect(backdropMetaCached(backdrop, "/b.jpg")).rejects.toThrow()
+  })
+})
+
+function solidPoster(color: string): Promise<Buffer> {
+  return sharp({
+    create: { width: 500, height: 750, channels: 3, background: color },
+  }).png().toBuffer()
+}
+
+describe("extractSceneTint + luminance (cache analisi pixel)", () => {
+  it("luminance: same key reuses, different keys recompute", async () => {
+    const light = await solidPoster("#f0f0f0")
+    const dark = await solidPoster("#0a0a0a")
+
+    const l1 = await topLuminance(light, "test:lum:A")
+    const l2 = await topLuminance(dark, "test:lum:A")
+    expect(l2).toBe(l1) // hit, non ricalcolo
+
+    const l3 = await topLuminance(dark, "test:lum:B")
+    expect(l3).toBeLessThan(l1) // entry separata
+  })
+
+  it("luminance: null key always recomputes, bottom included", async () => {
+    const light = await solidPoster("#f0f0f0")
+    const dark = await solidPoster("#0a0a0a")
+
+    expect(await topLuminance(light, null)).toBeGreaterThan(0.9)
+    expect(await topLuminance(dark, null)).toBeLessThan(0.1)
+    const bDark = await bottomLuminance(dark, "test:lum:C")
+    expect(bDark).toBeLessThan(0.5)
+    // Stessa chiave, byte diversi → hit (vale il primo risultato)
+    expect(await bottomLuminance(light, "test:lum:C")).toBe(bDark)
   })
 })

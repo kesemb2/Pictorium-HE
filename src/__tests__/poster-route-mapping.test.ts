@@ -2,19 +2,25 @@ import sharp from "sharp"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 import { GET } from "@/app/api/poster/[type]/[id]/route"
-import { getById } from "@/lib/store"
+import { getAll, getById, getImdbAlias } from "@/lib/store"
+import { resolveImdbToTmdb } from "@/lib/imdb-resolver"
 import { selectBestLogoFitPosterPath } from "@/lib/poster-auto-fit"
-import { getDetails, getImages, getExternalIds } from "@/lib/tmdb"
+import { getServerDefaults } from "@/lib/server-defaults"
+import { getDetails, getDetailsWithExternalIds, getImages, getExternalIds } from "@/lib/tmdb"
 import { getJWRankings } from "@/lib/justwatch"
 import { fetchMDBList } from "@/lib/mdblist"
 import { cacheClear } from "@/lib/cache"
-import { __resetTMDBSessionCache } from "@/lib/tmdb-session-cache"
+import { resolveStreamQuality } from "@/lib/stream-quality"
+import { __resetTMDBSessionCache, setTMDBSessionCache } from "@/lib/tmdb-session-cache"
 import type { Mapping } from "@/lib/types"
 import { fetchCustomRatings } from "@/lib/custom-rating"
+import { fetchAllWikidata } from "@/lib/awards"
 import { renderMultiRatings } from "@/lib/multi-rating-renderer"
 import { fetchAggregatedRating } from "@/lib/ratings"
 import { RENDER_VERSION } from "@/lib/render-version"
 import { posterHeaders } from "@/lib/poster-runtime-cache"
+import * as hardening from "@/lib/poster-params-hardening"
+import * as sessionCache from "@/lib/tmdb-session-cache"
 
 vi.mock("@/lib/custom-rating", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/custom-rating")>(),
@@ -29,20 +35,22 @@ vi.mock("@/lib/rate-limit", () => ({
 }))
 
 vi.mock("@/lib/store", () => ({
+  getAll: vi.fn(async () => []),
   getById: vi.fn(),
   upsert: vi.fn(),
+  getImdbAlias: vi.fn(async () => null),
 }))
 
-vi.mock("@/lib/server-defaults", () => ({
-  getServerDefaults: vi.fn(() => ({ defaultLogoFitEnabled: true, badgeStyle: "shadow", rankingBadgeStyle: "default" })),
-}))
+vi.mock("@/lib/server-defaults", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/lib/server-defaults")>()
+  return { ...mod, getServerDefaults: vi.fn(() => ({ defaultLogoFitEnabled: true, badgeStyle: "shadow", rankingBadgeStyle: "default" })) }
+})
 
 vi.mock("@/lib/poster-auto-fit", () => ({
   selectBestLogoFitPosterPath: vi.fn(async () => ({ posterPath: "/best-fit.jpg" })),
 }))
 
 vi.mock("@/lib/svg-badge", () => ({
-  warmFonts: vi.fn(),
   renderGenreBadge: vi.fn(async () => null),
   renderRankingBadge: vi.fn(async () => null),
   renderExtraBadge: vi.fn(async () => null),
@@ -59,11 +67,14 @@ vi.mock("@/lib/stream-quality", () => ({
 }))
 
 vi.mock("@/lib/awards", () => ({
-  fetchAllWikidata: vi.fn(async () => ({ awards: [], nominations: [], studios: [], director: null, directorHe: null })),
+  fetchAllWikidata: vi.fn(async () => ({ awards: [], nominations: [], studios: [], director: null })),
   getAwardBadgeLabel: vi.fn(),
   getNominationBadgeLabel: vi.fn(),
-  directorBadgeLabel: vi.fn(() => null),
   matchTMDBStudios: vi.fn(() => []),
+  matchDirectorName: vi.fn((name: string | null) => name),
+  directorBadgeLabel: vi.fn((name: string | null) => name),
+  // La route lo importa davvero: senza, la chain wikidataId lancia TypeError.
+  isValidWikidataQid: (v: unknown): v is string => typeof v === "string" && /^Q\d+$/.test(v),
 }))
 
 vi.mock("@/lib/mdblist", () => ({
@@ -78,26 +89,41 @@ vi.mock("@/lib/ratings", async (importOriginal) => {
   }
 })
 
-vi.mock("@/lib/tmdb", () => {
-  // Il path poster chiama la variante con external_ids in append. È la STESSA
-  // fn del mock di getDetails, così gli stub dei test continuano a guidarla
-  // senza doverli duplicare.
-  const getDetails = vi.fn()
-  const getExternalIds = vi.fn(async () => ({ imdb_id: null }))
-  return ({
-  getDetails,
-  getExternalIds,
-  // Esattamente ciò che fa `append_to_response=external_ids` su TMDB: i test
-  // continuano a pilotare le due parti separatamente con i loro stub.
-  getDetailsWithExternalIds: vi.fn(async (mediaType: unknown, id: unknown, ...rest: unknown[]) => ({
-    ...(await (getDetails as (...a: unknown[]) => Promise<Record<string, unknown>>)(mediaType, id, ...rest)),
-    external_ids: await getExternalIds(),
-  })),
+vi.mock("@/lib/tmdb", () => ({
+  getDetails: vi.fn(),
+  // F5a: il path non-mappato chiama SOLO la combined. Di default delega ai
+  // due mock storici così i test esistenti (che armano getDetails/getExternalIds)
+  // restano verdi senza rewrite; il wiring è pinnato dal test F6/F5a sotto.
+  getDetailsWithExternalIds: vi.fn(
+    async (
+      mediaType: "movie" | "tv",
+      tmdbId: number,
+      language?: string,
+      apiKey?: string,
+      signal?: AbortSignal,
+      timeoutMs?: number,
+    ) => {
+      const det = await mockedGetDetails(mediaType, tmdbId, language, apiKey, signal, timeoutMs)
+      const ext = await mockedGetExternalIds(mediaType, tmdbId, apiKey, signal, timeoutMs)
+      return { ...det, external_ids: ext }
+    },
+  ),
   getImages: vi.fn(),
+  getExternalIds: vi.fn(async () => ({ imdb_id: null })),
   getKeywords: vi.fn(async () => []),
   resolveRequestApiKey: vi.fn((req: { nextUrl?: { searchParams: URLSearchParams } }) => req.nextUrl?.searchParams.get("api_key") || undefined),
-  })
-})
+  // La route risolve le chiavi via resolveUserApiKeys: mock fedele alla
+  // semantica (query api_key), così i test che armano ?api_key= restano validi.
+  resolveUserApiKeys: vi.fn(async (req: { headers: { get: (n: string) => string | null }; nextUrl?: { searchParams: URLSearchParams } }) => {
+    const q = req.nextUrl?.searchParams.get("api_key") || undefined
+    const none = { key: undefined, source: "none" } as const
+    return {
+      tmdb: q ? { key: q, source: "query" } : none,
+      mdblist: none,
+      tvdb: none,
+    }
+  }),
+}))
 
 vi.mock("@/lib/imdb-resolver", () => ({
   resolveImdbToTmdb: vi.fn(async () => null),
@@ -107,6 +133,7 @@ const mockedGetById = vi.mocked(getById)
 const mockedGetJWRankings = vi.mocked(getJWRankings)
 const mockedSelectBestLogoFitPosterPath = vi.mocked(selectBestLogoFitPosterPath)
 const mockedGetDetails = vi.mocked(getDetails)
+const mockedGetDetailsWithExternalIds = vi.mocked(getDetailsWithExternalIds)
 const mockedGetImages = vi.mocked(getImages)
 const mockedGetExternalIds = vi.mocked(getExternalIds)
 const mockedFetchMDBList = vi.mocked(fetchMDBList)
@@ -168,6 +195,44 @@ describe("GET /api/poster/[type]/[id] with saved mappings", () => {
     expect(requestedUrls.some((url) => url.includes("/saved-choice.jpg"))).toBe(true)
     expect(requestedUrls.some((url) => url.includes("/best-fit.jpg"))).toBe(false)
     expect(renderMultiRatings).not.toHaveBeenCalled()
+  })
+
+  it("keeps the logo over the backdrop in landscape without a clean poster (portrait drops it)", async () => {
+    const backdrop = await imageBuffer("#101010", 768, 432)
+    const logo = await imageBuffer("#ffffff", 220, 80)
+    const requestedUrls: string[] = []
+    const nonClean = {
+      mediaType: "movie" as const,
+      title: "Non-clean",
+      posterPath: "/lang-poster.jpg",
+      logoPath: "/landscape-logo.png",
+      originalPosterPath: null,
+      language: "it",
+      backdropPath: "/backdrop.jpg",
+      showBadges: false,
+      rankingBadges: false,
+      updatedAt: "2026-07-16T10:15:30.000Z",
+    }
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input)
+      requestedUrls.push(url)
+      const body = url.includes("/landscape-logo.png") ? logo : backdrop
+      return new Response(new Uint8Array(body), {
+        status: 200,
+        headers: { "content-type": "image/png", "content-length": String(body.length) },
+      })
+    })
+    // Landscape: la base è il backdrop (senza testo), il logo resta.
+    mockedGetById.mockResolvedValue({ ...nonClean, tmdbId: 44, posterShape: "landscape" })
+    const land = await GET(new NextRequest("http://localhost:3000/api/poster/movie/44?rv=81"), { params: Promise.resolve({ type: "movie", id: "44" }) })
+    expect(land.status).toBe(200)
+    expect(requestedUrls.some((url) => url.includes("/landscape-logo.png"))).toBe(true)
+    // Portrait: poster con testo incorporato, niente logo (invariato).
+    requestedUrls.length = 0
+    mockedGetById.mockResolvedValue({ ...nonClean, tmdbId: 45, posterShape: "poster" })
+    const port = await GET(new NextRequest("http://localhost:3000/api/poster/movie/45?rv=81"), { params: Promise.resolve({ type: "movie", id: "45" }) })
+    expect(port.status).toBe(200)
+    expect(requestedUrls.some((url) => url.includes("/landscape-logo.png"))).toBe(false)
   })
 
   it("passes custom ratings to the renderer on a miss and skips the provider on a cache hit", async () => {
@@ -401,6 +466,62 @@ describe("GET /api/poster/[type]/[id] with saved mappings", () => {
     expect(requestedUrls.some((url) => url.includes("/clean.jpg"))).toBe(false)
   })
 
+  it("skips clean posters when disableCleanPosters is set, even with a logo available", async () => {
+    vi.mocked(getServerDefaults).mockReturnValueOnce({
+      defaultLogoFitEnabled: true,
+      badgeStyle: "shadow",
+      rankingBadgeStyle: "default",
+      disableCleanPosters: true,
+    })
+    mockedSelectBestLogoFitPosterPath.mockClear()
+    const langPosterBuf = await imageBuffer("#204080", 500, 750)
+    const cleanBuf = await imageBuffer("#101010", 500, 750)
+    const requestedUrls: string[] = []
+
+    mockedGetById.mockResolvedValue(null)
+    mockedGetDetails.mockResolvedValue({
+      id: 42,
+      title: "Test Movie",
+      genres: [{ id: 18, name: "Drama" }],
+      vote_average: 7.0,
+      vote_count: 100,
+      original_language: "it",
+      release_date: "2025-01-15",
+      production_companies: [],
+    })
+    mockedGetImages.mockResolvedValue({
+      id: 42,
+      posters: [
+        { file_path: "/clean-dc.jpg", iso_639_1: null, vote_average: 8.0, vote_count: 100, width: 500, height: 750, aspect_ratio: 0.667 },
+        { file_path: "/it-poster-dc.jpg", iso_639_1: "it", vote_average: 7.0, vote_count: 50, width: 500, height: 750, aspect_ratio: 0.667 },
+      ],
+      logos: [
+        { file_path: "/logo.png", iso_639_1: "it", vote_average: 0, vote_count: 0, width: 220, height: 80, aspect_ratio: 2.75 },
+      ],
+      backdrops: [],
+    })
+    mockedGetExternalIds.mockResolvedValue({ imdb_id: "tt1234567" })
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input)
+      requestedUrls.push(url)
+      const body = url.includes("/it-poster-dc.jpg") ? langPosterBuf : cleanBuf
+      return new Response(new Uint8Array(body), {
+        status: 200,
+        headers: { "content-type": "image/png", "content-length": String(body.length) },
+      })
+    })
+
+    const req = new NextRequest("http://localhost:3000/api/poster/movie/42")
+    const res = await GET(req, { params: Promise.resolve({ type: "movie", id: "42" }) })
+
+    expect(res.status).toBe(200)
+    // Niente best-fit sul pool clean: si usa il poster in lingua coi badge
+    expect(mockedSelectBestLogoFitPosterPath).not.toHaveBeenCalled()
+    expect(requestedUrls.some((url) => url.includes("/it-poster-dc.jpg"))).toBe(true)
+    expect(requestedUrls.some((url) => url.includes("/clean-dc.jpg"))).toBe(false)
+  })
+
   it.each([
     { label: "disabled", enabled: false, imdb: true, custom: true, id: 98769 },
     { label: "IMDb + Custom", enabled: true, imdb: true, custom: true, id: 98770 },
@@ -455,8 +576,12 @@ describe("GET /api/poster/[type]/[id] with saved mappings", () => {
     else expect(imdbCalls).toBe(0)
     const hit = await GET(new NextRequest(url), { params: Promise.resolve({ type: "movie", id: String(id) }) })
     expect(hit.status).toBe(200)
-    expect(fetchAggregatedRating).toHaveBeenCalledTimes(imdbCalls)
-    expect(fetchCustomRatings).toHaveBeenCalledTimes(customCalls)
+    // Le preview (`preview=1`, ramo query) sono no-store: la route non le
+    // scrive in cache, quindi la seconda GET ri-renderizza e rifà i fetch.
+    // Tutti gli altri rami devono servire la seconda GET da cache (zero fetch).
+    const previewRefetch = kind === "query" ? 1 : 0
+    expect(fetchAggregatedRating).toHaveBeenCalledTimes(imdbCalls + (imdbCalls > 0 ? previewRefetch : 0))
+    expect(fetchCustomRatings).toHaveBeenCalledTimes(customCalls + (customCalls > 0 ? previewRefetch : 0))
     const debug = await GET(new NextRequest(`${url}${url.includes("?") ? "&" : "?"}debug=1`), {
       params: Promise.resolve({ type: "movie", id: String(id) }),
     })
@@ -508,7 +633,101 @@ describe("GET /api/poster/[type]/[id] with saved mappings", () => {
     const res = await GET(req, { params: Promise.resolve({ type: "movie", id: "42" }) })
 
     expect(res.status).toBe(200)
-    expect(mockedAggregatedRating).toHaveBeenCalledWith("tt1234567", undefined, expect.any(AbortSignal))
+    expect(mockedAggregatedRating).toHaveBeenCalledWith("tt1234567", undefined, expect.any(AbortSignal), expect.anything())
+  })
+
+  it("honors single-source rsrc and falls back to default average on garbage rsrc (Fix A/D)", async () => {
+    const posterBuf = await imageBuffer("#101010", 500, 750)
+    const { fetchAggregatedRating } = await import("@/lib/ratings")
+    vi.mocked(fetchAggregatedRating).mockResolvedValue({
+      sources: { imdb: 8.0, tmdb: 6.0, metacritic: 9.0 },
+      average: 7.67,
+      count: 3,
+    })
+
+    mockedGetById.mockResolvedValue(null)
+    mockedGetDetails.mockResolvedValue({
+      id: 43,
+      title: "Rsrc Sources",
+      genres: [{ id: 18, name: "Drama" }],
+      vote_average: 6.0,
+      vote_count: 100,
+      original_language: "en",
+      release_date: "2024-01-15",
+      production_companies: [],
+    })
+    mockedGetImages.mockResolvedValue({
+      id: 43,
+      posters: [
+        { file_path: "/rsrc-clean.jpg", iso_639_1: null, vote_average: 8.0, vote_count: 100, width: 500, height: 750, aspect_ratio: 0.667 },
+      ],
+      logos: [],
+      backdrops: [],
+    })
+    mockedGetExternalIds.mockResolvedValue({ imdb_id: "tt7654321" })
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array(posterBuf), {
+      status: 200,
+      headers: { "content-type": "image/png", "content-length": String(posterBuf.length) },
+    }))
+
+    const single = await GET(new NextRequest("http://localhost:3000/api/poster/movie/43?rsrc=metacritic&debug=1"), {
+      params: Promise.resolve({ type: "movie", id: "43" }),
+    })
+    expect(single.status).toBe(200)
+    expect((await single.json()).vote.average).toBeCloseTo(9.0)
+
+    const garbage = await GET(new NextRequest("http://localhost:3000/api/poster/movie/43?rsrc=xyz&debug=1"), {
+      params: Promise.resolve({ type: "movie", id: "43" }),
+    })
+    expect(garbage.status).toBe(200)
+    // Garbage rsrc → default imdb+tmdb (8+6)/2, come la details route — mai fallback TMDB.
+    expect((await garbage.json()).vote.average).toBeCloseTo(7.0)
+  })
+
+  it("accepts tmdb:<id> typed ids as exact numeric path (Nuvio auto template)", async () => {
+    const posterBuf = await imageBuffer("#101010", 500, 750)
+    const { fetchAggregatedRating } = await import("@/lib/ratings")
+    vi.mocked(fetchAggregatedRating).mockResolvedValue(null)
+
+    mockedGetById.mockResolvedValue(null)
+    mockedGetDetails.mockResolvedValue({
+      id: 44,
+      title: "Typed Id",
+      genres: [{ id: 18, name: "Drama" }],
+      vote_average: 7.5,
+      vote_count: 100,
+      original_language: "en",
+      release_date: "2024-01-15",
+      production_companies: [],
+    })
+    mockedGetImages.mockResolvedValue({
+      id: 44,
+      posters: [
+        { file_path: "/typed-clean.jpg", iso_639_1: null, vote_average: 8.0, vote_count: 100, width: 500, height: 750, aspect_ratio: 0.667 },
+      ],
+      logos: [],
+      backdrops: [],
+    })
+    mockedGetExternalIds.mockResolvedValue({ imdb_id: "tt0000044" })
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array(posterBuf), {
+      status: 200,
+      headers: { "content-type": "image/png", "content-length": String(posterBuf.length) },
+    }))
+
+    const typed = await GET(new NextRequest("http://localhost:3000/api/poster/movie/tmdb:44?debug=1"), {
+      params: Promise.resolve({ type: "movie", id: "tmdb:44" }),
+    })
+    expect(typed.status).toBe(200)
+    // Path numerico esatto: voto TMDB nativo, niente risoluzione /find.
+    expect((await typed.json()).vote.average).toBeCloseTo(7.5)
+
+    // Altri prefissi restano 400 (non risolvibili senza lookup dedicati).
+    const other = await GET(new NextRequest("http://localhost:3000/api/poster/movie/kitsu:44"), {
+      params: Promise.resolve({ type: "movie", id: "kitsu:44" }),
+    })
+    expect(other.status).toBe(400)
   })
 
   it("falls back to TMDB vote when the aggregated rating is not resolved in time", async () => {
@@ -589,25 +808,199 @@ describe("GET /api/poster/[type]/[id] with saved mappings", () => {
 
     // Azzera la history dei mock: gli altri test del describe la inquinano.
     mockedGetDetails.mockClear()
+    mockedGetDetailsWithExternalIds.mockClear()
     mockedGetImages.mockClear()
     mockedGetExternalIds.mockClear()
 
     const req1 = new NextRequest("http://localhost:3000/api/poster/movie/42?preview=1")
     const res1 = await GET(req1, { params: Promise.resolve({ type: "movie", id: "42" }) })
     expect(res1.status).toBe(200)
-    const detailsAfterFirst = mockedGetDetails.mock.calls.length
+    // F5a: il ramo non-mappato chiama la combined UNA volta sola e MAI
+    // getDetails/getExternalIds diretti per il fetch iniziale (entrambi i
+    // conteggi sotto passano solo via delega del mock combined; il Block B
+    // riusa la session cache e non rifà rete).
+    expect(mockedGetDetailsWithExternalIds.mock.calls.length).toBe(1)
+    expect(mockedGetDetails.mock.calls.length).toBe(1) // solo via delega combined
     const imagesAfterFirst = mockedGetImages.mock.calls.length
     const extAfterFirst = mockedGetExternalIds.mock.calls.length
-    expect(detailsAfterFirst).toBeGreaterThan(0)
+    expect(imagesAfterFirst).toBeGreaterThan(0)
+    expect(extAfterFirst).toBe(1) // solo via delega combined
 
     // Secondo tick di preview con parametri diversi → cache key diversa, ma la
     // session cache per type:id evita di rifare i fetch TMDB.
     const req2 = new NextRequest("http://localhost:3000/api/poster/movie/42?preview=1&blur=0")
     const res2 = await GET(req2, { params: Promise.resolve({ type: "movie", id: "42" }) })
     expect(res2.status).toBe(200)
-    expect(mockedGetDetails.mock.calls.length).toBe(detailsAfterFirst)
+    expect(mockedGetDetailsWithExternalIds.mock.calls.length).toBe(1)
+    expect(mockedGetDetails.mock.calls.length).toBe(1)
     expect(mockedGetImages.mock.calls.length).toBe(imagesAfterFirst)
     expect(mockedGetExternalIds.mock.calls.length).toBe(extAfterFirst)
+  })
+
+  // Catena wikidataId (fast-path REST awards): query > mapping > session >
+  // ramo else. Senza, preview e mapping cadono nella lotteria SPARQL
+  // (Dexter: Emmy a intermittenza). ID unici: la poster cache runtime non
+  // viene resettata tra i test e la chiave include l'id.
+  async function qidPoster() {
+    return imageBuffer("#101010", 500, 750)
+  }
+
+  it("passes query wikidata_id to fetchAllWikidata in the preview branch", async () => {
+    const poster = await qidPoster()
+    mockedGetById.mockResolvedValue(null)
+    mockedGetDetails.mockResolvedValue({ id: 61001, title: "Qid Preview", genres: [], vote_average: 0, vote_count: 0 })
+    mockedGetImages.mockResolvedValue({
+      id: 61001,
+      posters: [{ file_path: "/qid.jpg", iso_639_1: null, vote_average: 8, vote_count: 10, width: 500, height: 750, aspect_ratio: 0.667 }],
+      logos: [],
+      backdrops: [],
+    })
+    mockedGetExternalIds.mockResolvedValue({ imdb_id: null })
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array(poster), {
+      headers: { "content-type": "image/png" },
+    }))
+    vi.mocked(fetchAllWikidata).mockClear()
+    const res = await GET(new NextRequest("http://localhost:3000/api/poster/movie/61001?poster=/qid.jpg&ranking=1&wikidata_id=Q23577&preview=1"), {
+      params: Promise.resolve({ type: "movie", id: "61001" }),
+    })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(fetchAllWikidata)).toHaveBeenCalledWith(61001, "movie", expect.anything(), { wikidataId: "Q23577" })
+  })
+
+  it("uses the saved mapping wikidataId without a query param", async () => {
+    const poster = await qidPoster()
+    mockedGetById.mockResolvedValue({
+      tmdbId: 61002, mediaType: "movie", title: "Qid Saved", posterPath: "/qid-saved.jpg",
+      logoPath: null, originalPosterPath: null, language: "it",
+      rankingBadges: true, wikidataId: "Q23577", updatedAt: "2026-09-20T00:00:00.000Z",
+    })
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array(poster), {
+      headers: { "content-type": "image/png" },
+    }))
+    vi.mocked(fetchAllWikidata).mockClear()
+    const res = await GET(new NextRequest("http://localhost:3000/api/poster/movie/61002"), {
+      params: Promise.resolve({ type: "movie", id: "61002" }),
+    })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(fetchAllWikidata)).toHaveBeenCalledWith(61002, "movie", expect.anything(), { wikidataId: "Q23577" })
+  })
+
+  it("falls back to null wikidataId for legacy mappings without a key (SPARQL preserved)", async () => {
+    const poster = await qidPoster()
+    mockedGetById.mockResolvedValue({
+      tmdbId: 61003, mediaType: "movie", title: "Qid Legacy", posterPath: "/qid-legacy.jpg",
+      logoPath: null, originalPosterPath: null, language: "it",
+      rankingBadges: true, updatedAt: "2026-09-20T00:00:00.000Z",
+    })
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array(poster), {
+      headers: { "content-type": "image/png" },
+    }))
+    vi.mocked(fetchAllWikidata).mockClear()
+    const res = await GET(new NextRequest("http://localhost:3000/api/poster/movie/61003"), {
+      params: Promise.resolve({ type: "movie", id: "61003" }),
+    })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(fetchAllWikidata)).toHaveBeenCalledWith(61003, "movie", expect.anything(), { wikidataId: null })
+  })
+
+  it("resolves the QID server-side for legacy mappings when api_key is present", async () => {
+    const poster = await qidPoster()
+    mockedGetById.mockResolvedValue({
+      tmdbId: 61004, mediaType: "movie", title: "Qid Legacy Resolved", posterPath: "/qid-legacy2.jpg",
+      logoPath: null, originalPosterPath: null, language: "it",
+      rankingBadges: true, updatedAt: "2026-09-20T00:00:00.000Z",
+    })
+    mockedGetExternalIds.mockResolvedValue({ imdb_id: null, wikidata_id: "Q23577" })
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array(poster), {
+      headers: { "content-type": "image/png" },
+    }))
+    vi.mocked(fetchAllWikidata).mockClear()
+    const res = await GET(new NextRequest("http://localhost:3000/api/poster/movie/61004?api_key=testkey"), {
+      params: Promise.resolve({ type: "movie", id: "61004" }),
+    })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(fetchAllWikidata)).toHaveBeenCalledWith(61004, "movie", expect.anything(), { wikidataId: "Q23577" })
+  })
+
+  it("discards a garbage TMDB wikidata_id (SPARQL preserved)", async () => {
+    const poster = await qidPoster()
+    mockedGetById.mockResolvedValue({
+      tmdbId: 61005, mediaType: "movie", title: "Qid Garbage", posterPath: "/qid-garbage.jpg",
+      logoPath: null, originalPosterPath: null, language: "it",
+      rankingBadges: true, updatedAt: "2026-09-20T00:00:00.000Z",
+    })
+    mockedGetExternalIds.mockResolvedValue({ imdb_id: null, wikidata_id: "nope" })
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array(poster), {
+      headers: { "content-type": "image/png" },
+    }))
+    vi.mocked(fetchAllWikidata).mockClear()
+    const res = await GET(new NextRequest("http://localhost:3000/api/poster/movie/61005?api_key=testkey"), {
+      params: Promise.resolve({ type: "movie", id: "61005" }),
+    })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(fetchAllWikidata)).toHaveBeenCalledWith(61005, "movie", expect.anything(), { wikidataId: null })
+  })
+})
+
+describe("GET /api/poster/[type]/[id] in presets mode (public instance)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    vi.mocked(fetchCustomRatings).mockReset().mockResolvedValue([])
+    vi.mocked(fetchAggregatedRating).mockReset().mockResolvedValue(null)
+    vi.stubEnv("PICTORIUM_CUSTOM_RATING_ENABLED", "false")
+    vi.spyOn(hardening, "isPresetsPosterMode").mockReturnValue(true)
+    vi.spyOn(hardening, "isPublicPosterInstance").mockReturnValue(true)
+  })
+
+  afterEach(() => {
+    cacheClear()
+    __resetTMDBSessionCache()
+  })
+
+  it("matches JustWatch on the TMDB title, not a query title, even if the session cache was evicted", async () => {
+    const poster = await imageBuffer("#101010", 500, 750)
+    mockedGetById.mockResolvedValue(null)
+    mockedGetDetails.mockResolvedValue({
+      id: 62001, title: "Real Title", genres: [{ id: 18, name: "Drama" }],
+      vote_average: 7, vote_count: 10, original_language: "en", production_companies: [],
+    })
+    mockedGetImages.mockResolvedValue({
+      id: 62001,
+      posters: [{ file_path: "/p62001.jpg", iso_639_1: "en", vote_average: 8, vote_count: 10, width: 500, height: 750, aspect_ratio: 0.667 }],
+      logos: [],
+      backdrops: [],
+    })
+    mockedGetExternalIds.mockResolvedValue({ imdb_id: "tt62001" })
+    // Simulate LRU eviction between the auto-branch write and the quality read.
+    vi.spyOn(sessionCache, "getTMDBSessionCache").mockReturnValue(null)
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array(poster), {
+      headers: { "content-type": "image/png" },
+    }))
+    vi.mocked(resolveStreamQuality).mockClear()
+    const res = await GET(new NextRequest("http://localhost:3000/api/poster/movie/62001?api_key=k&title=Bogus"), {
+      params: Promise.resolve({ type: "movie", id: "62001" }),
+    })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(resolveStreamQuality)).toHaveBeenCalled()
+    expect(vi.mocked(resolveStreamQuality).mock.calls[0][3]).toBe("Real Title")
+  })
+
+  it("does not forward a query wikidata_id without an image override", async () => {
+    const poster = await imageBuffer("#101010", 500, 750)
+    mockedGetById.mockResolvedValue({
+      tmdbId: 62002, mediaType: "movie", title: "Presets Qid", posterPath: "/p62002.jpg",
+      logoPath: null, originalPosterPath: null, language: "it",
+      rankingBadges: true, updatedAt: "2026-09-20T00:00:00.000Z",
+    })
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array(poster), {
+      headers: { "content-type": "image/png" },
+    }))
+    vi.mocked(fetchAllWikidata).mockClear()
+    const res = await GET(new NextRequest("http://localhost:3000/api/poster/movie/62002?wikidata_id=Q999"), {
+      params: Promise.resolve({ type: "movie", id: "62002" }),
+    })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(fetchAllWikidata)).toHaveBeenCalledWith(62002, "movie", expect.anything(), { wikidataId: null })
   })
 })
 
@@ -845,6 +1238,35 @@ describe("GET /api/poster/[type]/[id] error and edge cases", () => {
     })
     const res2 = await GET(req2, { params: Promise.resolve({ type: "movie", id: "42" }) })
     expect(res2.status).toBe(304)
+  })
+
+  it("emits Server-Timing with render phases on the render path", async () => {
+    const posterBuf = await imageBuffer("#202020", 500, 750)
+    mockedGetById.mockResolvedValue({
+      tmdbId: 43,
+      mediaType: "movie",
+      title: "Test Timing",
+      posterPath: "/poster.jpg",
+      logoPath: null,
+      originalPosterPath: null,
+      language: "it",
+      updatedAt: "2026-07-16T10:15:30.000Z",
+    })
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(new Uint8Array(posterBuf), {
+        status: 200,
+        headers: { "content-type": "image/png", "content-length": String(posterBuf.length) },
+      }),
+    )
+    const res = await GET(new NextRequest("http://localhost:3000/api/poster/movie/43"), {
+      params: Promise.resolve({ type: "movie", id: "43" }),
+    })
+    expect(res.status).toBe(200)
+    const timing = res.headers.get("Server-Timing") ?? ""
+    expect(timing).toMatch(/fetch;dur=\d+/)
+    expect(timing).toMatch(/prep;dur=\d+/)
+    expect(timing).toMatch(/composite;dur=\d+/)
+    expect(timing).toMatch(/total;dur=\d+/)
   })
 
   it("handles IMDB ID (tt...) resolution to TMDB ID", async () => {
@@ -1282,6 +1704,392 @@ describe("GET /api/poster/[type]/[id] error and edge cases", () => {
     await GET(reqDe, { params: Promise.resolve({ type: "tv", id: "76479" }) })
 
     expect(mockedGetJWRankings).toHaveBeenCalledWith("SHOW", "DE", 20, undefined, "de-DE", expect.any(AbortSignal))
+  })
+
+  it("serves ephemeral Cache-Control (120s, no immutable) when quality times out", async () => {
+    const posterBuf = await imageBuffer("#101010", 500, 750)
+    mockedGetById.mockResolvedValue(null)
+    mockedGetDetails.mockResolvedValue({
+      id: 42,
+      title: "Test Movie",
+      genres: [{ id: 18, name: "Drama" }],
+      vote_average: 7.5,
+      vote_count: 100,
+      original_language: "en",
+      release_date: "2024-01-15",
+      production_companies: [],
+    })
+    mockedGetImages.mockResolvedValue({
+      id: 42,
+      posters: [
+        { file_path: "/clean.jpg", iso_639_1: null, vote_average: 8.0, vote_count: 100, width: 500, height: 750, aspect_ratio: 0.667 },
+      ],
+      logos: [],
+      backdrops: [],
+    })
+    mockedGetExternalIds.mockResolvedValue({ imdb_id: "tt1234567" })
+    vi.mocked(resolveStreamQuality).mockResolvedValue({ quality: null, status: "timeout", source: "torrentio" })
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      new Response(new Uint8Array(posterBuf), {
+        status: 200,
+        headers: { "content-type": "image/png", "content-length": String(posterBuf.length) },
+      }),
+    )
+
+    const req = new NextRequest("http://localhost:3000/api/poster/movie/42")
+    const res = await GET(req, { params: Promise.resolve({ type: "movie", id: "42" }) })
+
+    expect(res.status).toBe(200)
+    const cc = res.headers.get("Cache-Control") ?? ""
+    expect(cc).toContain("max-age=120")
+    expect(cc).not.toContain("immutable")
+    expect(cc).not.toContain("max-age=31536000")
+  })
+
+  it("serves ephemeral Cache-Control (120s, no immutable) when wikidata is degraded", async () => {
+    const posterBuf = await imageBuffer("#101010", 500, 750)
+    cacheClear()
+    __resetTMDBSessionCache()
+    mockedGetById.mockResolvedValue(null)
+    mockedGetDetails.mockResolvedValue({
+      id: 42,
+      title: "Test Movie",
+      genres: [{ id: 18, name: "Drama" }],
+      vote_average: 7.5,
+      vote_count: 100,
+      original_language: "en",
+      release_date: "2024-01-15",
+      production_companies: [],
+    })
+    mockedGetImages.mockResolvedValue({
+      id: 42,
+      posters: [
+        { file_path: "/clean.jpg", iso_639_1: null, vote_average: 8.0, vote_count: 100, width: 500, height: 750, aspect_ratio: 0.667 },
+      ],
+      logos: [],
+      backdrops: [],
+    })
+    mockedGetExternalIds.mockResolvedValue({ imdb_id: "tt1234567" })
+    // Qualità resolved: isola l'effimero al solo Wikidata degradato.
+    vi.mocked(resolveStreamQuality).mockResolvedValue({ quality: "HD", status: "resolved", source: "torrentio", rawTokens: [] })
+    vi.mocked(fetchAllWikidata).mockResolvedValue({ awards: [], nominations: [], studios: [], director: null, degraded: true })
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      new Response(new Uint8Array(posterBuf), {
+        status: 200,
+        headers: { "content-type": "image/png", "content-length": String(posterBuf.length) },
+      }),
+    )
+
+    const req = new NextRequest("http://localhost:3000/api/poster/movie/42")
+    const res = await GET(req, { params: Promise.resolve({ type: "movie", id: "42" }) })
+
+    expect(res.status).toBe(200)
+    const cc = res.headers.get("Cache-Control") ?? ""
+    expect(cc).toContain("max-age=120")
+    expect(cc).not.toContain("immutable")
+    expect(cc).not.toContain("max-age=31536000")
+
+    // debug=1 espone lo stato Wikidata (degraded/timedOut).
+    cacheClear()
+    __resetTMDBSessionCache()
+    const reqDbg = new NextRequest("http://localhost:3000/api/poster/movie/42?debug=1")
+    const resDbg = await GET(reqDbg, { params: Promise.resolve({ type: "movie", id: "42" }) })
+    expect(resDbg.status).toBe(200)
+    const body = await resDbg.json()
+    expect(body.wikidata.degraded).toBe(true)
+    expect(body.wikidata.timedOut).toBe(false)
+
+    vi.mocked(fetchAllWikidata).mockResolvedValue({ awards: [], nominations: [], studios: [], director: null })
+  })
+
+  it("exposes quality status/source, logo selection and cache state in debug=1", async () => {
+    const posterBuf = await imageBuffer("#101010", 500, 750)
+    mockedGetById.mockResolvedValue(null)
+    mockedGetDetails.mockResolvedValue({
+      id: 42,
+      title: "Test Movie",
+      genres: [{ id: 18, name: "Drama" }],
+      vote_average: 7.5,
+      vote_count: 100,
+      original_language: "en",
+      release_date: "2024-01-15",
+      production_companies: [],
+    })
+    mockedGetImages.mockResolvedValue({
+      id: 42,
+      posters: [
+        { file_path: "/clean.jpg", iso_639_1: null, vote_average: 8.0, vote_count: 100, width: 500, height: 750, aspect_ratio: 0.667 },
+      ],
+      logos: [
+        { file_path: "/logo.png", iso_639_1: "en", vote_average: 0, vote_count: 0, width: 220, height: 80, aspect_ratio: 2.75 },
+      ],
+      backdrops: [],
+    })
+    mockedGetExternalIds.mockResolvedValue({ imdb_id: "tt1234567" })
+    vi.mocked(resolveStreamQuality).mockResolvedValue({ quality: "4K", status: "resolved", source: "torrentio", rawTokens: ["4k"] })
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      new Response(new Uint8Array(posterBuf), {
+        status: 200,
+        headers: { "content-type": "image/png", "content-length": String(posterBuf.length) },
+      }),
+    )
+
+    const req = new NextRequest("http://localhost:3000/api/poster/movie/42?debug=1")
+    const res = await GET(req, { params: Promise.resolve({ type: "movie", id: "42" }) })
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.quality).toMatchObject({ value: "4K", source: "torrentio", status: "resolved", rawTokens: ["4k"] })
+    expect(body.logoSelection.requestedLang).toBe("it")
+    expect(body.logoSelection.usedLang).toBe("en")
+    expect(body.cache.hit).toBe(false)
+    expect(body.meta.mappingId).toBeNull()
+  })
+
+  it("derives fallback language from region when lang query param is absent", async () => {
+    const posterBuf = await imageBuffer("#101010", 500, 750)
+    mockedGetById.mockResolvedValue(null)
+    mockedGetDetails.mockResolvedValue({
+      id: 43,
+      title: "Test Movie US",
+      genres: [{ id: 18, name: "Drama" }],
+      vote_average: 7.5,
+      vote_count: 100,
+      original_language: "en",
+      release_date: "2024-01-15",
+      production_companies: [],
+    })
+    mockedGetImages.mockResolvedValue({
+      id: 43,
+      posters: [
+        { file_path: "/clean2.jpg", iso_639_1: null, vote_average: 8.0, vote_count: 100, width: 500, height: 750, aspect_ratio: 0.667 },
+      ],
+      logos: [
+        { file_path: "/logo2.png", iso_639_1: "en", vote_average: 0, vote_count: 0, width: 220, height: 80, aspect_ratio: 2.75 },
+      ],
+      backdrops: [],
+    })
+    mockedGetExternalIds.mockResolvedValue({ imdb_id: "tt7654321" })
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      new Response(new Uint8Array(posterBuf), {
+        status: 200,
+        headers: { "content-type": "image/png", "content-length": String(posterBuf.length) },
+      }),
+    )
+
+    const req = new NextRequest("http://localhost:3000/api/poster/movie/43?debug=1&region=US")
+    const res = await GET(req, { params: Promise.resolve({ type: "movie", id: "43" }) })
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.logoSelection.requestedLang).toBe("en")
+  })
+})
+
+describe("GET /api/poster/[type]/[id] con alias IMDb manuale", () => {
+  const mockedGetImdbAlias = vi.mocked(getImdbAlias)
+  const mockedGetAll = vi.mocked(getAll)
+  const mockedResolveImdbToTmdb = vi.mocked(resolveImdbToTmdb)
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockedGetImdbAlias.mockReset().mockResolvedValue(null)
+    mockedGetAll.mockReset().mockResolvedValue([])
+    mockedGetById.mockReset().mockResolvedValue(null)
+    mockedResolveImdbToTmdb.mockReset().mockResolvedValue(null)
+    vi.mocked(fetchCustomRatings).mockReset().mockResolvedValue([])
+    vi.mocked(fetchAggregatedRating).mockReset().mockResolvedValue(null)
+    vi.stubEnv("PICTORIUM_CUSTOM_RATING_ENABLED", "false")
+  })
+
+  afterEach(() => {
+    cacheClear()
+    __resetTMDBSessionCache()
+  })
+
+  it("l'alias vince sul /find e aggancia il mapping salvato", async () => {
+    mockedGetImdbAlias.mockResolvedValue({ imdbId: "tt13207736", mediaType: "tv", tmdbId: 299939 })
+    // Il /find direbbe un altro id: non deve essere consultato proprio.
+    mockedResolveImdbToTmdb.mockResolvedValue(111111)
+    mockedGetById.mockImplementation(async (type, id) =>
+      type === "tv" && id === 299939
+        ? {
+            tmdbId: 299939, mediaType: "tv", title: "Monster: Lizzie Borden",
+            posterPath: "/lizzie.jpg", logoPath: null, originalPosterPath: null,
+            language: "it", showBadges: false, rankingBadges: false,
+            updatedAt: "2026-09-20T00:00:00.000Z",
+          }
+        : null,
+    )
+    const poster = await imageBuffer("#101010", 500, 750)
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toContain("/lizzie.jpg")
+      return new Response(new Uint8Array(poster), {
+        status: 200,
+        headers: { "content-type": "image/png" },
+      })
+    })
+    const res = await GET(
+      new NextRequest("http://localhost:3000/api/poster/series/tt13207736"),
+      { params: Promise.resolve({ type: "series", id: "tt13207736" }) },
+    )
+    expect(res.status).toBe(200)
+    expect(mockedGetImdbAlias).toHaveBeenCalledWith("tt13207736", null)
+    expect(mockedResolveImdbToTmdb).not.toHaveBeenCalled()
+    expect(mockedGetById).toHaveBeenCalledWith("tv", 299939, null)
+  })
+
+  it("senza alias, fallback al /find invariato (tt ignoto → 400)", async () => {
+    mockedGetImdbAlias.mockResolvedValue(null)
+    mockedGetAll.mockResolvedValue([])
+    mockedResolveImdbToTmdb.mockResolvedValue(null)
+    const res = await GET(
+      new NextRequest("http://localhost:3000/api/poster/series/tt0000000"),
+      { params: Promise.resolve({ type: "series", id: "tt0000000" }) },
+    )
+    expect(res.status).toBe(400)
+    expect(mockedResolveImdbToTmdb).toHaveBeenCalled()
+  })
+
+  it("reverse lookup: imdbId del mapping salvato vince sul /find", async () => {
+    mockedGetImdbAlias.mockResolvedValue(null)
+    mockedGetAll.mockResolvedValue([
+      {
+        tmdbId: 299939, mediaType: "tv", title: "Monster: Lizzie Borden",
+        posterPath: "/lizzie.jpg", logoPath: null, originalPosterPath: null,
+        language: "it", showBadges: false, rankingBadges: false,
+        imdbId: "tt13207736", updatedAt: "2026-09-20T00:00:00.000Z",
+      },
+    ])
+    // Il /find punterebbe allo stub franchise: non deve essere consultato.
+    mockedResolveImdbToTmdb.mockResolvedValue(111111)
+    mockedGetById.mockImplementation(async (type, id) =>
+      type === "tv" && id === 299939
+        ? {
+            tmdbId: 299939, mediaType: "tv", title: "Monster: Lizzie Borden",
+            posterPath: "/lizzie.jpg", logoPath: null, originalPosterPath: null,
+            language: "it", showBadges: false, rankingBadges: false,
+            imdbId: "tt13207736", updatedAt: "2026-09-20T00:00:00.000Z",
+          }
+        : null,
+    )
+    const poster = await imageBuffer("#101010", 500, 750)
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toContain("/lizzie.jpg")
+      return new Response(new Uint8Array(poster), {
+        status: 200,
+        headers: { "content-type": "image/png" },
+      })
+    })
+    const res = await GET(
+      new NextRequest("http://localhost:3000/api/poster/series/tt13207736"),
+      { params: Promise.resolve({ type: "series", id: "tt13207736" }) },
+    )
+    expect(res.status).toBe(200)
+    expect(mockedResolveImdbToTmdb).not.toHaveBeenCalled()
+    expect(mockedGetById).toHaveBeenCalledWith("tv", 299939, null)
+  })
+
+  it("precedenza completa: alias > mapping.imdbId > /find", async () => {
+    mockedGetImdbAlias.mockResolvedValue({ imdbId: "tt13207736", mediaType: "tv", tmdbId: 100 })
+    mockedGetAll.mockResolvedValue([
+      {
+        tmdbId: 299939, mediaType: "tv", title: "Monster: Lizzie Borden",
+        posterPath: "/lizzie.jpg", logoPath: null, originalPosterPath: null,
+        language: "it", showBadges: false, rankingBadges: false,
+        imdbId: "tt13207736", updatedAt: "2026-09-20T00:00:00.000Z",
+      },
+    ])
+    mockedResolveImdbToTmdb.mockResolvedValue(111111)
+    mockedGetById.mockImplementation(async (type, id) => ({
+      tmdbId: id, mediaType: type, title: `T${id}`, posterPath: "/x.jpg",
+      logoPath: null, originalPosterPath: null, language: "it",
+      showBadges: false, rankingBadges: false,
+      updatedAt: "2026-09-20T00:00:00.000Z",
+    }))
+    const poster = await imageBuffer("#101010", 500, 750)
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(new Uint8Array(poster), {
+      status: 200,
+      headers: { "content-type": "image/png" },
+    }))
+    const res = await GET(
+      new NextRequest("http://localhost:3000/api/poster/series/tt13207736"),
+      { params: Promise.resolve({ type: "series", id: "tt13207736" }) },
+    )
+    expect(res.status).toBe(200)
+    expect(mockedGetById).toHaveBeenCalledWith("tv", 100, null)
+    expect(mockedResolveImdbToTmdb).not.toHaveBeenCalled()
+  })
+
+  it("backfills genuine TMDB vote into the separate-ratings fetch on preview when MDBList is down", async () => {
+    const posterBuf = await imageBuffer("#101010", 500, 750)
+    const { fetchAggregatedRating } = await import("@/lib/ratings")
+    const mockedAggregatedRating = vi.mocked(fetchAggregatedRating)
+    // MDBList down: nessun sources.
+    mockedAggregatedRating.mockResolvedValue(null)
+    mockedGetById.mockResolvedValue(null)
+    // Voto TMDB genuino già in session cache (ramo non-mappato / tick precedenti).
+    setTMDBSessionCache("movie", 44, {
+      details: { id: 44, genres: [], vote_average: 7.5, vote_count: 100 },
+    })
+    mockedGetImages.mockResolvedValue({ id: 44, posters: [], logos: [], backdrops: [] })
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array(posterBuf), {
+      status: 200,
+      headers: { "content-type": "image/png", "content-length": String(posterBuf.length) },
+    }))
+    const res = await GET(new NextRequest(
+      "http://localhost:3000/api/poster/movie/44?poster=%2Fq.jpg&imdbId=tt0000044&sep=1&rsrc=tmdb&badges=1&ranking=0&preview=1&debug=1",
+    ), { params: Promise.resolve({ type: "movie", id: "44" }) })
+    expect(res.status).toBe(200)
+    expect(mockedAggregatedRating).toHaveBeenCalled()
+    const opts = mockedAggregatedRating.mock.calls[0][3] as { tmdbFallbackVote?: number }
+    expect(opts.tmdbFallbackVote).toBe(7.5)
+  })
+
+  it("skips the TMDB backfill in the separate-ratings fetch without a genuine cached vote", async () => {
+    const posterBuf = await imageBuffer("#101010", 500, 750)
+    const { fetchAggregatedRating } = await import("@/lib/ratings")
+    const mockedAggregatedRating = vi.mocked(fetchAggregatedRating)
+    mockedAggregatedRating.mockResolvedValue(null)
+    mockedGetById.mockResolvedValue(null)
+    // Nessun details in session cache: niente backfill (come prima del fix).
+    mockedGetImages.mockResolvedValue({ id: 44, posters: [], logos: [], backdrops: [] })
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array(posterBuf), {
+      status: 200,
+      headers: { "content-type": "image/png", "content-length": String(posterBuf.length) },
+    }))
+    const res = await GET(new NextRequest(
+      "http://localhost:3000/api/poster/movie/44?poster=%2Fq.jpg&imdbId=tt0000044&sep=1&rsrc=tmdb&badges=1&ranking=0&preview=1&debug=1",
+    ), { params: Promise.resolve({ type: "movie", id: "44" }) })
+    expect(res.status).toBe(200)
+    expect(mockedAggregatedRating).toHaveBeenCalled()
+    const opts = mockedAggregatedRating.mock.calls[0][3] as { tmdbFallbackVote?: number }
+    expect(opts.tmdbFallbackVote).toBeUndefined()
+  })
+})
+
+describe("invented user namespaces (v1.23.0)", () => {
+  it("treats ?u= with no stored user as anonymous (global mapping, no separate key space)", async () => {
+    vi.stubEnv("PICTORIUM_MULTI_USER", "1")
+    vi.stubEnv("POSTERIUM_MULTI_USER", "1")
+    const poster = await imageBuffer("#101010", 500, 750)
+    const globalMapping = {
+      tmdbId: 61091, mediaType: "movie" as const, title: "Global", posterPath: "/global.jpg",
+      logoPath: null, originalPosterPath: null, language: "it", showBadges: false,
+      rankingBadges: false, updatedAt: "2026-09-12T00:00:00.000Z",
+    }
+    // Globale sì, namespace no: senza downgrade la route leggerebbe il
+    // namespace inventato (vuoto) invece del mapping globale.
+    mockedGetById.mockImplementation(async (_t, _id, userId) => (userId ? null : globalMapping))
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array(poster), {
+      headers: { "content-type": "image/png" },
+    }))
+    const invented = "00000000-0000-4000-8000-000000000000"
+    const res = await GET(new NextRequest(`http://localhost:3000/api/poster/movie/61091?u=${invented}`), {
+      params: Promise.resolve({ type: "movie", id: "61091" }),
+    })
+    expect(res.status).toBe(200)
+    expect(mockedGetById).toHaveBeenCalledWith("movie", 61091, null)
   })
 })
 

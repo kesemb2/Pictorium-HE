@@ -18,9 +18,9 @@ export interface RegionDef {
   readonly lang: string
   /**
    * Lingua UI a 2 lettere (stato `lang` dell'app, `preferred_lang`).
-   * Solo it/en/fr/de/es hanno un dizionario UI completo — ja/ko/pt/he/cs
-   * ripiegano sull'inglese in `i18n.lookup` per le stringhe `ui.*` (he ha
-   * badge/award tradotti), mentre i contenuti TMDB seguono `lang`.
+   * it/en/fr/de/es/pl/he/ar/tr/nl/sv hanno un dizionario UI completo — ja/ko/pt/cs
+   * ripiegano sull'inglese in `i18n.lookup` per le stringhe `ui.*` (he/ar
+   * hanno badge/award tradotti), mentre i contenuti TMDB seguono `lang`.
    */
   readonly lang2: string
   /** Nome lingua in lingua nativa (per il selettore lingua). */
@@ -32,6 +32,7 @@ export interface RegionDef {
 
 export const REGIONS: readonly RegionDef[] = [
   { code: "IT", flixSlug: "italy", lang: "it-IT", lang2: "it", languageName: "Italiano", label: "Italia", flag: "🇮🇹" },
+  { code: "PL", flixSlug: "poland", lang: "pl-PL", lang2: "pl", languageName: "Polski", label: "Polonia", flag: "🇵🇱" },
   { code: "US", flixSlug: "united-states", lang: "en-US", lang2: "en", languageName: "English", label: "USA", flag: "🇺🇸" },
   { code: "GB", flixSlug: "united-kingdom", lang: "en-GB", lang2: "en", languageName: "English", label: "Regno Unito", flag: "🇬🇧" },
   { code: "FR", flixSlug: "france", lang: "fr-FR", lang2: "fr", languageName: "Français", label: "Francia", flag: "🇫🇷" },
@@ -41,11 +42,17 @@ export const REGIONS: readonly RegionDef[] = [
   { code: "IL", flixSlug: "israel", lang: "he-IL", lang2: "he", languageName: "עברית", label: "Israele", flag: "🇮🇱" },
   { code: "JP", flixSlug: "japan", lang: "ja-JP", lang2: "ja", languageName: "日本語", label: "Giappone", flag: "🇯🇵" },
   { code: "KR", flixSlug: "south-korea", lang: "ko-KR", lang2: "ko", languageName: "한국어", label: "Corea del Sud", flag: "🇰🇷" },
-  { code: "BR", flixSlug: "brazil", lang: "pt-BR", lang2: "pt", languageName: "Português", label: "Brasile", flag: "🇧🇷" },
+  { code: "PT", flixSlug: "portugal", lang: "pt-PT", lang2: "pt", languageName: "Português", label: "Portogallo", flag: "🇵🇹" },
+  { code: "BR", flixSlug: "brazil", lang: "pt-BR", lang2: "pt", languageName: "Português (Brasil)", label: "Brasile", flag: "🇧🇷" },
   { code: "IN", flixSlug: "india", lang: "en-IN", lang2: "en", languageName: "English", label: "India", flag: "🇮🇳" },
   { code: "CA", flixSlug: "canada", lang: "en-CA", lang2: "en", languageName: "English", label: "Canada", flag: "🇨🇦" },
   { code: "AU", flixSlug: "australia", lang: "en-AU", lang2: "en", languageName: "English", label: "Australia", flag: "🇦🇺" },
   { code: "CZ", flixSlug: "czech-republic", lang: "cs-CZ", lang2: "cs", languageName: "Čeština", label: "Cechia", flag: "🇨🇿" },
+  { code: "RO", flixSlug: "romania", lang: "ro-RO", lang2: "ro", languageName: "Română", label: "Romania", flag: "🇷🇴" },
+  { code: "SA", flixSlug: "saudi-arabia", lang: "ar-SA", lang2: "ar", languageName: "العربية", label: "Arabia Saudita", flag: "🇸🇦" },
+  { code: "TR", flixSlug: "turkey", lang: "tr-TR", lang2: "tr", languageName: "Türkçe", label: "Turchia", flag: "🇹🇷" },
+  { code: "NL", flixSlug: "netherlands", lang: "nl-NL", lang2: "nl", languageName: "Nederlands", label: "Paesi Bassi", flag: "🇳🇱" },
+  { code: "SE", flixSlug: "sweden", lang: "sv-SE", lang2: "sv", languageName: "Svenska", label: "Svezia", flag: "🇸🇪" },
 ] as const
 
 const BY_CODE = new Map(REGIONS.map((r) => [r.code, r]))

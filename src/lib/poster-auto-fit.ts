@@ -2,6 +2,8 @@ import sharp from "sharp"
 import { rankPostersByFit } from "@/lib/poster-fit-score"
 import { concurrentMap } from "@/lib/episode-ordering"
 import { envWithFallback } from "@/lib/env-compat"
+import type { PosterShape } from "@/lib/types"
+import { logoDefaultScaleFromAspect } from "@/lib/logo-selection"
 import {
   adjustFitResults,
   selectAcceptedPosterPath,
@@ -23,6 +25,11 @@ export interface PosterFitSelection {
   /** Logo già scaricato durante il best-fit: la route lo riusa nel render
    *  invece di rifare il fetch. Assente su cache hit o timeout del logo. */
   readonly logoBuffer?: Buffer
+  /** Osservabilità (decisione count 16 vs 8): presenti solo quando il ranking
+   *  è stato davvero eseguito. winnerIndex = indice del vincitore nei
+   *  candidati (0-based), candidateCount = candidati valutati. */
+  readonly winnerIndex?: number
+  readonly candidateCount?: number
 }
 
 interface SelectBestLogoFitPosterInput {
@@ -36,11 +43,19 @@ interface SelectBestLogoFitPosterInput {
   readonly hasBadges: boolean
   /** Altezza della fascia sfocata in % del poster; null a blur spento. */
   readonly blurBandPct?: number | null
+  /** Formato canvas: "landscape" candida sfondi 16:9 e analizza a 768×432
+   *  con layout Cinematic Left. Default "poster". */
+  readonly shape?: PosterShape
 }
 
-// Più candidati del passato (8): col decode-once dello scoring il budget di
-// tempo basta per 16 poster — più candidati = miglior best-of.
-const TMDB_CANDIDATE_COUNT = 16
+// Candidati clean valutati dal best-fit (default 8): oltre raramente si
+// trovano clean migliori e ogni candidato in più costa download + scoring.
+// Env per sperimentare (es. 16): 1–32, default 8.
+const TMDB_CANDIDATE_COUNT = (() => {
+  const raw = envWithFallback("AUTO_FIT_CANDIDATE_COUNT")
+  const n = raw ? parseInt(raw, 10) : 8
+  return Number.isFinite(n) ? Math.min(Math.max(n, 1), 32) : 8
+})()
 // Tetto dello SCORING (CPU-bound): lo scoring è una metrica, non il prodotto —
 // oltre questo tempo si usa il fallback (primo clean). Ridotto a 1200ms per
 // stringere il caso peggiore del render non-mappato; sovrascrivibile via env.
@@ -77,7 +92,7 @@ function cacheKey(candidates: readonly PosterCandidate[], input: SelectBestLogoF
   const posterSignature = candidates.map((poster) =>
     `${poster.file_path}:${poster.vote_average ?? "x"}:${poster.width ?? "x"}:${poster.height ?? "x"}`,
   ).join(",")
-  return `auto-fit:${posterSignature}:${input.logoPath}:${input.logoScale ?? "auto"}:${input.logoOffsetX ?? 0}:${input.logoOffsetY ?? 0}:${input.hasBadges}:${input.blurBandPct ?? "noblur"}`
+  return `auto-fit:${posterSignature}:${input.logoPath}:${input.logoScale ?? "auto"}:${input.logoOffsetX ?? 0}:${input.logoOffsetY ?? 0}:${input.hasBadges}:${input.blurBandPct ?? "noblur"}:${input.shape ?? "poster"}`
 }
 
 function cacheGet(key: string): PosterFitSelection | null {
@@ -117,22 +132,25 @@ function defaultLogoScale(logoBuffer: Buffer): Promise<number> {
   return sharp(logoBuffer).metadata().then((meta) => {
     const logoW = meta.width || 200
     const logoH = meta.height || 100
-    return Math.min(Math.round(37.5 * logoW / logoH), 75)
+    // Single source: logoDefaultScaleFromAspect (logo-selection.ts).
+    return logoDefaultScaleFromAspect(logoW, logoH) ?? 75
   })
 }
 
 const IDEAL_ASPECT = 2 / 3
+const LANDSCAPE_ASPECT = 16 / 9
 const MAX_ASPECT_DIFF = 0.08
 
-function hasPosterAspectRatio(poster: PosterCandidate): boolean {
+function hasPosterAspectRatio(poster: PosterCandidate, shape?: PosterShape): boolean {
   const width = poster.width ?? 0
   const height = poster.height ?? 0
   if (width <= 0 || height <= 0) return true
-  return Math.abs(width / height - IDEAL_ASPECT) <= MAX_ASPECT_DIFF
+  const ideal = shape === "landscape" ? LANDSCAPE_ASPECT : IDEAL_ASPECT
+  return Math.abs(width / height - ideal) <= MAX_ASPECT_DIFF
 }
 
-export function selectAutoFitCandidates(posters: readonly PosterCandidate[]): PosterCandidate[] {
-  const clean = posters.filter((poster) => poster.iso_639_1 === null && hasPosterAspectRatio(poster))
+export function selectAutoFitCandidates(posters: readonly PosterCandidate[], shape?: PosterShape): PosterCandidate[] {
+  const clean = posters.filter((poster) => poster.iso_639_1 === null && hasPosterAspectRatio(poster, shape))
   return Array.from(
     new Map(clean.map((poster) => [poster.file_path, poster])).values(),
   ).slice(0, TMDB_CANDIDATE_COUNT)
@@ -147,22 +165,23 @@ export async function rankBestFitPosters(
   hasBadges: boolean,
   offsetYVariants?: number[],
   blurBandPct?: number | null,
+  shape?: PosterShape,
 ): Promise<RankedFitResult[]> {
   if (posterEntries.length === 0) return []
 
   const ranked = await withTimeout(
-    rankPostersByFit(posterEntries, logoBuffer, logoScale, logoOffsetX, logoOffsetY, hasBadges, offsetYVariants, blurBandPct),
+    rankPostersByFit(posterEntries, logoBuffer, logoScale, logoOffsetX, logoOffsetY, hasBadges, offsetYVariants, blurBandPct, shape),
     posterEntries.map((p) => ({ posterPath: p.posterPath, score: 0, metrics: { cleanliness: 0, contrast: 0, detailPenalty: 0, badgeReadability: 0, bandIntrusion: 0 }, reasons: [] })),
     AUTO_FIT_TIMEOUT_MS,
   )
 
   if (ranked.length === 0) return []
 
-  return adjustFitResults({ ranked, posterEntries })
+  return adjustFitResults({ ranked, posterEntries, shape })
 }
 
 export async function selectBestLogoFitPosterPath(input: SelectBestLogoFitPosterInput): Promise<PosterFitSelection | null> {
-  const candidates = selectAutoFitCandidates(input.posters)
+  const candidates = selectAutoFitCandidates(input.posters, input.shape)
 
   const firstCandidate = candidates[0]?.file_path ?? null
   if (candidates.length < 2) return { posterPath: firstCandidate }
@@ -223,6 +242,7 @@ export async function selectBestLogoFitPosterPath(input: SelectBestLogoFitPoster
     input.hasBadges,
     [-20, 0, 20],
     input.blurBandPct,
+    input.shape,
   )
 
   const selectedPosterPath = selectAcceptedPosterPath(rankedResults, fallbackResult.posterPath)
@@ -231,6 +251,8 @@ export async function selectBestLogoFitPosterPath(input: SelectBestLogoFitPoster
     posterPath: selectedPosterPath,
     posterBuffer: selectedPoster?.posterBuffer,
     logoBuffer,
+    winnerIndex: selectedPosterPath ? candidates.findIndex((p) => p.file_path === selectedPosterPath) : -1,
+    candidateCount: candidates.length,
   }
   if (selectedPosterPath) cacheSet(key, selectedPosterPath)
   return result

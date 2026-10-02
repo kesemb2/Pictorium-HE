@@ -3,7 +3,9 @@
 import { useState, useCallback, useEffect, useRef } from "react"
 import type { CustomCatalogConfig } from "./types"
 import { PICTORIUM_CATALOGS } from "./catalog-definitions"
-import { shouldSkipServerSync } from "./guest-guard"
+import { isProfilelessOnMultiUser, notifyProfilelessOnce, shouldSkipServerSync } from "./guest-guard"
+import { userFetch } from "./http"
+import { USER_UNLOCK_EVENT } from "./user-token"
 
 export function useCustomCatalogs(
   safeGetItem: (key: string) => string | null,
@@ -15,6 +17,79 @@ export function useCustomCatalogs(
   const [catalogOrder, setCatalogOrderState] = useState<string[]>([])
   const [catalogRenames, setCatalogRenamesState] = useState<Record<string, string>>({})
   const lastSyncRef = useRef<string>("")
+
+  // Refresh cataloghi dal server (namespace via userFetch su /u/<uuid>).
+  // Rilegge i flag "saved" fresh da localStorage e riempie solo ciò che è
+  // ancora vuoto (stessa semantica del mount). Riusato post-unlock: la prima
+  // fetch può aver girato senza token (race col #key=).
+  const refreshCatalogsFromServer = useCallback(() => {
+    const hasSaved = (key: string, isRecord?: boolean): boolean => {
+      const raw = safeGetItem(key)
+      if (!raw) return false
+      try {
+        const parsed = JSON.parse(raw)
+        if (isRecord) return !!parsed && typeof parsed === "object" && !Array.isArray(parsed) && Object.keys(parsed).length > 0
+        return Array.isArray(parsed) && parsed.length > 0
+      } catch { return false }
+    }
+    const savedCustomCats = hasSaved("pictorium_custom_catalogs")
+    const savedDisabledCats = hasSaved("pictorium_disabled_catalogs")
+    const savedHomeDisabledCats = hasSaved("pictorium_home_disabled_catalogs")
+    const savedOrder = hasSaved("pictorium_catalog_order")
+    const savedRenames = hasSaved("pictorium_catalog_renames", true)
+    // Hydrate missing or server-configured defaults
+    userFetch("/api/defaults")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return
+        if (Array.isArray(data.customCatalogs) && !savedCustomCats) {
+          setCustomCatalogsState((prev) => {
+            if (prev.length === 0) {
+              safeSetItem("pictorium_custom_catalogs", JSON.stringify(data.customCatalogs))
+              return data.customCatalogs
+            }
+            return prev
+          })
+        }
+        if (Array.isArray(data.disabledCatalogIds) && !savedDisabledCats) {
+          setDisabledCatalogIdsState((prev) => {
+            if (prev.length === 0) {
+              safeSetItem("pictorium_disabled_catalogs", JSON.stringify(data.disabledCatalogIds))
+              return data.disabledCatalogIds
+            }
+            return prev
+          })
+        }
+        if (Array.isArray(data.homeDisabledCatalogIds) && !savedHomeDisabledCats) {
+          setHomeDisabledCatalogIdsState((prev) => {
+            if (prev.length === 0) {
+              safeSetItem("pictorium_home_disabled_catalogs", JSON.stringify(data.homeDisabledCatalogIds))
+              return data.homeDisabledCatalogIds
+            }
+            return prev
+          })
+        }
+        if (Array.isArray(data.catalogOrder) && !savedOrder) {
+          setCatalogOrderState((prev) => {
+            if (prev.length === 0) {
+              safeSetItem("pictorium_catalog_order", JSON.stringify(data.catalogOrder))
+              return data.catalogOrder
+            }
+            return prev
+          })
+        }
+        if (data.catalogRenames && typeof data.catalogRenames === "object" && !Array.isArray(data.catalogRenames) && !savedRenames) {
+          setCatalogRenamesState((prev) => {
+            if (Object.keys(prev).length === 0) {
+              safeSetItem("pictorium_catalog_renames", JSON.stringify(data.catalogRenames))
+              return data.catalogRenames
+            }
+            return prev
+          })
+        }
+      })
+      .catch(() => {})
+  }, [safeGetItem, safeSetItem])
 
   // Initial load: localStorage + fetch /api/defaults
   useEffect(() => {
@@ -83,59 +158,15 @@ export function useCustomCatalogs(
       catalogRenames: localRenames,
     })
 
-    // Hydrate missing or server-configured defaults
-    fetch("/api/defaults")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!data) return
-        if (Array.isArray(data.customCatalogs) && (!savedCustomCats || localCustom.length === 0)) {
-          setCustomCatalogsState((prev) => {
-            if (prev.length === 0) {
-              safeSetItem("pictorium_custom_catalogs", JSON.stringify(data.customCatalogs))
-              return data.customCatalogs
-            }
-            return prev
-          })
-        }
-        if (Array.isArray(data.disabledCatalogIds) && (!savedDisabledCats || localDisabled.length === 0)) {
-          setDisabledCatalogIdsState((prev) => {
-            if (prev.length === 0) {
-              safeSetItem("pictorium_disabled_catalogs", JSON.stringify(data.disabledCatalogIds))
-              return data.disabledCatalogIds
-            }
-            return prev
-          })
-        }
-        if (Array.isArray(data.homeDisabledCatalogIds) && (!savedHomeDisabledCats || localHomeDisabled.length === 0)) {
-          setHomeDisabledCatalogIdsState((prev) => {
-            if (prev.length === 0) {
-              safeSetItem("pictorium_home_disabled_catalogs", JSON.stringify(data.homeDisabledCatalogIds))
-              return data.homeDisabledCatalogIds
-            }
-            return prev
-          })
-        }
-        if (Array.isArray(data.catalogOrder) && (!savedOrder || localOrder.length === 0)) {
-          setCatalogOrderState((prev) => {
-            if (prev.length === 0) {
-              safeSetItem("pictorium_catalog_order", JSON.stringify(data.catalogOrder))
-              return data.catalogOrder
-            }
-            return prev
-          })
-        }
-        if (data.catalogRenames && typeof data.catalogRenames === "object" && !Array.isArray(data.catalogRenames) && (!savedRenames || Object.keys(localRenames).length === 0)) {
-          setCatalogRenamesState((prev) => {
-            if (Object.keys(prev).length === 0) {
-              safeSetItem("pictorium_catalog_renames", JSON.stringify(data.catalogRenames))
-              return data.catalogRenames
-            }
-            return prev
-          })
-        }
-      })
-      .catch(() => {})
-  }, [safeGetItem, safeSetItem])
+    refreshCatalogsFromServer()
+  }, [safeGetItem, safeSetItem, refreshCatalogsFromServer])
+
+  // Post-unlock: ricarica i cataloghi del namespace senza refresh pagina.
+  useEffect(() => {
+    const onUnlock = () => refreshCatalogsFromServer()
+    window.addEventListener(USER_UNLOCK_EVENT, onUnlock)
+    return () => window.removeEventListener(USER_UNLOCK_EVENT, onUnlock)
+  }, [refreshCatalogsFromServer])
 
   // Auto-persist: sincronizza su server (/api/defaults) ad ogni modifica
   useEffect(() => {
@@ -156,10 +187,13 @@ export function useCustomCatalogs(
       void shouldSkipServerSync().then((skip) => {
         if (skip) {
           lastSyncRef.current = ""
-          console.debug("[catalogs] Server sync skipped (guest without session)")
+          console.debug("[catalogs] Server sync skipped (guest without session, or no profile)")
+          void isProfilelessOnMultiUser().then((profileless) => {
+            if (profileless) notifyProfilelessOnce()
+          })
           return
         }
-        fetch("/api/defaults", {
+        userFetch("/api/defaults", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: payloadStr,

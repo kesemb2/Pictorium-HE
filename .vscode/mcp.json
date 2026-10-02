@@ -4,10 +4,6 @@
       "type": "http",
       "url": "https://mcp.context7.com/mcp"
     },
-    "github": {
-      "type": "http",
-      "url": "https://api.githubcopilot.com/mcp/"
-    },
     "tmdb": {
       "command": "npx",
       "args": ["-y", "tmdb-mcp"],

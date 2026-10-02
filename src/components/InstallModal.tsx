@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef, useMemo } from "react"
-import { X, Check, Copy, Download, ExternalLink, Tv, Sparkles, Film, Search, Image as ImageIcon } from "lucide-react"
+import { X, Check, Copy, Download, ExternalLink, Tv, Sparkles, Film, Search, Star, Image as ImageIcon } from "lucide-react"
 import QRCode from "qrcode"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { copyText } from "@/lib/clipboard"
@@ -11,21 +11,74 @@ interface InstallModalProps {
   isOpen: boolean
   onClose: () => void
   manifestUrl?: string
+  /** Template primario con `{tmdb_id}` (esatto, niente /find). */
   posterUrlPattern?: string
+  /** Template secondario con `{imdb_id}` (fallback universale). */
+  posterUrlPatternImdb?: string
+  /** Template auto con `{tmdb_id|imdb_id}` (Nuvio: id disponibile per la vista). */
+  posterUrlPatternAuto?: string
+  /** Fork: template dell'endpoint logo (`/api/logo/{type}/{id}`). */
   logoUrlPattern?: string
 }
 
-export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, posterUrlPattern, logoUrlPattern }: InstallModalProps) {
+/** Riga template copiabile con stato "copiato" proprio. */
+function PatternRow({ value, tag, copyLabel }: { value: string; tag: string; copyLabel: string }) {
+  const { t } = useT()
+  const [copied, setCopied] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [])
+
+  const handleCopy = async () => {
+    if (!(await copyText(value))) return
+    setCopied(true)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 p-1 bg-black/40 border border-white/10 rounded-xl">
+        <input
+          type="text"
+          readOnly
+          value={value}
+          aria-label={copyLabel}
+          className="w-full bg-transparent px-2 py-1 text-[10px] font-mono text-zinc-300 truncate select-all focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={handleCopy}
+          className={`shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-medium flex items-center gap-1 transition-all cursor-pointer ${
+            copied
+              ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm"
+              : "bg-white/10 hover:bg-white/15 text-zinc-200 border border-white/10 active:scale-95"
+          }`}
+        >
+          {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-muted" />}
+          <span>{copied ? t("ui.copied") : t("ui.copyUrl")}</span>
+        </button>
+      </div>
+      <p className="text-[9px] uppercase tracking-wider text-zinc-500 font-mono mt-1 px-1">{tag}</p>
+    </div>
+  )
+}
+
+export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, posterUrlPattern, posterUrlPatternImdb, posterUrlPatternAuto, logoUrlPattern }: InstallModalProps) {
   const { t } = useT()
   const [hubMode, setHubMode] = useState<"all" | "catalogs" | "search">("all")
   const [copied, setCopied] = useState(false)
-  const [copiedPosterUrl, setCopiedPosterUrl] = useState(false)
-  const [copiedLogoUrl, setCopiedLogoUrl] = useState(false)
+  // Quale placeholder id usa il template: Auto (Nuvio/AIO sostituiscono
+  // l'id disponibile per la vista, default), TMDB (primario, esatto) o IMDb
+  // (fallback universale). Una sola riga visibile alla volta.
+  const [patternKind, setPatternKind] = useState<"tmdb" | "imdb" | "auto">("auto")
   const [qrSvg, setQrSvg] = useState<string>("")
   const [baseManifestUrl, setBaseManifestUrl] = useState(propManifestUrl || "")
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const posterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const logoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (propManifestUrl) {
@@ -97,8 +150,6 @@ export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, po
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
-      if (posterTimerRef.current) clearTimeout(posterTimerRef.current)
-      if (logoTimerRef.current) clearTimeout(logoTimerRef.current)
     }
   }, [])
 
@@ -109,22 +160,6 @@ export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, po
     setCopied(true)
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => setCopied(false), 2000)
-  }
-
-  const handleCopyPosterUrl = async () => {
-    if (!posterUrlPattern) return
-    if (!(await copyText(posterUrlPattern))) return
-    setCopiedPosterUrl(true)
-    if (posterTimerRef.current) clearTimeout(posterTimerRef.current)
-    posterTimerRef.current = setTimeout(() => setCopiedPosterUrl(false), 2000)
-  }
-
-  const handleCopyLogoUrl = async () => {
-    if (!logoUrlPattern) return
-    if (!(await copyText(logoUrlPattern))) return
-    setCopiedLogoUrl(true)
-    if (logoTimerRef.current) clearTimeout(logoTimerRef.current)
-    logoTimerRef.current = setTimeout(() => setCopiedLogoUrl(false), 2000)
   }
 
   return (
@@ -265,8 +300,8 @@ export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, po
             </a>
           </div>
 
-          {/* AIOMetadata & External Poster URL */}
-          {posterUrlPattern && (
+          {/* AIOMetadata & External Poster URL: selettore TMDB/IMDb/Auto + una riga */}
+          {(posterUrlPattern || posterUrlPatternImdb || posterUrlPatternAuto) && (
             <div className="pt-3 border-t border-white/10 space-y-1.5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-zinc-300 text-[11px] font-semibold">
@@ -280,67 +315,62 @@ export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, po
                 {t("ui.aiomLinkDesc")}
               </p>
 
-              <div className="flex items-center gap-1.5 p-1 bg-black/40 border border-white/10 rounded-xl">
-                <input
-                  type="text"
-                  readOnly
-                  value={posterUrlPattern}
-                  aria-label={t("ui.aiomLinkTitle") || "AIOMetadata URL"}
-                  className="w-full bg-transparent px-2 py-1 text-[10px] font-mono text-zinc-300 truncate select-all focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={handleCopyPosterUrl}
-                  className={`shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-medium flex items-center gap-1 transition-all cursor-pointer ${
-                    copiedPosterUrl
-                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm"
-                      : "bg-white/10 hover:bg-white/15 text-zinc-200 border border-white/10 active:scale-95"
-                  }`}
+              <div className="flex items-center gap-1.5">
+                <label
+                  htmlFor="pattern-kind-select"
+                  className="text-[10px] text-zinc-500 shrink-0"
                 >
-                  {copiedPosterUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-muted" />}
-                  <span>{copiedPosterUrl ? t("ui.copied") : t("ui.copyUrl")}</span>
-                </button>
+                  ID:
+                </label>
+                <select
+                  id="pattern-kind-select"
+                  value={patternKind}
+                  onChange={(e) => setPatternKind(e.target.value === "imdb" ? "imdb" : e.target.value === "auto" ? "auto" : "tmdb")}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-2 py-1.5 text-[11px] text-zinc-300 focus:outline-none focus:border-white/25 cursor-pointer"
+                >
+                  <option value="auto">{t("ui.patternAuto")}</option>
+                  <option value="tmdb">TMDB ID</option>
+                  <option value="imdb">IMDb ID</option>
+                </select>
               </div>
+
+              <PatternRow
+                value={(patternKind === "tmdb" ? posterUrlPattern : patternKind === "imdb" ? posterUrlPatternImdb : posterUrlPatternAuto) || posterUrlPattern || posterUrlPatternImdb || posterUrlPatternAuto || ""}
+                tag={patternKind === "tmdb" ? t("ui.patternTagTmdb") : patternKind === "imdb" ? t("ui.patternTagImdb") : t("ui.patternTagAuto")}
+                copyLabel={t("ui.aiomLinkTitle") || "AIOMetadata URL"}
+              />
             </div>
           )}
 
           {logoUrlPattern && (
             <div className="pt-3 border-t border-white/10 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-zinc-300 text-[11px] font-semibold">
-                  <ImageIcon className="w-3.5 h-3.5 text-accent-orange" />
-                  <span>{t("ui.logoLinkTitle") || "Logo URL"}</span>
-                </div>
-                <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-mono">Template URL</span>
+              <div className="flex items-center gap-1.5 text-zinc-300 text-[11px] font-semibold">
+                <ImageIcon className="w-3.5 h-3.5 text-accent-orange" />
+                <span>{t("ui.logoLinkTitle") || "Logo URL"}</span>
               </div>
-
               <p className="text-[10px] text-zinc-400 leading-tight">
                 {t("ui.logoLinkDesc")}
               </p>
-
-              <div className="flex items-center gap-1.5 p-1 bg-black/40 border border-white/10 rounded-xl">
-                <input
-                  type="text"
-                  readOnly
-                  value={logoUrlPattern}
-                  aria-label={t("ui.logoLinkTitle") || "Logo URL"}
-                  className="w-full bg-transparent px-2 py-1 text-[10px] font-mono text-zinc-300 truncate select-all focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={handleCopyLogoUrl}
-                  className={`shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-medium flex items-center gap-1 transition-all cursor-pointer ${
-                    copiedLogoUrl
-                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm"
-                      : "bg-white/10 hover:bg-white/15 text-zinc-200 border border-white/10 active:scale-95"
-                  }`}
-                >
-                  {copiedLogoUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-muted" />}
-                  <span>{copiedLogoUrl ? t("ui.copied") : t("ui.copyUrl")}</span>
-                </button>
-              </div>
+              <PatternRow value={logoUrlPattern} tag="Template URL" copyLabel={t("ui.logoLinkTitle") || "Logo URL"} />
             </div>
           )}
+
+          {/* GitHub Star Support Footer */}
+          <div className="pt-2.5 border-t border-white/5 flex items-center justify-center">
+            <a
+              href="https://github.com/Eful97/Pictorium"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Star Pictorium on GitHub"
+              className="group flex items-center gap-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors"
+            >
+              <span>Ti piace Pictorium?</span>
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-400/10 border border-amber-400/20 text-amber-400 font-semibold group-hover:bg-amber-400/20 transition-all">
+                <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                <span>Lascia una stella su GitHub</span>
+              </span>
+            </a>
+          </div>
         </div>
       </div>
     </Modal>

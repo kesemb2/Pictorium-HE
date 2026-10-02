@@ -8,6 +8,7 @@ import {
   formatTvdbImageUrl,
   clearTvdbCache,
 } from "@/lib/tvdb"
+import { buildVideosFromTvdb } from "@/lib/episode-ordering"
 import { cacheClear } from "@/lib/cache"
 import type { StremioVideo } from "@/lib/meta-handler"
 
@@ -201,8 +202,7 @@ describe("TVDB Integration", () => {
     })
   })
 
-  describe("getTvdbSeasonTypes", () => {
-    it("extracts season types from series extended data", async () => {
+  describe("getTvdbSeasonTypes", () => {    it("extracts season types from series extended data", async () => {
       vi.spyOn(globalThis, "fetch")
         // Auth
         .mockResolvedValueOnce(
@@ -285,6 +285,109 @@ describe("TVDB Integration", () => {
       const types = await getTvdbSeasonTypes(327153, "test-key")
       expect(types).toHaveLength(2)
       expect(types.map((t) => t.type)).toEqual(["official", "dvd"])
+    })
+  })
+
+  describe("enrichVideosWithTvdb identity safety (no fuzzy numeric remoteid)", () => {
+    // Router per URL: TMDB external_ids, login TVDB, remoteid search, episodes.
+    // Qualsiasi fetch fuori copione lancia (fail rumoroso invece di mock
+    // ordinati fragili all'ordine di chiamata).
+    function routeFetch(o: {
+      ext?: Record<string, unknown>
+      remote?: unknown
+      episodes?: unknown[]
+    }) {
+      const requested: string[] = []
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+        const url = String(input)
+        requested.push(url)
+        if (url.includes("/login")) {
+          return Response.json({ status: "success", data: { token: "mock-jwt" } })
+        }
+        if (url.includes("api.themoviedb.org")) {
+          return Response.json(o.ext ?? {})
+        }
+        if (url.includes("/search/remoteid/")) {
+          return Response.json({ status: "success", data: o.remote ?? [] })
+        }
+        if (url.includes("/episodes")) {
+          return Response.json({ status: "success", data: { episodes: o.episodes ?? [] }, links: { next: null } })
+        }
+        throw new Error(`unexpected fetch ${url}`)
+      })
+      return requested
+    }
+
+    function lizzieVideos(): StremioVideo[] {
+      return [
+        {
+          id: "tmdb:299939:1:1",
+          name: "Episodio 1",
+          season: 1,
+          episode: 1,
+          overview: "Trama TMDB corretta",
+          thumbnail: "https://image.tmdb.org/t/p/w500/tmdb-still.jpg",
+        },
+      ]
+    }
+
+    it("tmdbId senza link (no imdb, no tvdb_id): video intoccati, nessuna ricerca remoteid numerica", async () => {
+      const requested = routeFetch({ ext: { id: 299939, imdb_id: null, tvdb_id: null } })
+      const videos = lizzieVideos()
+      await enrichVideosWithTvdb(videos, null, 299939, "tvdb-key", "ita", "tmdb-key")
+      expect(videos).toEqual(lizzieVideos())
+      expect(requested.some((u) => u.includes("/search/remoteid/299939"))).toBe(false)
+      expect(requested.some((u) => u.includes("thetvdb.com"))).toBe(false)
+    })
+
+    it("tvdb_id esplicito dagli external_ids: arricchisce senza remoteid search", async () => {
+      const requested = routeFetch({
+        ext: { id: 555001, imdb_id: null, tvdb_id: 389492 },
+        episodes: [
+          { seasonNumber: 1, number: 1, name: "Titolo TVDB", overview: "Trama TVDB.", image: "/banners/ep/1.jpg" },
+        ],
+      })
+      const videos: StremioVideo[] = [
+        { id: "tmdb:555001:1:1", name: "Episodio 1", season: 1, episode: 1 },
+      ]
+      await enrichVideosWithTvdb(videos, null, 555001, "tvdb-key", "ita", "tmdb-key")
+      expect(videos[0].name).toBe("Titolo TVDB")
+      expect(videos[0].overview).toBe("Trama TVDB.")
+      expect(requested.some((u) => u.includes("/search/remoteid/"))).toBe(false)
+    })
+
+    it("imdb dagli external_ids: cerca remoteid per tt, mai per numero", async () => {
+      const requested = routeFetch({
+        ext: { id: 555002, imdb_id: "tt0903747", tvdb_id: null },
+        remote: [{ series: { id: 75710 } }],
+        episodes: [
+          { seasonNumber: 1, number: 1, name: "Questione di chimica", overview: "Trama TVDB.", image: "/banners/ep/1.jpg" },
+        ],
+      })
+      const videos: StremioVideo[] = [
+        { id: "tmdb:555002:1:1", name: "Episodio 1", season: 1, episode: 1 },
+      ]
+      await enrichVideosWithTvdb(videos, null, 555002, "tvdb-key", "ita", "tmdb-key")
+      expect(videos[0].name).toBe("Questione di chimica")
+      expect(requested.some((u) => u.includes("/search/remoteid/tt0903747"))).toBe(true)
+      expect(requested.some((u) => u.includes("/search/remoteid/555002"))).toBe(false)
+    })
+  })
+
+  describe("buildVideosFromTvdb identity safety", () => {
+    it("tmdbId senza link: [] senza toccare TVDB (fallback allo standard a valle)", async () => {
+      const requested: string[] = []
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+        const url = String(input)
+        requested.push(url)
+        if (url.includes("api.themoviedb.org")) {
+          return Response.json({ id: 777002, imdb_id: null, tvdb_id: null })
+        }
+        throw new Error(`unexpected fetch ${url}`)
+      })
+      const videos = await buildVideosFromTvdb(null, 777002, "tmdb:777002", "tvdb-key", "default", "tmdb-key")
+      expect(videos).toEqual([])
+      expect(requested.some((u) => u.includes("thetvdb.com"))).toBe(false)
     })
   })
 })

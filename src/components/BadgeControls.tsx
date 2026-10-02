@@ -1,19 +1,22 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronDown, Star, Trophy, Tv, Sparkles, Palette, Layers, Cloud, Contrast, Sun } from "lucide-react"
+import { ChevronDown, Star, Trophy, Tv, Sparkles, Palette, Layers, Cloud, Contrast, Sun, RotateCcw, Ribbon } from "lucide-react"
 import { usePSelector } from "@/lib/context"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { usePosterEditor } from "@/lib/contexts/PosterEditorContext"
 import { Toggle } from "@/components/Toggle"
 import { BadgeStyleSelector } from "@/components/ui"
-import { getAwardBadgeLabel, getNominationBadgeLabel } from "@/lib/awards"
+import { lookupAVSpecs, KNOWN_VIDEO_FORMATS } from "@/lib/av-specs"
+import { getAwardBadgeLabel, getNominationBadgeLabel } from "@/lib/badge-labels"
+import { getNewSeasonLabel, getSeriesEndedLabel, isKDramaOrigin } from "@/lib/poster-badge"
+import { withIdAwards, withIdNoms } from "@/lib/award-ids"
 import { getSubGenreLabel } from "@/lib/subgenres"
 import { getUpcomingReleaseLabel } from "@/lib/release-badge"
-import { getNewSeasonLabel, isKDramaOrigin } from "@/lib/poster-badge"
 import { isPrefixedKey, badgeKey } from "@/lib/i18n"
-import { getAllBadgeOptions } from "@/lib/badge-priority"
-import { UI_RATING_SOURCES } from "@/lib/ratings"
+import { getAllBadgeOptions, isMiniseriesType, isReturningStatus } from "@/lib/badge-priority"
+import { isManualAccent } from "@/lib/accent-color"
+import { UI_RATING_SOURCES } from "@/lib/rating-weights"
 import { RatingSourceIcon } from "@/components/RatingSourceIcon"
 
 export function BadgeControls() {
@@ -32,15 +35,16 @@ export function BadgeControls() {
   const [editingValue, setEditingValue] = useState<string | null>(null)
   const [editText, setEditText] = useState("")
 
+  const localSpec = lookupAVSpecs(metaInfo?.imdb_id || selected?.imdb_id)
+  const activeVideoFormats = localSpec?.formats
+    ? localSpec.formats.filter((f) => (ed.defaultVideoFormats ?? KNOWN_VIDEO_FORMATS).includes(f))
+    : []
+
   if (!selected) return null
 
 
   const effectiveColor = accentColor || autoAccentColor || "#555555"
-  const isCustomColor = Boolean(
-    accentColor &&
-    autoAccentColor &&
-    accentColor.toLowerCase() !== autoAccentColor.toLowerCase()
-  )
+  const isCustomColor = isManualAccent(accentColor, autoAccentColor)
 
   return (
     <div className="space-y-3.5 text-xs">
@@ -79,6 +83,12 @@ export function BadgeControls() {
                 <span className="text-muted">{t("ui.badgeRating")}</span>
                 <Toggle value={ed.badgeRating} onChange={(v) => ed.setBadgeRating(v)} label={t("ui.badgeRating")} />
               </div>
+              {ed.badgeRating && (
+                <div className="flex items-center justify-between" title={t("ui.separateRatingsHint")}>
+                  <span className="text-muted">{t("ui.separateRatings")}</span>
+                  <Toggle value={ed.separateRatings} onChange={(v) => ed.setSeparateRatings(v)} label={t("ui.separateRatings")} />
+                </div>
+              )}
 
               {/* Provider del voto accordion */}
               {ed.badgeRating && (
@@ -118,10 +128,10 @@ export function BadgeControls() {
                           <span className="text-zinc-600">·</span>
                           <button
                             type="button"
-                            onClick={() => ed.setRatingSources(["imdb", "tmdb"])}
+                            onClick={() => ed.setRatingSources(["imdb"])}
                             className="text-muted hover:text-zinc-200 transition-colors"
                           >
-                            {t("ui.disableAll")}
+                            {t("ui.sourcesImdbOnly")}
                           </button>
                         </div>
                       </div>
@@ -179,6 +189,14 @@ export function BadgeControls() {
             <Toggle value={ed.rankingBadges} onChange={(v) => ed.setRankingBadges(v)} label={t("ui.trendBadge")} />
           </div>
 
+          <div className="flex items-center justify-between" title={t("ui.ribbonHint")}>
+            <span className="text-zinc-300 font-medium flex items-center gap-1.5">
+              <Ribbon className="w-3.5 h-3.5 text-red-400" />
+              {t("ui.ribbon")}
+            </span>
+            <Toggle value={ed.ribbonEnabled} onChange={(v) => ed.setRibbonEnabled(v)} label={t("ui.ribbon")} />
+          </div>
+
           <div className="flex items-center justify-between">
             <span className="text-zinc-300 font-medium flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-purple-400" />
@@ -186,6 +204,47 @@ export function BadgeControls() {
             </span>
             <Toggle value={ed.badgeQuality} onChange={(v) => ed.setBadgeQuality(v)} label={t("ui.badgeQuality")} />
           </div>
+
+          {ed.badgeQuality && (
+            <div className="pl-3 py-1 space-y-2.5 border-l-2 border-surface2 ml-1 animate-fade-in">
+              <div>
+                <label className="text-[11px] text-muted font-medium block mb-1">{t("ui.qualityBadgeStyle")}</label>
+                <BadgeStyleSelector
+                  value={ed.qualityBadgeStyle}
+                  options={["standard", "mono", "color"]}
+                  onChange={ed.setQualityBadgeStyle}
+                  t={t}
+                />
+              </div>
+
+              {activeVideoFormats.length > 0 && (() => {
+                const hasDV = activeVideoFormats.includes("dv")
+                const hasAtmos = activeVideoFormats.includes("atmos")
+                const displayFormats = (hasDV && hasAtmos)
+                  ? ["dv+atmos", ...activeVideoFormats.filter((f) => f !== "dv" && f !== "atmos")]
+                  : activeVideoFormats
+
+                return (
+                  <div className="pt-1.5 border-t border-surface2/50 flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="text-[11px] text-zinc-300 font-medium">{t("ui.videoFormats")}</span>
+                      <span className="text-[10px] text-muted">{t("ui.videoFormatsAutoHint")}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {displayFormats.map((fmt) => (
+                        <span
+                          key={fmt}
+                          className="text-[10px] font-bold font-mono px-2 py-0.5 rounded bg-surface2/80 text-accent-orange border border-accent-orange/30 shadow-sm"
+                        >
+                          {fmt === "dv+atmos" ? "DV · ATMOS" : fmt === "hdr10plus" ? "HDR10+" : fmt.toUpperCase()}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+          )}
 
           <div className="flex items-center justify-between" title={t("ui.customRatingsHint")}>
             <span className="text-zinc-300 font-medium flex items-center gap-1.5">
@@ -202,6 +261,30 @@ export function BadgeControls() {
             </span>
             <Toggle value={ed.networkLogo} onChange={(v) => ed.setNetworkLogo(v)} label={t("ui.networkLogo")} />
           </div>
+
+          {ed.networkLogo && (
+            <div className="flex items-center justify-between gap-3" title={t("ui.networkLogoPosition")}>
+              <span className="text-zinc-400 font-medium text-[11px] pl-5">
+                {t("ui.networkLogoPosition")}
+              </span>
+              <div className="flex gap-1 flex-1 max-w-[190px]">
+                {(["auto", "top"] as const).map((pos) => (
+                  <button
+                    key={pos}
+                    type="button"
+                    onClick={() => ed.setNetworkLogoPosition(pos)}
+                    className={`flex-1 py-1 rounded-lg text-[11px] font-semibold transition-all duration-150 cursor-pointer ${
+                      ed.networkLogoPosition === pos
+                        ? "bg-white/20 text-white shadow-sm"
+                        : "bg-white/5 text-muted hover:bg-white/10 hover:text-zinc-200"
+                    }`}
+                  >
+                    {pos === "auto" ? t("ui.auto") : t("ui.networkLogoPositionTop")}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-between">
             <span className="text-zinc-300 font-medium flex items-center gap-1.5">
@@ -224,7 +307,7 @@ export function BadgeControls() {
               <Cloud className="w-3.5 h-3.5 text-cyan-400" />
               {t("ui.blurSection")}
             </span>
-            <Toggle value={ed.blurEnabled} onChange={(v) => ed.setBlurEnabled(v)} label={t("ui.blurSection")} />
+            <Toggle value={ed.posterShape === "landscape" ? ed.landscapeBlur.blurEnabled : ed.blurEnabled} onChange={(v) => { if (ed.posterShape === "landscape") ed.setLandscapeBlur({ blurEnabled: v }); else ed.setBlurEnabled(v) }} label={t("ui.blurSection")} />
           </div>
 
           <div className="flex items-center justify-between">
@@ -279,25 +362,39 @@ export function BadgeControls() {
               {(() => {
                 if (!selected) return null
                 const twoWeeks = 14 * 24 * 60 * 60 * 1000
-                const isNewMovie = selected.media_type === "movie" && metaInfo.release_date ? (now - new Date(metaInfo.release_date).getTime()) < twoWeeks : false
-                const isNewSeries = selected.media_type === "tv" && metaInfo.first_air_date ? (now - new Date(metaInfo.first_air_date).getTime()) < twoWeeks : false
-                const award = metaInfo.awards?.length ? getAwardBadgeLabel(metaInfo.awards, t) : null
-                const nomination = !award && metaInfo.nominations?.length ? getNominationBadgeLabel(metaInfo.nominations, t) : null
+                // Stesse guard del server (computeTopBadge): le date future non
+                // sono mai "novità" (bug date-future: now - futuro < twoWeeks).
+                const relTime = metaInfo.release_date ? new Date(metaInfo.release_date).getTime() : NaN
+                const isNewMovie = selected.media_type === "movie" && Number.isFinite(relTime) ? relTime <= now && (now - relTime) < twoWeeks : false
+                const firstTime = metaInfo.first_air_date ? new Date(metaInfo.first_air_date).getTime() : NaN
+                const isNewSeries = selected.media_type === "tv" && Number.isFinite(firstTime) ? firstTime <= now && (now - firstTime) < twoWeeks : false
+                const seriesEnded = selected.media_type === "tv" ? getSeriesEndedLabel({
+                  tvStatus: metaInfo.status,
+                  lastAirDate: metaInfo.last_air_date,
+                  t,
+                }) : null
+                const idMedia = selected.media_type === "tv" ? "tv" as const : "movie" as const
+                const mergedAwards = withIdAwards(selected.id, idMedia, metaInfo.awards ?? [])
+                const mergedNoms = withIdNoms(selected.id, idMedia, metaInfo.nominations ?? [])
+                const award = mergedAwards.length ? getAwardBadgeLabel(mergedAwards, t) : null
+                const nomination = !award && mergedNoms.length ? getNominationBadgeLabel(mergedNoms, t) : null
                 const animeRankData = mdblistAnimeList?.find((a) => a.id === selected.id)
                 const animeRank = animeRankData ? animeRankData.rank : null
                 const studio = metaInfo.studios?.length ? metaInfo.studios[0] : null
                 const tvType = selected.media_type === "tv" ? metaInfo.type : null
                 const tvStatus = selected.media_type === "tv" ? metaInfo.status : null
-                const extra = selected.media_type === "tv" ? (tvType?.toLowerCase() === "miniseries" || tvType?.toLowerCase() === "miniserie" ? t("badge.miniseries") : tvStatus?.toLowerCase() === "returning series" || tvStatus?.toLowerCase() === "in corso" ? t("badge.returning") : null) : null
+                const extra = selected.media_type === "tv" ? (isMiniseriesType(tvType) ? t("badge.miniseries") : isReturningStatus(tvStatus) ? t("badge.returning") : null) : null
                 const upcomingRelease = getUpcomingReleaseLabel({
                   mediaType: selected.media_type === "tv" ? "tv" : "movie",
                   releaseDate: metaInfo.release_date,
                   firstAirDate: metaInfo.first_air_date,
                   locale: lang,
+                  dateFormat: ed.defaultDateFormat,
                   t,
                 })
                 const subGenre = getSubGenreLabel(metaInfo.keywords || [], lang)
-                const newSeason = selected.media_type === "tv" ? getNewSeasonLabel({
+                // Come nel motore: serie appena finita ≠ nuova stagione.
+                const newSeason = selected.media_type === "tv" && !seriesEnded ? getNewSeasonLabel({
                   lastAirDate: metaInfo.last_air_date,
                   firstAirDate: metaInfo.first_air_date,
                   seasonCount: metaInfo.number_of_seasons,
@@ -309,8 +406,12 @@ export function BadgeControls() {
                 ].map((c) => c.origin_country).filter((c): c is string => !!c))
                 const options = getAllBadgeOptions({
                   upcomingRelease, isNewMovie, isNewSeries, newSeason, animeRank, trendRank: trendRank,
-                  award, nomination, studio,
+                  // justAdded: data digitale solo server-side (pre-release) —
+                  // il dropdown non può calcolarlo, l'auto-badge resta server.
+                  justAdded: null,
+                  award, awardWins: mergedAwards, nomination, studio,
                   director: metaInfo.director || null, subGenre, isKDrama, extra,
+                  seriesEnded,
                   mediaType: selected.media_type === "tv" ? "tv" : "movie",
                   voteAverage: metaInfo.voteAverage, tvType, tvStatus,
                   imdbTop250: !!imdbTop250,
@@ -338,7 +439,7 @@ export function BadgeControls() {
           <label className="text-[11px] text-muted font-medium block">{t("ui.styleRankingExtra")}</label>
           <BadgeStyleSelector
             value={ed.rankingBadgeStyle}
-            options={["default", "colored", "pill"]}
+            options={["default", "pill", "colored", "bordo", "vetro"]}
             onChange={ed.setRankingBadgeStyle}
             t={t}
             accentColor={accentColor}
@@ -358,6 +459,9 @@ export function BadgeControls() {
         <BadgeStyleSelector
           value={ed.badgeStyle}
           options={["shadow", "pill", "bar", "colored", "bordo", "vetro", "minimal"]}
+          // Stile "bar" non disponibile in landscape: il server lo degrada
+          // a shadow (stesso endpoint, preview WYSIWYG garantita).
+          disabled={ed.posterShape === "landscape" ? ["bar"] : []}
           onChange={ed.setBadgeStyle}
           t={t}
           accentColor={accentColor}
@@ -388,10 +492,10 @@ export function BadgeControls() {
                   if (autoAccentColor) setAccentColor(autoAccentColor)
                   else setAccentColor(null)
                 }}
-                className="text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors px-1.5 py-0.5 rounded bg-surface2/50 border border-surface2 hover:bg-surface2"
+                className="text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors px-1.5 py-0.5 rounded bg-surface2/50 border border-surface2 hover:bg-surface2 flex items-center gap-1"
                 title={t("ui.resetAutoColor")}
               >
-                ↺ Reset
+                <RotateCcw className="w-3 h-3" />Reset
               </button>
             ) : (
               <span className="text-[10px] text-zinc-500 italic">

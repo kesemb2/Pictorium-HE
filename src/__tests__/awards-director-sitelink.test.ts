@@ -7,8 +7,8 @@
  * La label resta prioritaria; senza nessuno dei due → null (invariato).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { fetchAllWikidata, __resetCircuitBreaker } from "@/lib/awards"
-import { cacheClear } from "@/lib/cache"
+import { fetchAllWikidata, directorBadgeLabel, __resetCircuitBreaker } from "@/lib/awards"
+import { cacheClear, cacheSet } from "@/lib/cache"
 
 function sparqlOk(bindings: unknown[]) {
   return new Response(JSON.stringify({ results: { bindings } }), {
@@ -87,10 +87,8 @@ describe("fetchAllWikidata director sitelink fallback", () => {
       { Q25191: "Christopher Nolan (director)" }
     )
     const res = await fetchAllWikidata(903, "movie")
-    // Nome canonico dalla allowlist, non il raw col disambiguatore. Qui
-    // resta il nome nudo: l'etichetta del badge ("Di ...", o l'ebraico) la
-    // compone directorBadgeLabel alla lingua della richiesta, perché questa
-    // cache è condivisa fra lingue.
+    // Nome canonico dalla allowlist, non il raw col disambiguatore — e non reso:
+    // la resa avviene a render-time con directorBadgeLabel.
     expect(res.director).toBe("Christopher Nolan")
   })
 
@@ -112,5 +110,42 @@ describe("fetchAllWikidata director sitelink fallback", () => {
     )
     const res = await fetchAllWikidata(905, "movie")
     expect(res.director).toBeNull()
+  })
+
+  it("stores the canonical name once: every language renders from the same cache entry", async () => {
+    mockFetch(
+      [{ directorLabel: { value: "Christopher Nolan", type: "literal" } }]
+    )
+    const first = await fetchAllWikidata(906, "movie")
+    expect(first.director).toBe("Christopher Nolan")
+    // Seconda richiesta: la cache non viene riscritta…
+    const second = await fetchAllWikidata(906, "movie")
+    expect(second.director).toBe("Christopher Nolan")
+    // …e ogni lingua rende la propria etichetta dallo stesso canonico
+    // (stub al posto dei dizionari: il mock i18n globale ignora la lingua).
+    const tIt = (_k: string, p?: Record<string, string | number>) => `Di ${p?.name}`
+    const tEn = (_k: string, p?: Record<string, string | number>) => `By ${p?.name}`
+    expect(directorBadgeLabel(second.director, tIt)).toBe("Di Christopher Nolan")
+    expect(directorBadgeLabel(second.director, tEn)).toBe("By Christopher Nolan")
+    expect(directorBadgeLabel(null, tEn)).toBeNull()
+    expect(directorBadgeLabel("Christopher Nolan")).toBe("Di Christopher Nolan")
+    // Idempotenza: non raddoppia prefissi già presenti
+    expect(directorBadgeLabel("Di Christopher Nolan", tIt)).toBe("Di Christopher Nolan")
+    expect(directorBadgeLabel("By Christopher Nolan", tEn)).toBe("By Christopher Nolan")
+    expect(directorBadgeLabel("Di Christopher Nolan", tEn)).toBe("By Christopher Nolan")
+  })
+
+  it("ignores unversioned wikidata cache entries and uses wikidata:v2 key", async () => {
+    cacheSet("wikidata:movie:907", {
+      awards: [],
+      nominations: [],
+      studios: [],
+      director: "Di Christopher Nolan",
+    })
+    mockFetch(
+      [{ directorLabel: { value: "Christopher Nolan", type: "literal" } }]
+    )
+    const res = await fetchAllWikidata(907, "movie")
+    expect(res.director).toBe("Christopher Nolan")
   })
 })

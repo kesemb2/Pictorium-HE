@@ -9,6 +9,14 @@ import { cacheClear, cacheGet, cacheSet } from "@/lib/cache"
 // il reale data/defaults.json dell'istanza.
 const STORE_DIR = `${process.cwd()}/test-results/data-defaults-test`
 
+// Il GET ora ha un rate limit (bucket "defaults"): senza mock le GET di
+// questo file esaurivano la quota e le ultime ricevevano 429.
+vi.mock("@/lib/rate-limit", () => ({
+  rateLimit: vi.fn(async () => ({ ok: true, retAfter: 0 })),
+  rateLimitKey: vi.fn(() => "test"),
+  rateLimitResponse: vi.fn(() => new Response("rate limited", { status: 429 })),
+}))
+
 vi.mock("@/lib/data-dir", () => ({
   DATA_DIR: `${process.cwd()}/test-results/data-defaults-test`,
 }))
@@ -65,6 +73,27 @@ describe("PUT /api/defaults", () => {
     expect(res.status).toBe(200)
   })
 
+  it("persists disableCleanPosters through PUT and GET", async () => {
+    delete process.env.ADMIN_TOKEN
+    const putRes = await PUT(mockPutRequest({ disableCleanPosters: true }) as unknown as NextRequest)
+    expect(putRes.status).toBe(200)
+    const getRes = await GET(new Request("http://localhost:3000/api/defaults") as unknown as NextRequest)
+    const data = await getRes.json()
+    expect(data.disableCleanPosters).toBe(true)
+  })
+
+  it("preserves custom catalog datasetId through PUT and GET", async () => {
+    delete process.env.ADMIN_TOKEN
+    const catalogs = [
+      { id: "cat1", name: "My CSV", type: "mixed", url: "imdb-csv:ds_abc123", datasetId: "ds_abc123", enabled: true },
+    ]
+    const putRes = await PUT(mockPutRequest({ customCatalogs: catalogs }) as unknown as NextRequest)
+    expect(putRes.status).toBe(200)
+    const getRes = await GET(new Request("http://localhost:3000/api/defaults") as unknown as NextRequest)
+    const data = await getRes.json()
+    expect(data.customCatalogs?.[0]).toMatchObject({ datasetId: "ds_abc123" })
+  })
+
   it("invalidates poster and catalog cache after saving defaults", async () => {
     delete process.env.ADMIN_TOKEN
     cacheSet("poster:movie:1", "poster", ["poster"])
@@ -93,6 +122,25 @@ describe("PUT /api/defaults", () => {
     expect(body.gradientHeight).toBe(55)
   })
 
+  it("persists gradient tuning including tintStrength", async () => {
+    delete process.env.ADMIN_TOKEN
+    const res = await PUT(mockPutRequest({ gradientHeight: 40, tintStrength: 60 }) as unknown as NextRequest)
+    expect(res.status).toBe(200)
+
+    const resGet = await GET(new Request("http://localhost:3000/api/defaults") as unknown as NextRequest)
+    const body = (await resGet.json()) as Record<string, unknown>
+    expect(body.gradientHeight).toBe(40)
+    expect(body.tintStrength).toBe(60)
+  })
+
+  it("rejects invalid tintStrength instead of silently stripping it", async () => {
+    delete process.env.ADMIN_TOKEN
+    // Senza il campo nello schema, zod stripperebbe la chiave e il PUT
+    // risponderebbe 200 scartando il valore (bug tinta non salvata).
+    const res = await PUT(mockPutRequest({ tintStrength: "hot" }) as unknown as NextRequest)
+    expect(res.status).toBe(400)
+  })
+
   it("accepts a valid custom rating endpoint and rejects unsafe ones", async () => {
     delete process.env.ADMIN_TOKEN
     const ok = await PUT(mockPutRequest({ customRatingEndpoint: "https://example.com/ratings/{imdbId}" }) as unknown as NextRequest)
@@ -107,6 +155,21 @@ describe("PUT /api/defaults", () => {
       expect(res.status).toBe(400)
     }
   })
+  it("accepts and returns the landscape blur profile, rejects mistyped keys", async () => {
+    delete process.env.ADMIN_TOKEN
+    const res = await PUT(
+      mockPutRequest({ landscape: { blurFade: 70, gradientHeight: 20, blurEnabled: true, tintStrength: 80, topShade: 10 } }) as unknown as NextRequest,
+    )
+    expect(res.status).toBe(200)
+
+    const resGet = await GET(new Request("http://localhost:3000/api/defaults") as unknown as NextRequest)
+    const body = (await resGet.json()) as Record<string, { blurFade?: number; gradientHeight?: number; tintStrength?: number; topShade?: number }>
+    expect(body.landscape).toMatchObject({ blurFade: 70, gradientHeight: 20, tintStrength: 80, topShade: 10 })
+
+    const bad = await PUT(mockPutRequest({ landscape: { blurFade: "much" } }) as unknown as NextRequest)
+    expect(bad.status).toBe(400)
+  })
+
   // Regressione: le cinque chiavi del testo bianco mancavano da defaultsSchema.
   // z.object fa strip (non errore), quindi il PUT tornava 200 e i valori
   // sparivano — su Stremio i poster dei cataloghi restavano ai default.

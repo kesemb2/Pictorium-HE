@@ -3,6 +3,7 @@ import { cleanup } from "@testing-library/react"
 import * as matchers from "@testing-library/jest-dom/matchers"
 
 import { _resetPinCache } from "@/lib/pin-auth"
+import { __resetKey401Cache } from "@/lib/tmdb"
 
 expect.extend(matchers)
 
@@ -14,6 +15,9 @@ afterEach(() => {
   cleanup()
   vi.unstubAllEnvs()
   _resetPinCache()
+  // Stato fetch TMDB (negative cache 401) isolato tra i test: senza, un 401
+  // reale (mock esauriti → rete) marchierebbe la chiave per i test seguenti.
+  __resetKey401Cache()
   process.env.POSTERIUM_PUBLIC_INSTANCE = "1"
 })
 
@@ -30,6 +34,9 @@ const itDict: Record<string, string> = {
   "badge.topRated": "Absolute Cinema",
   "badge.miniseries": "Miniserie",
   "badge.returning": "Ritorna",
+  "badge.justAddedMovie": "Appena aggiunto",
+  "badge.justAddedSeries": "Appena aggiunta",
+  "badge.seriesEnded": "Serie conclusa",
   "badge.upcomingRelease": "In uscita {date}",
   "ui.deleteFailed": "Errore nella cancellazione di {count} poster",
   "ui.loadingCatalogs": "Caricamento cataloghi...",
@@ -56,6 +63,8 @@ const itDict: Record<string, string> = {
   "ui.posterWithLogo": "Poster con logo",
   "ui.cleanPoster": "Poster pulito",
   "ui.emptyPostersSub": "Nessun poster salvato. Personalizza un poster dai cataloghi e apparirà qui.",
+  "ui.backdrops": "Sfondi",
+  "ui.testStremioUrl": "Testa URL Stremio",
   "ui.emptyCollectionTitle": "Nessuna collezione",
   "ui.emptyCollectionSub": "Crea la tua prima collezione per organizzare i poster.",
   "ui.showAllPosters": "Mostra tutti ({count})",
@@ -124,6 +133,21 @@ const itDict: Record<string, string> = {
   "ui.setupPinSkip": "Salta questo passaggio",
   "ui.setupPinMinDigits": "Il PIN deve contenere almeno 6 cifre",
   "ui.setupPinStremioNotice": "Manifest e poster Stremio restano aperti",
+  "ui.spacesUsedOf": "{used}/{max} spazi ({active} attivi)",
+  "ui.spacesUsed": "{used} spazi ({active} attivi)",
+  "ui.changelogTitle": "Cosa c'è di nuovo",
+  "ui.changelogFeature": "Novità",
+  "ui.changelogPerf": "Performance",
+  "ui.changelogFix": "Fix",
+  "ui.changelogRecent": "Aggiornamenti recenti",
+  "ui.hostedByToggle": "Info sponsor: ElfHosted",
+  "ui.hostedByTitle": "Ospitato da {name} ❤️",
+  "ui.hostedByShared": "Condividi gli slot di rendering e la cache con tutti gli altri.",
+  "ui.hostedByElfhosted": "ElfHosted",
+  "ui.hostedByDeploy": "Crea la tua istanza privata su ElfHosted",
+  "ui.hostedByGuide": "guida gratuita agli addon",
+  "ui.hostedByGuideLine": "Nuovo di Stremio? Dai un'occhiata alla {guide}.",
+  "ui.hostedByMinimize": "Riduci a icona",
 }
 
 function mockT(key: string, params?: Record<string, string | number>): string {

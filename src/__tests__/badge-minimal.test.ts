@@ -42,6 +42,22 @@ describe("BadgeStyle minimal (pipe separator)", () => {
     expect(badge.h).toBeGreaterThan(0)
   })
 
+  it("retains minimal style in landscape like in portrait (no shadow force)", () => {
+    const sp = new URLSearchParams("shape=landscape&bs=minimal")
+    const config = resolvePosterRenderConfig({
+      searchParams: sp,
+      mapping: null,
+      configOverride: null,
+      sd: {},
+      hasQuery: true,
+      showBadges: true,
+      rankingBadges: true,
+      animeRank: null,
+      rankingResult: null,
+      finalRank: null,
+    })
+    expect(config.badgeStyle).toBe("minimal")
+  })
 
   it("retains minimal style in portrait poster", () => {
     const sp = new URLSearchParams("bs=minimal")

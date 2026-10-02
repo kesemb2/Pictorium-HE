@@ -49,9 +49,13 @@ describe("Hebrew badge rasterisation", () => {
     expect(he).not.toBeNull()
     const bounds = await ink(he!.png)
     expect(bounds.count).toBeGreaterThan(0)
-    // Il testo sta dentro la pill e non è schiacciato su un bordo.
-    expect(bounds.minX).toBeGreaterThan(0)
-    expect(bounds.maxX).toBeLessThan(bounds.width - 1)
+    // Il testo (inchiostro scuro, interno) sta dentro la pill e non è
+    // schiacciato su un bordo — i bound del fondo non contano più (copre
+    // tutto il canvas) e l'alone 3D vive ai bordi.
+    // Fork: testo chiaro su pill scura (look del fork) — si misura l'alpha.
+    const text = await ink(he!.png)
+    expect(text.minX).toBeGreaterThan(0)
+    expect(text.maxX).toBeLessThan(text.width - 1)
   })
 
   it("renders a Hebrew genre name next to Latin rating and year", async () => {
@@ -69,6 +73,7 @@ describe("Hebrew badge rasterisation", () => {
   it("sizes a Hebrew pill from its own advance widths, not the Latin default", async () => {
     // charWidthFactor tratta l'ebraico a 0.55: col vecchio default 0.62 la
     // stima sforava e `lengthAdjust="spacingAndGlyphs"` allargava i glifi.
+    // Misura sull'inchiostro del testo: il fondo copre tutta la pill.
     const he = await buildExtraBadgeSVG("עונה חדשה", 380, false, "default", "#D4A574")
     const bounds = await ink(he!.png)
     const inkWidth = bounds.maxX - bounds.minX + 1

@@ -175,31 +175,32 @@ export async function buildVideosFromAnizip(tmdbId: number, primaryId: string): 
 }
 
 /**
- * Costruisce i video da TheTVDB (ordinamento Aired).
+ * Costruisce i video da TheTVDB (ordinamento scelto esplicitamente).
+ * Stessa regola dell'arricchimento: solo link confermati (IMDb o tvdb_id),
+ * mai fallback fuzzy su `remoteid/<tmdbId>` — senza link certo torna []
+ * e i chiamanti degradano allo standard TMDB (fail-open).
  */
 export async function buildVideosFromTvdb(
   imdbId: string | null,
   tmdbId: number | null,
   primaryId: string,
   tvdbApiKey: string,
-  seasonType: string = "default"
+  seasonType: string = "default",
+  tmdbApiKey?: string,
 ): Promise<PreviewVideo[]> {
   if (!tvdbApiKey) return []
   let tvdbSeriesId: number | null = null
   if (imdbId) tvdbSeriesId = await getTvdbSeriesId(imdbId, tvdbApiKey)
-  if (!tvdbSeriesId && tmdbId) {
+  if (!tvdbSeriesId && tmdbApiKey && tmdbId) {
     try {
       const { getExternalIds } = await import("@/lib/tmdb")
-      const ext = await getExternalIds("tv", tmdbId)
+      const ext = await getExternalIds("tv", tmdbId, tmdbApiKey)
       if (ext?.tvdb_id && ext.tvdb_id > 0) {
         tvdbSeriesId = ext.tvdb_id
       } else if (ext?.imdb_id) {
         tvdbSeriesId = await getTvdbSeriesId(ext.imdb_id, tvdbApiKey)
       }
     } catch {}
-    if (!tvdbSeriesId) {
-      tvdbSeriesId = await getTvdbSeriesId(String(tmdbId), tvdbApiKey)
-    }
   }
   if (!tvdbSeriesId) return []
   const tvdbEps = await getTvdbEpisodes(tvdbSeriesId, "ita", tvdbApiKey, seasonType)

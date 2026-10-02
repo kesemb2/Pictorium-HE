@@ -93,10 +93,14 @@ const APP_ENV = {
   }),
   JUSTWATCH_API_URL: `${MOCK_URL}/graphql`,
   WIKIDATA_SPARQL_URL: `${MOCK_URL}/sparql`,
+  WIKIDATA_API_URL: `${MOCK_URL}/w/api.php`,
   IMDB_CHART_URL: `${MOCK_URL}/chart/top`,
   MDBLIST_API_URL: `${MOCK_URL}/mdblist/api`,
-  TRAKT_API_URL: `${MOCK_URL}/trakt`,
-  SIMKL_API_URL: `${MOCK_URL}/simkl`,
+    TRAKT_API_URL: `${MOCK_URL}/trakt`,
+    SIMKL_API_URL: `${MOCK_URL}/simkl`,
+    ANIZIP_API_URL: `${MOCK_URL}/anizip`,
+    ANILIST_API_URL: `${MOCK_URL}/anilist`,
+    KITSU_API_URL: `${MOCK_URL}/kitsu`,
 }
 
 try {

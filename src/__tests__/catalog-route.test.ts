@@ -3,9 +3,11 @@ import { NextRequest } from "next/server"
 import { GET } from "@/app/catalog/[type]/[id]/route"
 import { GET as GET_EXTRA } from "@/app/catalog/[type]/[id]/[...extra]/route"
 import { cacheClear } from "@/lib/cache"
+import { __clearTMDBCache } from "@/lib/tmdb"
 import { POSTER_URL_VERSION } from "@/lib/render-version"
 import { getTop10 } from "@/lib/flixpatrol"
 import { getById } from "@/lib/store"
+import { getServerDefaults } from "@/lib/server-defaults"
 import { __resetJWRankingsCache } from "@/lib/justwatch"
 import { encodeConfig } from "@/lib/config-token"
 import { parseCatalogExtra } from "@/lib/catalog-handler"
@@ -17,9 +19,10 @@ vi.mock("@/lib/store", () => ({
   getById: vi.fn(),
 }))
 
-vi.mock("@/lib/server-defaults", () => ({
-  getServerDefaults: vi.fn(() => ({})),
-}))
+vi.mock("@/lib/server-defaults", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/lib/server-defaults")>()
+  return { ...mod, getServerDefaults: vi.fn(() => ({})) }
+})
 
 const mockedGetTop10 = vi.mocked(getTop10)
 const mockedGetById = vi.mocked(getById)
@@ -58,11 +61,16 @@ describe("GET /catalog/[type]/[id]", () => {
   })
 
   afterEach(() => {
+    vi.mocked(getServerDefaults).mockReturnValue({})
     vi.restoreAllMocks()
     mockedGetTop10.mockReset()
     mockedGetById.mockReset()
     __resetJWRankingsCache()
     cacheClear()
+    // Isolamento tra test: tmdbFetch ha una LRU in-memory che sopravvive ai
+    // mock di fetch — senza clear, i details restano cachati e i mock in
+    // coda (es. /images per il logo) slittano sul fetch sbagliato.
+    __clearTMDBCache()
   })
 
   it("builds Pictorium series poster URLs for JustWatch series catalogs", async () => {
@@ -82,6 +90,100 @@ describe("GET /catalog/[type]/[id]", () => {
       poster: expect.stringContaining("/api/poster/series/94997"),
     })
     expect(body.metas[0].poster).toContain(`rv=${POSTER_URL_VERSION}`)
+  })
+
+  it("serves a rendered landscape banner for Nuvio horizontal mode", async () => {
+    // Il banner è il rendering Pictorium in canvas landscape SENZA logo
+    // baked-in (hideLogo): resta per i client che leggono `banner`.
+    // NuvioTV legge invece `landscapePoster` (con logo): i titoli portrait
+    // non lo emettono e mantengono il `logo` separato.
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(justWatchResponse(94997, "tt11198330"))
+      .mockResolvedValueOnce(tmdbShowResponse(94997))
+      .mockResolvedValueOnce(Response.json({
+        id: 94997,
+        logos: [{ file_path: "/hotd-logo.png", iso_639_1: "it" }],
+      }))
+
+    const req = new NextRequest("http://localhost:3000/catalog/series/pictorium-jw-series.json?api_key=settings-key")
+    const res = await GET(req, { params: Promise.resolve({ type: "series", id: "pictorium-jw-series.json" }) })
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.metas[0].banner).toContain("/api/poster/series/94997")
+    expect(body.metas[0].banner).toContain("shape=landscape")
+    expect(body.metas[0].banner).toContain("hideLogo=1")
+    expect(body.metas[0].banner).toContain(`rv=${POSTER_URL_VERSION}`)
+    // Il poster resta portrait per i client verticali (nessun mapping salvato).
+    expect(body.metas[0].poster).not.toContain("shape=landscape")
+    expect(body.metas[0].poster).not.toContain("hideLogo")
+    expect(body.metas[0].posterShape).toBe("poster")
+    // Titolo portrait: niente landscapePoster, logo separato presente.
+    expect(body.metas[0].landscapePoster).toBeUndefined()
+    expect(body.metas[0].logo).toContain("/hotd-logo.png")
+  })
+
+  it("serves landscapePoster with baked-in logo and no separate logo for landscape titles", async () => {
+    // NuvioTV sovrappone il `logo` del catalogo alle card landscape: per i
+    // titoli landscape l'immagine deve arrivare intoccabile (logo già
+    // baked-in nel landscapePoster) e il `logo` va omesso — altrimenti il
+    // secondo logo finisce sopra il nostro.
+    mockedGetById.mockResolvedValue({
+      tmdbId: 94997,
+      mediaType: "tv",
+      title: "House of the Dragon",
+      posterPath: "/house-of-the-dragon.jpg",
+      logoPath: "/hotd-logo.png",
+      originalPosterPath: null,
+      language: null,
+      posterShape: "landscape",
+      updatedAt: "2026-07-16T10:15:30.000Z",
+    })
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(justWatchResponse(94997, "tt11198330"))
+      .mockResolvedValueOnce(tmdbShowResponse(94997))
+      .mockResolvedValueOnce(Response.json({
+        id: 94997,
+        logos: [{ file_path: "/hotd-logo.png", iso_639_1: "it" }],
+      }))
+
+    const req = new NextRequest("http://localhost:3000/catalog/series/pictorium-jw-series.json?api_key=settings-key")
+    const res = await GET(req, { params: Promise.resolve({ type: "series", id: "pictorium-jw-series.json" }) })
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.metas[0].posterShape).toBe("landscape")
+    const posterUrl = new URL(body.metas[0].poster)
+    expect(posterUrl.searchParams.get("shape")).toBe("landscape")
+    expect(posterUrl.searchParams.has("hideLogo")).toBe(false)
+    // landscapePoster = stesso canvas con logo (niente hideLogo).
+    expect(body.metas[0].landscapePoster).toContain("/api/poster/series/94997")
+    const landscapeUrl = new URL(body.metas[0].landscapePoster)
+    expect(landscapeUrl.searchParams.get("shape")).toBe("landscape")
+    expect(landscapeUrl.searchParams.has("hideLogo")).toBe(false)
+    // Niente logo separato: Nuvio non ha nulla da sovrapporre.
+    expect(body.metas[0].logo).toBeUndefined()
+    // Il banner pulito resta per gli altri client.
+    expect(body.metas[0].banner).toContain("hideLogo=1")
+  })
+
+  it("forces saved portrait catalog cards to landscape when the global format is landscape", async () => {
+    vi.mocked(getServerDefaults).mockReturnValue({ posterShape: "landscape" })
+    mockedGetById.mockResolvedValue({
+      tmdbId: 94997, mediaType: "tv", title: "House of the Dragon",
+      posterPath: "/house-of-the-dragon.jpg", logoPath: null,
+      originalPosterPath: null, language: null, posterShape: "poster",
+      updatedAt: "2026-07-16T10:15:30.000Z",
+    })
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(justWatchResponse(94997, "tt11198330"))
+      .mockResolvedValueOnce(tmdbShowResponse(94997))
+    const req = new NextRequest("http://localhost:3000/catalog/series/pictorium-jw-series.json?api_key=settings-key")
+    const res = await GET(req, { params: Promise.resolve({ type: "series", id: "pictorium-jw-series.json" }) })
+    const item = (await res.json()).metas[0]
+    expect(item.posterShape).toBe("landscape")
+    expect(new URL(item.poster).searchParams.get("shape")).toBe("landscape")
+    expect(item.landscapePoster).toBe(item.poster)
   })
 
   it("serves legacy posterium-* catalog IDs as aliases of pictorium-*", async () => {
@@ -123,6 +225,57 @@ describe("GET /catalog/[type]/[id]", () => {
     expect(body.metas[0].poster).not.toContain("mdblist-key")
   })
 
+  it("returns a notice card for custom catalogs without any TMDB key", async () => {
+    // Senza chiave niente getDetails e i poster Pictorium risponderebbero 404:
+    // notice esplicita come il ramo JW, mai item rotti o metas:[] silenzioso.
+    const savedEnv = {
+      PICTORIUM_TMDB_KEY: process.env.PICTORIUM_TMDB_KEY,
+      TMDB_KEY: process.env.TMDB_KEY,
+      TMDB_API_KEY: process.env.TMDB_API_KEY,
+    }
+    delete process.env.PICTORIUM_TMDB_KEY
+    delete process.env.TMDB_KEY
+    delete process.env.TMDB_API_KEY
+    try {
+      const token = encodeConfig({
+        globalBadges: true,
+        rankingBadges: true,
+        badgeStyle: "pill",
+        rankingBadgeStyle: "pill",
+        blurEnabled: true,
+        blurIntensity: 12,
+        blurFade: 45,
+        blurDarkness: 55,
+        gradientHeight: 50,
+        networkLogo: true,
+        autoRotateClean: false,
+        customCatalogs: [
+          {
+            id: "notice-test",
+            name: "Notice Test",
+            type: "movie",
+            url: "https://mdblist.com/lists/snoak/notice-test",
+            enabled: true,
+          },
+        ],
+      })
+
+      const req = new NextRequest(`http://localhost:3000/catalog/movie/pictorium-custom-movie-notice-test.json?config=${token}`)
+      const res = await GET(req, { params: Promise.resolve({ type: "movie", id: "pictorium-custom-movie-notice-test.json" }) })
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(body.metas).toHaveLength(1)
+      expect(body.metas[0].id.startsWith("pictorium:notice:")).toBe(true)
+      expect(body.metas[0].poster).toContain("/pictorium.png")
+    } finally {
+      for (const [k, v] of Object.entries(savedEnv)) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
+  })
+
   it("adds mapping version to catalog poster URLs for saved titles", async () => {
     mockedGetById.mockResolvedValueOnce({
       tmdbId: 94997,
@@ -133,7 +286,8 @@ describe("GET /catalog/[type]/[id]", () => {
       originalPosterPath: null,
       language: null,
       updatedAt: "2026-07-16T10:15:30.000Z",
-    })
+  })
+
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(justWatchResponse(94997, "tt11198330"))
       .mockResolvedValueOnce(tmdbShowResponse(94997))
@@ -156,7 +310,7 @@ describe("GET /catalog/[type]/[id]", () => {
       globalBadges: true,
       rankingBadges: true,
       badgeStyle: "pill",
-      rankingBadgeStyle: "bar",
+      rankingBadgeStyle: "pill",
       blurEnabled: true,
       blurIntensity: 12,
       blurFade: 45,
@@ -174,7 +328,7 @@ describe("GET /catalog/[type]/[id]", () => {
 
     expect(res.status).toBe(200)
     expect(posterUrl.searchParams.get("bs")).toBe("pill")
-    expect(posterUrl.searchParams.get("rs")).toBe("bar")
+    expect(posterUrl.searchParams.get("rs")).toBe("pill")
     expect(posterUrl.searchParams.get("blur")).toBe("12")
     expect(posterUrl.searchParams.get("bf")).toBe("45")
     expect(posterUrl.searchParams.get("bd")).toBe("55")
@@ -387,7 +541,7 @@ describe("GET /catalog/[type]/[id]", () => {
         total_pages: 1,
         total_results: 1,
       }))
-      .mockResolvedValueOnce(Response.json({ id: 550, imdb_id: "tt0137523" }))
+      .mockResolvedValueOnce(Response.json({ genres: [{ id: 28, name: "Azione" }] }))
 
     const req = new NextRequest("http://localhost:3000/catalog/movie/pictorium-search-movies/search=fight%20club.json?api_key=settings-key")
     const res = await GET_EXTRA(req, {
@@ -422,6 +576,64 @@ describe("GET /catalog/[type]/[id]", () => {
 
     expect(res.status).toBe(200)
     expect(body.metas).toEqual([])
+  })
+
+  it("resolves an exact IMDb id via /find instead of full-text search", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({
+        movie_results: [{ id: 550 }],
+        tv_results: [],
+      }))
+      .mockResolvedValueOnce(Response.json({
+        id: 550,
+        title: "Fight Club",
+        release_date: "1999-10-15",
+        genres: [{ id: 28, name: "Azione" }],
+        vote_average: 8.4,
+        backdrop_path: "/fight-club-bg.jpg",
+        overview: "Trama",
+      }))
+      .mockResolvedValueOnce(Response.json({ genres: [{ id: 28, name: "Azione" }] }))
+
+    const req = new NextRequest("http://localhost:3000/catalog/movie/pictorium-search-movies/search=tt0137523.json?api_key=settings-key")
+    const res = await GET_EXTRA(req, {
+      params: Promise.resolve({
+        type: "movie",
+        id: "pictorium-search-movies",
+        extra: ["search=tt0137523.json"],
+      }),
+    })
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.metas).toHaveLength(1)
+    expect(body.metas[0]).toMatchObject({
+      id: "tmdb:550",
+      type: "movie",
+      name: "Fight Club",
+      releaseInfo: "1999",
+    })
+    // Nessuna full-text search: solo /find + dettagli (+ genre-list cachata)
+    expect(fetchSpy.mock.calls.some(([url]) => String(url).includes("/search/movie"))).toBe(false)
+  })
+
+  it("returns empty metas for an unresolvable IMDb id without falling back to full-text", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ movie_results: [], tv_results: [] }))
+
+    const req = new NextRequest("http://localhost:3000/catalog/movie/pictorium-search-movies/search=tt0000000.json?api_key=settings-key")
+    const res = await GET_EXTRA(req, {
+      params: Promise.resolve({
+        type: "movie",
+        id: "pictorium-search-movies",
+        extra: ["search=tt0000000.json"],
+      }),
+    })
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.metas).toEqual([])
+    expect(fetchSpy.mock.calls.some(([url]) => String(url).includes("/search/movie"))).toBe(false)
   })
 
   it("handles pictorium-anime-movies and builds movie poster URLs even without an explicit MDBList key", async () => {
@@ -518,4 +730,52 @@ describe("GET /catalog/[type]/[id]", () => {
     expect(res.status).toBe(200)
     expect(body.metas).toHaveLength(1)
   })
+
+  it("fail-open: un titolo TMDB appeso non appende il catalogo oltre il cap", async () => {
+    // Il details di TMDB resta appeso fino all'abort (upstream stalled):
+    // il cap per-titolo (CATALOG_TMDB_TIMEOUT_MS) deve abortirlo e il titolo
+    // esce comunque col nome JustWatch, entro la deadline client.
+    // Reset cache JW: la key è per paese/lingua, non per contenuto — senza,
+    // si riuserebbero le righe (senza titolo) dei test precedenti.
+    __resetJWRankingsCache()
+    cacheClear()
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input)
+      if (url.includes("justwatch")) {
+        return Promise.resolve(Response.json({
+          data: {
+            streamingCharts: {
+              edges: [
+                {
+                  streamingChartInfo: { rank: 1 },
+                  node: { content: { title: "Slow Title", externalIds: { tmdbId: 424242, imdbId: "tt4242420" } } },
+                },
+              ],
+            },
+          },
+        }))
+      }
+      if (url.includes("/images")) {
+        return Promise.resolve(Response.json({ id: 424242, posters: [], logos: [], backdrops: [] }))
+      }
+      // TMDB details: pende finché il signal non abortisce (come un upstream lento).
+      return new Promise((_, reject) => {
+        const signal = (init as RequestInit | undefined)?.signal
+        if (signal?.aborted) return reject(new DOMException("aborted", "AbortError"))
+        signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true })
+      })
+    })
+
+    const start = Date.now()
+    const req = new NextRequest("http://localhost:3000/catalog/series/pictorium-jw-series.json?api_key=settings-key")
+    const res = await GET(req, { params: Promise.resolve({ type: "series", id: "pictorium-jw-series.json" }) })
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.metas).toHaveLength(1)
+    expect(body.metas[0].name).toBe("Slow Title")
+    // Senza cap, il details appeso avrebbe tenuto la risposta per sempre;
+    // col cap 2.5s (+ overhead) deve chiudere ben prima della deadline Stremio.
+    expect(Date.now() - start).toBeLessThan(9000)
+  }, 15000)
 })

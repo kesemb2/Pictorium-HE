@@ -79,11 +79,16 @@ test.describe("catalog API", () => {
     expect(Array.isArray(body.metas)).toBeTruthy()
   })
 
-  test("without api key returns empty metas", async ({ request }) => {
+  test("without api key returns no real metas (notice only)", async ({ request }) => {
     const res = await request.get("/catalog/movie/pictorium-jw-movies.json")
     expect(res.ok()).toBeTruthy()
     const body = await res.json()
-    expect(body.metas.length).toBe(0)
+    // Senza chiave: niente contenuti reali — solo la notice card esplicativa
+    // (buildNoticeMeta, id `pictorium:notice:*`), mai titoli veri.
+    expect(Array.isArray(body.metas)).toBeTruthy()
+    for (const m of body.metas) {
+      expect(String(m.id)).toMatch(/^pictorium:notice:/)
+    }
   })
 })
 
@@ -120,13 +125,13 @@ test.describe("meta API", () => {
 })
 
 test.describe("manifest API", () => {
-  test("base manifest has catalogs and poster+meta resources", async ({ request }) => {
+  test("base manifest has catalogs and standard catalog/meta resources", async ({ request }) => {
     const res = await request.get("/manifest.json")
     expect(res.ok()).toBeTruthy()
     const body = await res.json()
     expect(body.id.startsWith("org.pictorium")).toBeTruthy()
     expect(body.catalogs.length).toBeGreaterThan(10)
-    expect(body.resources.some((r: string | { name: string }) => typeof r === "string" ? r === "catalog" : r.name === "meta")).toBeTruthy()
+    expect(body.resources.map((r: string | { name: string }) => typeof r === "string" ? r : r.name)).toEqual(["catalog", "meta"])
   })
 
   test("manifest mode=search returns only search catalogs", async ({ request }) => {

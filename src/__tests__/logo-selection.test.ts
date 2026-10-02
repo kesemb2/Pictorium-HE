@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { selectBestLogo, logoBestLogoFallbackReason } from "@/lib/logo-selection"
+import { selectBestLogo, logoBestLogoFallbackReason, logoDefaultScale } from "@/lib/logo-selection"
 import type { TMDBImage } from "@/lib/types"
 
 const logo = (iso: string | null): TMDBImage => ({
@@ -37,6 +37,27 @@ describe("selectBestLogo", () => {
 
   it("returns undefined for an empty list", () => {
     expect(selectBestLogo([], "he")).toBeUndefined()
+  })
+})
+
+describe("logoDefaultScale", () => {
+  const sized = (w: number | null, h: number | null): TMDBImage => ({
+    file_path: "/x.png", iso_639_1: "en", vote_average: 1,
+    width: w as number, height: h as number,
+  })
+
+  it("scales sublinearly with aspect (2/3-power curve, cap 75)", () => {
+    expect(logoDefaultScale(sized(400, 400))).toBe(38) // 1:1 invariato
+    expect(logoDefaultScale(sized(600, 400))).toBe(49) // 1.5:1
+    expect(logoDefaultScale(sized(800, 400))).toBe(60) // 2:1 (Joker)
+    expect(logoDefaultScale(sized(1000, 400))).toBe(69) // 2.5:1
+    expect(logoDefaultScale(sized(1200, 400))).toBe(75) // 3:1 al cap
+  })
+
+  it("returns null without dimensions", () => {
+    expect(logoDefaultScale(sized(null, null))).toBeNull()
+    expect(logoDefaultScale(sized(0, 100))).toBeNull()
+    expect(logoDefaultScale(sized(100, 0))).toBeNull()
   })
 })
 

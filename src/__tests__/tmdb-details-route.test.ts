@@ -10,6 +10,13 @@ vi.mock("@/lib/tmdb", () => ({
   getDetails: vi.fn(),
   getDetailsWithExternalIds: vi.fn(),
   getExternalIds: vi.fn(),
+  // La route risolve la chiave via helper (query > namespace > env): qui
+  // basta l'equivalente query-only per kind, la risoluzione namespace è
+  // coperta da namespace-keys.test.ts.
+  resolveRouteApiKey: vi.fn(async (req: Request, kind?: string) => {
+    const q = new URL(req.url).searchParams
+    return (kind === "mdblist" ? q.get("mdblist_key") : q.get("api_key")) || undefined
+  }),
 }))
 vi.mock("@/lib/ratings", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/ratings")>()
@@ -49,6 +56,27 @@ describe("GET /api/tmdb/[id]/details (voto medio TMDB+IMDb)", () => {
     expect(body.voteAverage).toBe(7.3)
   })
 
+  it("exposes wikidata_id from external_ids (preview fast-path, zero extra RTT)", async () => {
+    ;(getDetails as ReturnType<typeof vi.fn>).mockResolvedValue(BASE_DETAILS)
+    ;(getExternalIds as ReturnType<typeof vi.fn>).mockResolvedValue({ imdb_id: "tt123", wikidata_id: "Q23577" })
+
+    const res = await GET(makeReq(), { params: Promise.resolve({ id: "123" }) })
+    const body = await res.json()
+    expect(res.status).toBe(200)
+    expect(body.wikidata_id).toBe("Q23577")
+    expect(body.imdb_id).toBe("tt123")
+  })
+
+  it("nulls wikidata_id when TMDB has no link (SPARQL fallback preserved)", async () => {
+    ;(getDetails as ReturnType<typeof vi.fn>).mockResolvedValue(BASE_DETAILS)
+    ;(getExternalIds as ReturnType<typeof vi.fn>).mockResolvedValue({ imdb_id: "tt123" })
+
+    const res = await GET(makeReq(), { params: Promise.resolve({ id: "123" }) })
+    const body = await res.json()
+    expect(res.status).toBe(200)
+    expect(body.wikidata_id).toBeNull()
+  })
+
   it("uses the TMDB+IMDb average when the aggregated rating is available", async () => {
     ;(getDetails as ReturnType<typeof vi.fn>).mockResolvedValue(BASE_DETAILS)
     ;(getExternalIds as ReturnType<typeof vi.fn>).mockResolvedValue({ imdb_id: "tt123" })
@@ -67,45 +95,44 @@ describe("GET /api/tmdb/[id]/details (voto medio TMDB+IMDb)", () => {
     ;(getExternalIds as ReturnType<typeof vi.fn>).mockResolvedValue({ imdb_id: "tt123" })
 
     const keys: string[] = []
-    const originalSet = cacheModule.cacheSet
-    const spy = vi.spyOn(cacheModule, "cacheSet").mockImplementation((key: string, value: unknown, tags?: string[]) => {
+    const spy = vi.spyOn(cacheModule, "cacheSet").mockImplementation((key: string, _value: unknown, _tags?: string[]) => {
       keys.push(key)
-      originalSet(key, value, tags)
+      return cacheModule.cacheGet(key) as void
     })
 
-    const res1 = await GET(makeReq("keyAAA"), { params: Promise.resolve({ id: "123" }) })
-    const res2 = await GET(makeReq("keyBBB"), { params: Promise.resolve({ id: "123" }) })
+    try {
+      const res1 = await GET(makeReq("keyAAA"), { params: Promise.resolve({ id: "123" }) })
+      const res2 = await GET(makeReq("keyBBB"), { params: Promise.resolve({ id: "123" }) })
 
-    expect(res1.status).toBe(200)
-    expect(res2.status).toBe(200)
-    expect(keys).toHaveLength(2)
-    // Chiavi diverse → non c'è cache hit incrociato con un'altra chiave mdblist.
-    expect(keys[0]).not.toBe(keys[1])
-    // Prefisso standard details:v11.
-    expect(keys[0]).toMatch(/^details:v11:movie:123:it-IT:/)
-    // La chiave API non deve apparire in chiaro nel cache key (hash sha1 a 8 hex).
-    expect(keys[0]).not.toContain("keyAAA")
-    expect(keys[1]).not.toContain("keyBBB")
-
-    spy.mockRestore()
+      expect(res1.status).toBe(200)
+      expect(res2.status).toBe(200)
+      expect(keys).toHaveLength(2)
+      // Chiavi diverse → non c'è cache hit incrociato con un'altra chiave mdblist.
+      expect(keys[0]).not.toBe(keys[1])
+      // Prefisso standard details:v14 (fonti anime via rsrcKey).
+      expect(keys[0]).toMatch(/^details:v14:movie:123:it-IT:/)
+      // La chiave API non deve apparire in chiaro nel cache key (hash sha1 a 8 hex).
+      expect(keys[0]).not.toContain("keyAAA")
+      expect(keys[1]).not.toContain("keyBBB")
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it("uses the same cache key for repeated requests with the same mdblist_key (cache hit)", async () => {
     ;(getDetails as ReturnType<typeof vi.fn>).mockResolvedValue(BASE_DETAILS)
     ;(getExternalIds as ReturnType<typeof vi.fn>).mockResolvedValue({ imdb_id: "tt123" })
 
-    const keys: string[] = []
-    const originalSet = cacheModule.cacheSet
-    const spy = vi.spyOn(cacheModule, "cacheSet").mockImplementation((key: string, value: unknown, tags?: string[]) => {
-      keys.push(key)
-      originalSet(key, value, tags)
-    })
+    const spy = vi.spyOn(cacheModule, "cacheSet")
 
-    await GET(makeReq("keyAAA"), { params: Promise.resolve({ id: "123" }) })
-    await GET(makeReq("keyAAA"), { params: Promise.resolve({ id: "123" }) })
+    try {
+      await GET(makeReq("keyAAA"), { params: Promise.resolve({ id: "123" }) })
+      await GET(makeReq("keyAAA"), { params: Promise.resolve({ id: "123" }) })
 
-    // Seconda chiamata servita dalla cache: cacheSet chiamato una sola volta.
-    expect(keys).toHaveLength(1)
-    spy.mockRestore()
+      // Seconda chiamata servita dalla cache: cacheSet chiamato una sola volta.
+      expect(spy).toHaveBeenCalledTimes(1)
+    } finally {
+      spy.mockRestore()
+    }
   })
 })

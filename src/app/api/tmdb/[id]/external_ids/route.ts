@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { getExternalIds } from "@/lib/tmdb"
+import { getExternalIds, resolveRouteApiKey } from "@/lib/tmdb"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { cacheGet, cacheSet } from "@/lib/cache"
 
@@ -10,7 +10,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   if (!rl.ok) return rateLimitResponse(rl.retAfter)
   const { id } = await params
   const type = req.nextUrl.searchParams.get("type") || "movie"
-  const apiKey = req.nextUrl.searchParams.get("api_key") || undefined
+  const apiKey = await resolveRouteApiKey(req)
   // Fix M9: validazione esplicita (prima `type` libero finiva interpolato
   // nell'URL upstream e Number(id) poteva essere NaN → 500 generico).
   if (type !== "movie" && type !== "tv") {

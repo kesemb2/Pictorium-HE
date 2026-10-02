@@ -1,6 +1,6 @@
-import { describe, expect, it, beforeEach } from "vitest"
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest"
 import sharp from "sharp"
-import { selectBestLogoFitPosterPath, clearAutoFitCache } from "@/lib/poster-auto-fit"
+import { selectAutoFitCandidates, selectBestLogoFitPosterPath, clearAutoFitCache } from "@/lib/poster-auto-fit"
 
 async function solidPoster(color: string, w = 500, h = 750): Promise<Buffer> {
   return sharp({
@@ -60,6 +60,34 @@ describe("selectBestLogoFitPosterPath", () => {
     })
 
     expect(selected?.posterPath).toBe("/dark.jpg")
+  })
+
+  it("reports winnerIndex/candidateCount when ranking runs", async () => {
+    const darkPoster = await solidPoster("#050505")
+    const lightPoster = await solidPoster("#f8f8f8")
+    const logo = await solidLogo("#ffffff")
+    const images = new Map([
+      ["/dark.jpg", darkPoster],
+      ["/light.jpg", lightPoster],
+      ["/logo.png", logo],
+    ])
+
+    const selected = await selectBestLogoFitPosterPath({
+      posters: [
+        { file_path: "/light.jpg", iso_639_1: null },
+        { file_path: "/dark.jpg", iso_639_1: null },
+      ],
+      logoPath: "/logo.png",
+      fetchImage: makeImages(images),
+      logoScale: 50,
+      logoOffsetX: 0,
+      logoOffsetY: 0,
+      hasBadges: true,
+    })
+
+    expect(selected?.posterPath).toBe("/dark.jpg")
+    expect(selected?.candidateCount).toBe(2)
+    expect(selected?.winnerIndex).toBe(1)
   })
 
   it("returns the only clean poster without scoring", async () => {
@@ -390,7 +418,7 @@ describe("selectBestLogoFitPosterPath", () => {
     expect(selected?.posterPath).toBe("/p7.jpg")
   })
 
-  it("only analyzes the first 16 valid TMDB clean posters", async () => {
+  it("only analyzes the first 8 valid TMDB clean posters", async () => {
     const poster = await solidPoster("#050505")
     const logo = await solidLogo("#ffffff")
     const images = new Map([
@@ -421,7 +449,7 @@ describe("selectBestLogoFitPosterPath", () => {
     })
 
     expect(selected?.posterPath).toBeDefined()
-    expect(fetchCount).toBeLessThanOrEqual(17)
+    expect(fetchCount).toBeLessThanOrEqual(9)
   })
 
   it("avoids duplicates in candidate pool", async () => {
@@ -581,5 +609,99 @@ describe("selectBestLogoFitPosterPath", () => {
     })
 
     expect(selected?.posterPath).toBe("/dark.jpg")
+  })
+})
+
+describe("selectAutoFitCandidates shape", () => {
+  const portrait = { file_path: "/p.jpg", iso_639_1: null, width: 500, height: 750 }
+  const landscape = { file_path: "/b.jpg", iso_639_1: null, width: 1280, height: 720 }
+  const unknown = { file_path: "/u.jpg", iso_639_1: null }
+  const lang = { file_path: "/it.jpg", iso_639_1: "it", width: 1280, height: 720 }
+
+  it("portrait keeps 2:3 and drops 16:9", () => {
+    const out = selectAutoFitCandidates([portrait, landscape, unknown], "poster")
+    expect(out.map((p) => p.file_path).sort()).toEqual(["/p.jpg", "/u.jpg"])
+  })
+
+  it("landscape keeps 16:9 and drops 2:3", () => {
+    const out = selectAutoFitCandidates([portrait, landscape, unknown], "landscape")
+    expect(out.map((p) => p.file_path).sort()).toEqual(["/b.jpg", "/u.jpg"])
+  })
+
+  it("always drops non-clean candidates", () => {
+    expect(selectAutoFitCandidates([lang], "landscape")).toEqual([])
+  })
+
+  it("landscape end-to-end: picks the dark backdrop for a white logo", async () => {
+    const darkBackdrop = await solidPoster("#050505", 1280, 720)
+    const lightBackdrop = await solidPoster("#f8f8f8", 1280, 720)
+    const logo = await solidLogo("#ffffff")
+    const images = new Map([
+      ["/dark.jpg", darkBackdrop],
+      ["/light.jpg", lightBackdrop],
+      ["/logo.png", logo],
+    ])
+    const selected = await selectBestLogoFitPosterPath({
+      posters: [
+        { file_path: "/light.jpg", iso_639_1: null, width: 1280, height: 720 },
+        { file_path: "/dark.jpg", iso_639_1: null, width: 1280, height: 720 },
+      ],
+      logoPath: "/logo.png",
+      fetchImage: makeImages(images),
+      logoScale: 50,
+      logoOffsetX: 0,
+      logoOffsetY: 0,
+      hasBadges: true,
+      shape: "landscape",
+    })
+    expect(selected?.posterPath).toBe("/dark.jpg")
+  })
+})
+
+describe("TMDB_CANDIDATE_COUNT env (PICTORIUM_AUTO_FIT_CANDIDATE_COUNT)", () => {
+  // Lettura a module level: re-import con env impostata (stesso pattern di
+  // best-fit-config.test.ts). Ripristino dopo ogni caso per non toccare gli altri test.
+  async function candidatesWithEnv(value: string | undefined, total: number): Promise<number> {
+    if (value === undefined) {
+      delete process.env.PICTORIUM_AUTO_FIT_CANDIDATE_COUNT
+      delete process.env.POSTERIUM_AUTO_FIT_CANDIDATE_COUNT
+    } else {
+      process.env.PICTORIUM_AUTO_FIT_CANDIDATE_COUNT = value
+    }
+    vi.resetModules()
+    const mod = await import("@/lib/poster-auto-fit")
+    const posters = Array.from({ length: total }, (_, i) => ({
+      file_path: `/p${i}.jpg`,
+      iso_639_1: null as string | null,
+      width: 500,
+      height: 750,
+    }))
+    return mod.selectAutoFitCandidates(posters).length
+  }
+
+  afterEach(() => {
+    delete process.env.PICTORIUM_AUTO_FIT_CANDIDATE_COUNT
+    delete process.env.POSTERIUM_AUTO_FIT_CANDIDATE_COUNT
+    vi.resetModules()
+  })
+
+  it("default 8 senza env", async () => {
+    expect(await candidatesWithEnv(undefined, 30)).toBe(8)
+  })
+
+  it("rispetta la env (8)", async () => {
+    expect(await candidatesWithEnv("8", 30)).toBe(8)
+  })
+
+  it("clamp 1–32 e fallback su invalidi", async () => {
+    expect(await candidatesWithEnv("0", 30)).toBe(1)
+    expect(await candidatesWithEnv("-3", 30)).toBe(1)
+    expect(await candidatesWithEnv("100", 40)).toBe(32)
+    expect(await candidatesWithEnv("abc", 30)).toBe(8)
+    expect(await candidatesWithEnv("16", 30)).toBe(16)
+  })
+
+  it("sotto il count non taglia", async () => {
+    expect(await candidatesWithEnv("8", 5)).toBe(5)
   })
 })

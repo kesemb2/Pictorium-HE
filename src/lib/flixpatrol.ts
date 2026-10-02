@@ -6,6 +6,7 @@ import { DATA_DIR } from "@/lib/data-dir"
 import { createLogger } from "@/lib/logger"
 import { getJWRankings, getJWTitles, PLATFORM_JW_PACKAGES, type JWRankEntry } from "@/lib/justwatch"
 import { flixSlugToRegionCode, getRegionDef } from "@/lib/regions"
+import { timedFetch } from "./outbound-stats"
 
 const log = createLogger("flixpatrol")
 
@@ -155,7 +156,7 @@ function saveCache(country: string, data: CacheData) {
 }
 
 async function fetchCatalog(country: string): Promise<CatalogData> {
-  const res = await fetch(catalogUrl(country), { signal: AbortSignal.timeout(15000) })
+  const res = await timedFetch(catalogUrl(country), { signal: AbortSignal.timeout(15000) })
   if (!res.ok) throw new Error(`Catalog fetch failed: ${res.status}`)
   return res.json()
 }
@@ -170,7 +171,7 @@ async function tmdbCachedFetch(url: string): Promise<unknown | null> {
     return cached.data
   }
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15000) })
+    const res = await timedFetch(url, { signal: AbortSignal.timeout(15000) })
     if (!res.ok) return null
     const data = await res.json()
     if (tmdbCache.size >= TMDB_CACHE_MAX) tmdbCache.delete(tmdbCache.keys().next().value!)

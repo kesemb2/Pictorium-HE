@@ -1,28 +1,28 @@
-import { describe, expect, it } from "vitest"
+import { describe, it, expect } from "vitest"
 import {
   CLEAN_GRADIENT_HEIGHT,
   NON_CLEAN_GRADIENT_HEIGHT,
+  CLEAN_BLUR_FADE,
+  NON_CLEAN_BLUR_FADE,
   defaultGradientHeightForPoster,
+  defaultBlurFadeForPoster,
 } from "@/lib/gradient-defaults"
 
-// Regressione: l'altezza della fascia tornava a 30 a ogni cambio di poster,
-// perché il valore per il poster clean era fisso e questa funzione viene
-// richiamata anche subito dopo aver ricaricato i default salvati.
-describe("defaultGradientHeightForPoster", () => {
-  const clean = { iso_639_1: null }
-  const withTitle = { iso_639_1: "he" }
-
-  it("usa l'impostazione dell'utente sul poster clean", () => {
-    expect(defaultGradientHeightForPoster(clean, 55)).toBe(55)
-    expect(defaultGradientHeightForPoster(clean, 12)).toBe(12)
+describe("poster-type defaults (clean vs non-clean)", () => {
+  it("clean posters keep the legacy look (tall band, short fade)", () => {
+    expect(defaultGradientHeightForPoster({ iso_639_1: null })).toBe(CLEAN_GRADIENT_HEIGHT)
+    expect(defaultBlurFadeForPoster({ iso_639_1: null })).toBe(CLEAN_BLUR_FADE)
   })
 
-  it("tiene la fascia bassa sul poster col titolo stampato", () => {
-    expect(defaultGradientHeightForPoster(withTitle, 55)).toBe(NON_CLEAN_GRADIENT_HEIGHT)
-    expect(defaultGradientHeightForPoster(null, 55)).toBe(NON_CLEAN_GRADIENT_HEIGHT)
+  it("non-clean posters get a shorter band with a longer fade", () => {
+    expect(NON_CLEAN_GRADIENT_HEIGHT).toBe(20)
+    expect(NON_CLEAN_BLUR_FADE).toBe(80)
+    expect(defaultGradientHeightForPoster({ iso_639_1: "it" })).toBe(20)
+    expect(defaultBlurFadeForPoster({ iso_639_1: "en" })).toBe(80)
   })
 
-  it("senza default esplicito resta il valore di fabbrica", () => {
-    expect(defaultGradientHeightForPoster(clean)).toBe(CLEAN_GRADIENT_HEIGHT)
+  it("unknown poster falls back to the non-clean defaults", () => {
+    expect(defaultGradientHeightForPoster(null)).toBe(20)
+    expect(defaultBlurFadeForPoster(undefined)).toBe(80)
   })
 })

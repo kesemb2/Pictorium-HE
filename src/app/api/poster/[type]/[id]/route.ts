@@ -1,28 +1,34 @@
 import { NextRequest } from "next/server"
 import sharp from "sharp"
 import { initSharp } from "@/lib/sharp-config"
-import { getImages, getDetails, getDetailsWithExternalIds, getExternalIds, getKeywords, getReleaseDates, resolveRequestApiKey, type TMDBImage, type TMDBCompany } from "@/lib/tmdb"
+import { getImages, getDetails, getDetailsWithExternalIds, getExternalIds, getKeywords, getReleaseDates, resolveUserApiKeys, type TMDBImage, type TMDBCompany } from "@/lib/tmdb"
 import { getJWRankings, hasJWOffers } from "@/lib/justwatch"
 import { extractDigitalReleaseDate, isDigitalPreRelease } from "@/lib/pre-release"
-import { getById } from "@/lib/store"
+import { getAll, getById, getImdbAlias } from "@/lib/store"
+import { getScopedUserId, userExists } from "@/lib/user-auth"
+import { verifySessionFromRequestSync } from "@/lib/pin-auth"
+import { checkAdminToken } from "@/lib/auth"
+import { userRateLimitKey } from "@/lib/user-auth"
+import { touchUserActivity } from "@/lib/user-activity"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
-import { cachedImageBytes } from "@/lib/image-bytes-cache"
 import { recordPosterUrl } from "@/lib/poster-url-log"
-import { getServerDefaults } from "@/lib/server-defaults"
+import { getServerDefaults, getServerDefaultsForUser } from "@/lib/server-defaults"
 import { getRegionDef, normalizeRegion, parseRegion, defaultRegionForLang } from "@/lib/regions"
-import { BEST_FIT_GLOBAL } from "@/lib/best-fit-config"
-import { selectBestLogoFitPosterPath } from "@/lib/poster-auto-fit"
-import { fetchAllWikidata, matchTMDBStudios } from "@/lib/awards"
+import { BEST_FIT_GLOBAL, resolveLogoFitEnabled } from "@/lib/best-fit-config"
+import { selectAutoFitCandidates, selectBestLogoFitPosterPath } from "@/lib/poster-auto-fit"
+import { fetchAllWikidata, matchTMDBStudios, directorBadgeLabel, isValidWikidataQid, type WikidataResult } from "@/lib/awards"
+import { resolveWikidataId } from "@/lib/imdb-cache"
 import { createT } from "@/lib/i18n"
 import type { EnrichedAnimeItem } from "@/lib/validation"
 import { fetchMDBList, type MDBListEntry } from "@/lib/mdblist"
-import { fetchAggregatedRating, calculateAverageRating } from "@/lib/ratings"
+import { fetchAggregatedRating, pickSeparateRatings, resolveRatingSources, type SeparateRating } from "@/lib/ratings"
 import { isImdbTop250 } from "@/lib/imdb-top250"
-import { getEffectiveRotationState, tryRotatePoster } from "@/lib/poster-rotation"
+import { getEffectiveRotationState, tryRotatePoster, getEffectiveBackdropRotationState, tryRotateBackdrop, getDynamicRotationBucket, rotationIndexFor, secondsUntilDynamicRotationCut } from "@/lib/poster-rotation"
 import { getTMDBSessionCache, setTMDBSessionCache } from "@/lib/tmdb-session-cache"
 import { mappingVersionParam } from "@/lib/stremio-poster-url"
 import { RENDER_VERSION } from "@/lib/render-version"
 import { envWithFallback } from "@/lib/env-compat"
+import { TOP_LIGHT_LUMINANCE } from "@/lib/constants"
 import {
   RENDER_SLOT_WAIT_MS,
   acquirePosterRenderSlot,
@@ -35,6 +41,7 @@ import {
   posterNotModifiedHeaders,
   posterResponse,
   convertPosterFormat,
+  convertToJpeg,
   variantEtagFor,
   dynamicPosterTtlSec,
   readCachedPoster,
@@ -51,44 +58,51 @@ import {
   recordBackdropCropRescue,
   serverTimingValue,
   resolveImageFormat,
+  DEFAULT_IMAGE_FORMAT,
   type PosterCachePayload,
   type PosterErrorStatus,
 } from "@/lib/poster-runtime-cache"
+import { hashUserFragment, userTagFragment } from "@/lib/cache"
+import { hardenPosterSearchParams, isPresetsPosterMode, isPreviewAuthRequired, isPreviewDowngraded, isPublicPosterInstance } from "@/lib/poster-params-hardening"
 import {
   STD_H,
   STD_W,
-  cropToPoster,
   fetchImg,
+  fetchLogoImg,
   hashKey,
   imgSrc,
-  isAllowedImageUrl,
   isValidHex,
   topLuminance,
+  bottomLuminance,
 } from "@/lib/poster-render-helpers"
+import { computeBottomLight } from "@/lib/accent-color"
+import { normalizeGenreName } from "@/lib/genre-normalize"
+import { NON_CLEAN_BLUR_FADE, NON_CLEAN_GRADIENT_HEIGHT } from "@/lib/gradient-defaults"
+import { LAND_W, LAND_H, landscapeBackdropUrl, pillarboxLandscapeBase, cropBackdropToPortrait } from "@/lib/image-utils"
 import { generatePosterBuffer, type GenerationInput } from "@/lib/poster-service"
+import { computeTopBadge } from "@/lib/poster-badge"
 import { containsHebrew } from "@/lib/badge-svg-shared"
-import { validatePosterQuery } from "@/lib/validation"
-import { getFanartMovie, getFanartTv, isFanartEnabled, textlessOnly, type FanartImage } from "@/lib/fanart"
+import { getFanartMovie, getFanartTv, isFanartEnabled, textlessOnly, type FanartImage } from "@/lib/fanart-artwork"
 import { logoContrast, logoInkLuminance, posterLogoZoneLuminance } from "@/lib/logo-contrast"
 import { isTmdbTrending } from "@/lib/tmdb-trending-badge"
-import { computeTopBadge } from "@/lib/poster-badge"
+import { parseDateFormat } from "@/lib/release-badge"
+import { fetchPosterBaseWithCustom, customBaseAnalysisKey, resolveEffectiveCustomUrl, safeTmdbImgSrc, isAllowedQueryImagePath } from "@/lib/custom-poster-base"
+import { isCustomPosterUrl } from "@/lib/utils"
 
 import { resolveImdbToTmdb } from "@/lib/imdb-resolver"
 import { getTvdbArtworks, getTvdbMovieId, getTvdbSeriesId, pickTvdbPoster } from "@/lib/tvdb"
+import { validatePosterQuery } from "@/lib/validation"
 import { decodeConfig } from "@/lib/config-token"
 import { createLogger } from "@/lib/logger"
-import { resolvePosterRenderConfig } from "@/lib/poster-config"
+import { resolvePosterRenderConfig, resolvePosterShape } from "@/lib/poster-config"
 import { selectLogoTier, pickReadableLogo, logoBestLogoFallbackReason } from "@/lib/logo-selection"
-
-/**
- * Lingue per cui si rende il titolo tradotto sotto il logo quando TMDB non ha
- * un logo in quella lingua. Solo ebraico: le altre dodici regioni hanno una
- * copertura loghi decente e aggiungere una riga cambierebbe poster che oggi
- * vanno bene. Aggiungere una lingua qui è tutto quel che serve.
- */
-const TITLE_UNDER_LOGO_LANGS = new Set(["he"])
-import { resolveStreamQuality } from "@/lib/stream-quality"
+import { resolveStreamQuality, type StreamQualityResult } from "@/lib/stream-quality"
+import { applyMinQuality, type StreamQuality } from "@/lib/quality-tiers"
+import { lookupAVSpecs, isVideoFormat, type VideoFormat } from "@/lib/av-specs"
+import { computeVote } from "@/lib/rating-weights"
 import { combineAbortSignals } from "@/lib/abort-signal"
+import { cachedImageBytes } from "@/lib/image-bytes-cache"
+import { timedFetch } from "@/lib/outbound-stats"
 import { createHash } from "node:crypto"
 import { fetchCustomRatings, resolveCustomRatingConfig, type RatingItem } from "@/lib/custom-rating"
 
@@ -98,6 +112,14 @@ import { fetchCustomRatings, resolveCustomRatingConfig, type RatingItem } from "
 export const maxDuration = 40
 
 const log = createLogger("poster")
+
+/**
+ * Lingue per cui si rende il titolo tradotto sotto il logo quando TMDB non ha
+ * un logo in quella lingua. Solo ebraico: le altre regioni hanno una
+ * copertura loghi decente e aggiungere una riga cambierebbe poster che oggi
+ * vanno bene. Aggiungere una lingua qui è tutto quel che serve.
+ */
+const TITLE_UNDER_LOGO_LANGS = new Set(["he"])
 
 /**
  * Fascia di poster su cui il logo cade, per misurarne il contrasto PRIMA di
@@ -113,10 +135,14 @@ const LOGO_ZONE = { left: 0, top: Math.round(STD_H * 0.52), width: STD_W, height
 // level: un cambio env richiede restart, non hot-reload.
 const RENDER_TIMEOUT_MS = (() => {
   const raw = envWithFallback("RENDER_TIMEOUT_MS")
-  const n = raw ? parseInt(raw, 10) : 30000
+  // Vercel Hobby: 10s di limite funzione — con 30s di deadline la piattaforma
+  // chiuderebbe con 504 prima del nostro 503 degradato. Default hobby-safe
+  // SOLO se l'utente non ha impostato un valore esplicito (su Pro vale 30s).
+  const fallback = process.env.VERCEL && raw === undefined ? 8500 : 30000
+  const n = raw ? parseInt(raw, 10) : fallback
   // Clamp superiore = maxDuration (40s): un timeout interno più lungo del
   // limite della funzione serverless non avrebbe mai tempo di scattare (finding 11).
-  return Number.isFinite(n) && n >= 1000 && n <= 40000 ? n : 30000
+  return Number.isFinite(n) && n >= 1000 && n <= 40000 ? n : fallback
 })()
 
 // D5: tetto TMDB nel path poster (slot-bound). Un singolo fetch TMDB appeso
@@ -135,7 +161,35 @@ const RATING_WAIT_MS = (() => {
   return Number.isFinite(n) && n >= 300 && n <= 10000 ? n : 1500
 })()
 
+// TTL effimero (s) per i render degradati da timeout/errore upstream sulla
+// qualità: il poster senza badge resta in cache 2 minuti invece di 6h/24h, così
+// Stremio riprova poco dopo senza avvelenare la CDN per mezza giornata.
+// Solo storage+header di QUESTO render: resolved-null (esito negativo
+// accertato) mantiene il TTL pieno.
+const QUALITY_EPHEMERAL_TTL_SEC = 120
+
+/**
+ * Normalizza il risultato qualità in StreamQualityResult. Accetta il legacy
+ * `StreamQuality | null` (mock dei test, override `?quality=`) come
+ * resolved: preserva il caching pieno storico per quei path.
+ */
+function normalizeQualityResult(raw: StreamQualityResult | StreamQuality | string | null | undefined): StreamQualityResult {
+  if (raw !== null && typeof raw === "object" && "status" in raw) return raw as StreamQualityResult
+  if (typeof raw === "string") return { quality: raw as StreamQuality, status: "resolved", source: "none" }
+  return { quality: (raw ?? null) as StreamQuality | null, status: "resolved", source: "none" }
+}
+
 type RouteParams = { type: string; id: string }
+
+/**
+ * Reverse lookup: mapping salvato con questo imdbId (scritto a mano quando
+ * TMDB non lo fornisce). Ritorna il mapping (il chiamante usa tmdbId +
+ * mediaType dichiarati). Mai throw: il chiamante ha già il .catch.
+ */
+async function findMappingByImdb(imdbId: string, userId?: string | null) {
+  const all = await getAll(userId)
+  return all.find((m) => m.imdbId?.trim() === imdbId) ?? null
+}
 
 function corsHeaders(): Record<string, string> {
   return { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*" }
@@ -158,13 +212,65 @@ function posterErrorResponse(status: PosterErrorStatus): Response {
   return new Response("Poster generation failed", { status: 500, headers: corsHeaders() })
 }
 
+/**
+ * Sessione preview sbloccata: cookie PIN/admin o admin token. Sync e senza
+ * I/O oltre la config cachata — sicuro sull'hot path. Mai throw.
+ */
+function hasUnlockedPreviewSession(req: NextRequest): boolean {
+  try {
+    return verifySessionFromRequestSync(req) || checkAdminToken(req)
+  } catch {
+    return false
+  }
+}
+
 export async function GET(req: NextRequest, { params }: { params: Promise<RouteParams> }) {
   const startTime = Date.now()
   initSharp()
-  const rl = await rateLimit(rateLimitKey(req), "poster")
-  if (!rl.ok) return rateLimitResponse(rl.retAfter)
   const { type, id } = await params
-  const mediaType = (["series", "tv", "show", "tvshow"].includes(type?.toLowerCase() || "")) ? "tv" : "movie"
+  const mediaTypeInit = (["series", "tv", "show", "tvshow"].includes(type?.toLowerCase() || "")) ? "tv" : "movie"
+  // `let`: l'alias IMDb manuale può correggere anche il tipo (AIO che manda
+  // /movie/tt... per una serie) — l'utente dichiara "questo tt È quello show".
+  let mediaType: "movie" | "tv" = mediaTypeInit
+
+  // Namespace utente (multi-user): null con flag OFF o senza `?u=` → globale.
+  const rawUser = req.nextUrl.searchParams.get("u") ?? req.nextUrl.searchParams.get("user")
+  let scopedUser = getScopedUserId(rawUser)
+  // Rate-limit per-utente (multi-user): il bucket segue il namespace
+  // (IP+UUID) così il flood su `?u=vittima` brucia solo il sotto-bucket
+  // dell'attaccante e non la quota legittima del proprietario.
+  const rl = await rateLimit(scopedUser ? userRateLimitKey(req, scopedUser) : rateLimitKey(req), "poster")
+  if (!rl.ok) return rateLimitResponse(rl.retAfter)
+  // Spazi inventati → anonimo (v1.23.0): niente cache key separate né
+  // hardening bypassato. DOPO il rate-limit: il flood su UUID altrui resta
+  // confinato al sotto-bucket dell'attaccante.
+  if (scopedUser && !(await userExists(scopedUser))) scopedUser = null
+  // Preview blindata opt-in (v1.23.0): con PICTORIUM_PREVIEW_AUTH=1 le
+  // preview anonime sulle pubbliche vengono hardenate e cachate come
+  // normali (niente bypass bot). Restano live: spazi esistenti (editor del
+  // proprietario) e sessioni sbloccate (cookie PIN/admin). Default OFF.
+  const rawPreview = req.nextUrl.searchParams.has("preview")
+  let isPreview = rawPreview
+  if (
+    rawPreview &&
+    isPreviewDowngraded({
+      presets: isPresetsPosterMode(),
+      publicInstance: isPublicPosterInstance(),
+      previewAuth: isPreviewAuthRequired(),
+      hasScopedUser: !!scopedUser,
+      unlocked: hasUnlockedPreviewSession(req),
+    })
+  ) {
+    isPreview = false
+  }
+  // Chiavi effettive (slice 2, una sola lettura namespace): esplicite della
+  // richiesta > namespace utente > env d'istanza. Con `scopedUser` null sono
+  // identiche a oggi (byte-identico).
+  const effKeys = await resolveUserApiKeys(req, scopedUser)
+  const effTmdbKey = effKeys.tmdb?.key
+  const effMdblistKey = effKeys.mdblist?.key
+  const effTvdbKey = effKeys.tvdb?.key
+  const effSimklKey = effKeys.simkl?.key
 
   // Decode optional stateless config token (stile AIOMetadata / RPDB)
   const configToken = req.nextUrl.searchParams.get("config") || req.nextUrl.searchParams.get("c")
@@ -174,11 +280,44 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // il provider custom rating (e il ramo mapping) lo usano senza dipendere
   // da getExternalIds — che richiede una chiave TMDB assente negli URL Stremio.
   const pathImdbId = typeof id === "string" && /^tt\d+$/.test(id) ? id : null
-  let tmdbId = Number(id)
+  // Id tipizzato `tmdb:<num>` (es. sostituzione Nuvio del template auto
+  // `{tmdb_id|imdb_id}`): path numerico esatto, niente /find — come il nudo.
+  // Altri prefissi restano 400 (non risolvibili senza lookup dedicati).
+  const pathTmdbPrefixed = typeof id === "string" ? id.match(/^tmdb:(\d+)$/i)?.[1] ?? null : null
+  let tmdbId = pathTmdbPrefixed ? Number(pathTmdbPrefixed) : Number(id)
   if (isNaN(tmdbId) || tmdbId <= 0) {
     if (typeof id === "string" && id.startsWith("tt")) {
-      const resolved = await resolveImdbToTmdb(id, mediaType, resolveRequestApiKey(req))
-      if (resolved) tmdbId = resolved
+      // Alias manuale per-namespace vince sul /find TMDB (tt di franchise su
+      // entry di stagione splittata, es. Monster tt13207736 → tv:299939).
+      // Controllato PRIMA di resolveImdbToTmdb così bypassa anche la sua
+      // cache 7gg. Fail-open: errore store → fallback al /find invariato.
+      // Il globale fa da default operatore (una cura per tutti gli spazi).
+      const ownAlias = pathImdbId ? await getImdbAlias(pathImdbId, scopedUser).catch(() => null) : null
+      const alias = ownAlias
+        ?? (pathImdbId && scopedUser ? await getImdbAlias(pathImdbId).catch(() => null) : null)
+      if (alias) {
+        tmdbId = alias.tmdbId
+        mediaType = alias.mediaType
+        log.info("IMDb alias hit", { imdb: pathImdbId, mediaType, tmdbId })
+      } else {
+        // Reverse lookup sull'imdbId salvato nei mapping (scritto a mano
+        // quando TMDB non lo fornisce): proprio, poi globale. La risoluzione
+        // è conoscenza globale, il rendering resta per-namespace (il mapping
+        // letto dopo è sempre quello dello spazio richiedente).
+        const ownHit = pathImdbId && scopedUser
+          ? await findMappingByImdb(pathImdbId, scopedUser).catch(() => null)
+          : null
+        const anyHit = ownHit
+          ?? (pathImdbId ? await findMappingByImdb(pathImdbId).catch(() => null) : null)
+        if (anyHit) {
+          tmdbId = anyHit.tmdbId
+          mediaType = anyHit.mediaType
+          log.info("IMDb mapping hit", { imdb: pathImdbId, mediaType, tmdbId })
+        } else {
+          const resolved = await resolveImdbToTmdb(id, mediaType, effTmdbKey)
+          if (resolved) tmdbId = resolved
+        }
+      }
     }
   }
 
@@ -198,33 +337,58 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // funzione usata dal render — nessuna deriva). Prima un URL esterno
   // falliva dentro il try del render → 500 + negative-cache per un errore
   // del client, intasando log e slot. Ora 400 immediato.
+  // Eccezione: `poster` accetta anche URL http(s) su host allowlist (base
+  // custom da tile esterno — isAllowedQueryImagePath). Logo/backdrop restano
+  // strict TMDB/TVDB: il custom è portrait-only, mai sfondi o loghi.
   for (const imgKey of ["poster", "logo", "backdrop"] as const) {
     const imgPath = req.nextUrl.searchParams.get(imgKey)
     if (imgPath) {
       try {
-        imgSrc(imgPath)
+        if (imgKey === "poster") {
+          if (!isAllowedQueryImagePath(imgPath)) throw new Error(`Blocked query image URL`)
+        } else {
+          imgSrc(imgPath)
+        }
       } catch {
         return new Response(`Invalid query parameter: ${imgKey}`, { status: 400, headers: corsHeaders() })
       }
     }
   }
 
+  // Attività di lettura per il cleanup inattivi (throttled, fire-and-forget):
+  // DOPO la validazione (ID + R1/R2) così le request 400 non creano dir/file.
+  if (scopedUser) touchUserActivity(scopedUser)
+
   // 1. Get mapping + server defaults (no network)
-  let mapping = await getById(mediaType, tmdbId)
-  const sd = getServerDefaults()
+  // (`scopedUser` già risolto sopra: serve anche al ramo tt e alle chiavi.)
+  let mapping = await getById(mediaType, tmdbId, scopedUser)
+  const sd = scopedUser ? await getServerDefaultsForUser(scopedUser) : getServerDefaults()
   const qRegion = parseRegion(req.nextUrl.searchParams.get("region") ?? req.nextUrl.searchParams.get("country"))
   const configRegion = parseRegion(configOverride?.region)
   const langParam = req.nextUrl.searchParams.get("lang") || mapping?.language
   const langRegion = langParam ? (parseRegion(langParam) ?? defaultRegionForLang(langParam)) : null
   const posterRegion = getRegionDef(qRegion ?? configRegion ?? langRegion ?? normalizeRegion(sd.region))
 
-  // Auto-rotate clean poster
-  const rotationState = getEffectiveRotationState(mapping)
-  const isRotating = rotationState.isRotating
-  if (isRotating && mapping) {
+  // Formato canvas PRIMA della rotazione: in landscape ruota il backdrop
+  // (cleanBackdrops), in portrait il poster (cleanPosters). Stessa catena
+  // query > mapping > config > defaults usata dal render.
+  const earlyLandscape = resolvePosterShape(req.nextUrl.searchParams, mapping, configOverride, sd) === "landscape"
+
+  // Auto-rotate 24h: sfondi landscape o poster verticali a seconda del formato.
+  let isRotating = false
+  if (mapping) {
     try {
-      const rotated = await tryRotatePoster(mapping, rotationState)
-      if (rotated) mapping = rotated
+      if (earlyLandscape) {
+        const backdropState = getEffectiveBackdropRotationState(mapping)
+        isRotating = backdropState.isRotating
+        const rotated = await tryRotateBackdrop(mapping, backdropState)
+        if (rotated) mapping = rotated
+      } else {
+        const posterState = getEffectiveRotationState(mapping)
+        isRotating = posterState.isRotating
+        const rotated = await tryRotatePoster(mapping, posterState)
+        if (rotated) mapping = rotated
+      }
     } catch (error) {
       log.warn("Auto-rotate failed", { error: error instanceof Error ? error.message : String(error) })
     }
@@ -241,17 +405,56 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     : (mapping?.customRatings ?? configOverride?.customRatings ?? sd.customRatings ?? true)
   const envRatingConfig = resolveCustomRatingConfig({}, sd)
   const customRatingConfig = { ...envRatingConfig, enabled: envRatingConfig.enabled && customRatingsDisplay }
+  // Colonna rating separati (display) — catena: query `sep` > mapping >
+  // config token > server defaults > false (stessa di `cr` sopra).
+  const qSep = req.nextUrl.searchParams.get("sep")
+  const sepDisplay = qSep !== null
+    ? qSep !== "0"
+    : (mapping?.separateRatings ?? configOverride?.separateRatings ?? sd.separateRatings ?? false)
   const customRatingHash = customRatingConfig.enabled
     ? createHash("sha256").update(JSON.stringify(customRatingConfig)).digest("hex") : ""
   const sdHash = hashKey(JSON.stringify(sd) + customRatingHash)
-  const cacheParams = normalizePosterCacheParams(req.nextUrl.searchParams)
+  // Hardening anti cache-busting (v1.23.0): con presets attivi le richieste
+  // non-preview collassano su un set finito di render (quantize numerici +
+  // palette ac + extra canonico dal mapping + strip override keyless su
+  // pubbliche anonime). Preview WYSIWYG e istanze private passano intatte.
+  // `hardenedParams` alimenta chiave di cache E render così non divergono;
+  // il resto legge la query originale (parametri funzionali intatti).
+  const hardenedParams = hardenPosterSearchParams(req.nextUrl.searchParams, {
+    presets: isPresetsPosterMode(),
+    preview: isPreview,
+    anonymous: !scopedUser,
+    publicInstance: isPublicPosterInstance(),
+    hasMapping: !!mapping,
+    mappingCustomBadge: mapping?.customBadge ?? null,
+  })
+  // Preview declassata (blindatura opt-in): senza il flag la chiave resterebbe
+  // separata dalle anonime — rimuovendolo condivide la entry canonica.
+  if (rawPreview && !isPreview) hardenedParams.delete("preview")
+  const cacheParams = normalizePosterCacheParams(hardenedParams)
   cacheParams.delete("config")
   cacheParams.delete("c")
-  cacheParams.delete("u")
-  cacheParams.delete("user")
+  if (scopedUser) {
+    // Il namespace entra come hash a 64-bit (mai in chiaro): senza, B
+    // servirebbe il render cachato di A. Con flag OFF resta il delete storico.
+    cacheParams.set("u", hashUserFragment(scopedUser))
+    cacheParams.delete("user")
+  } else {
+    cacheParams.delete("u")
+    cacheParams.delete("user")
+  }
   // api_key non influisce sul rendering: rimuoverla evita frammentazione della
   // cache per utente e segreti in memoria nelle chiavi.
   cacheParams.delete("api_key")
+  // B1-bis come tvdb_key: la chiave MDBList è un segreto e non entra mai in
+  // chiaro nella cache key (prima frammentava la cache per chiave e restava
+  // in memoria in chiaro). Il flag `mdb=1` separa le entry con rating
+  // aggregati attivi da quelle senza — l'output a parità di dati non dipende
+  // dalla chiave (solo accesso upstream), quindi niente frammentazione.
+  cacheParams.delete("mdblist_key")
+  if (effMdblistKey) cacheParams.set("mdb", "1")
+  cacheParams.delete("simkl_key")
+  if (effSimklKey) cacheParams.set("simkl", "1")
   // B1: la chiave TVDB non entra mai in chiaro nella cache key (segreto in
   // memoria); il flag `tvdb=1` separa le entry con rescue attivo da quelle
   // senza (output diverso a parità di altri parametri).
@@ -259,102 +462,135 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // Il flag è server-side: un `tvdb=` in query viene ignorato (solo la
   // presenza della chiave abilita il rescue).
   cacheParams.delete("tvdb")
-  // Chiave TVDB per il rescue poster (B1): query `tvdb_key` > fallback
-  // d'istanza (stessa precedenza della route meta). Senza chiave il rescue
-  // è spento e il comportamento resta quello storico.
-  const tvdbApiKey = req.nextUrl.searchParams.get("tvdb_key")
-    || envWithFallback("TVDB_API_KEY") || process.env.TVDB_API_KEY || undefined
+  // Chiave TVDB per il rescue poster (B1): query `tvdb_key` > namespace >
+  // fallback d'istanza (stessa precedenza della route meta). Senza chiave il
+  // rescue è spento e il comportamento resta quello storico.
+  const tvdbApiKey = effTvdbKey
   if (tvdbApiKey) cacheParams.set("tvdb", "1")
   if (typeof cacheParams.sort === "function") cacheParams.sort()
   const cachedRank = mapping?.trendRank ?? null
-  const rotateKey = isRotating ? `:ci${mapping?.cleanPosterIndex ?? "x"}` : ""
+  const rotateKey = isRotating
+    ? (earlyLandscape ? `:bi${mapping?.cleanBackdropIndex ?? "x"}` : `:ci${mapping?.cleanPosterIndex ?? "x"}`)
+    : ""
+  // Rotazione giornaliera dei dinamici (titoli non salvati, solo clean, cut
+  // 02:00 UTC): senza mapping e senza `poster=` esplicito, il bucket giorno
+  // entra nella chiave così il cambio giorno invalida la cache su tutte le
+  // istanze senza write. Portrait → `autoRotateClean`, landscape → default
+  // `defaultAutoRotateBackdrop` (stessi toggle dei nuovi mapping).
+  const dynamicDayBucket = getDynamicRotationBucket({
+    hasMapping: !!mapping,
+    hasQueryPoster: hardenedParams.has("poster"),
+    isLandscape: earlyLandscape,
+    portraitEnabled: sd.autoRotateClean ?? false,
+    backdropEnabled: sd.defaultAutoRotateBackdrop ?? false,
+    nowMs: startTime,
+  })
+  const dynamicBucketKey = dynamicDayBucket !== null ? `:dd${dynamicDayBucket}` : ""
+  // TTL allineato al prossimo cut (header + storage esplicito sotto): oltre
+  // il cut la chiave cambia comunque, mai contenuto stantio oltre il giorno.
+  const dynamicCutTtlSec = dynamicDayBucket !== null
+    ? secondsUntilDynamicRotationCut(startTime)
+    : null
+  const dynamicCutTtlMs = dynamicCutTtlSec !== null ? dynamicCutTtlSec * 1000 : null
   const mapVersion = mapping?.updatedAt ? `:mu${mapping.updatedAt}` : ""
   const configHash = configOverride ? hashKey(JSON.stringify(configOverride)) : ""
   const outputFormat = resolveImageFormat(req.headers.get("accept"), req.nextUrl.searchParams.get("fmt") || req.nextUrl.searchParams.get("format"))
-  // C3: render canonico jpeg (il webp è variante di risposta convertita
-  // on-the-fly); solo ?fmt=avif esplicito mantiene chiave+render dedicati.
+  // C3: un solo render canonico per chiave (jpeg storico, webp con
+  // PICTORIUM_IMAGE_FORMAT=webp); gli altri formati sono varianti di risposta
+  // convertite on-the-fly. Solo ?fmt=avif esplicito mantiene chiave+render
+  // dedicati. Il marcatore di formato in chiave evita poison al flip env
+  // (stessa chiave + formato diverso = buffer col Content-Type sbagliato).
   const legacyAvif = outputFormat === "avif"
-  const formatKey = legacyAvif ? ":fmtavif" : ""
-  const cacheKey = `poster:v${RENDER_VERSION}:${mediaType}:${tmdbId}:reg${posterRegion.code}:r${cachedRank ?? "x"}:sd${sdHash}:${cacheParams.toString()}${rotateKey}${mapVersion}${configHash ? `:cfg${configHash}` : ""}${formatKey}`
-  const variantKey = outputFormat === "webp" ? `${cacheKey}:fmtwebp` : cacheKey
+  const canonicalFormat = legacyAvif ? "avif" : DEFAULT_IMAGE_FORMAT
+  const formatKey = legacyAvif ? ":fmtavif" : canonicalFormat === "webp" ? ":fmtwebp" : ""
+  const cacheKey = `poster:v${RENDER_VERSION}:${mediaType}:${tmdbId}:reg${posterRegion.code}:r${cachedRank ?? "x"}:sd${sdHash}:${cacheParams.toString()}${rotateKey}${mapVersion}${dynamicBucketKey}${configHash ? `:cfg${configHash}` : ""}${formatKey}`
+  const needsVariant = !legacyAvif && outputFormat !== canonicalFormat
+  const variantKey = needsVariant ? `${cacheKey}:fmt${outputFormat}` : cacheKey
   const etagBase = hashKey(`v${RENDER_VERSION}:${mediaType}:${tmdbId}:reg${posterRegion.code}:r${cachedRank ?? "x"}:sd${sdHash}:${cacheParams.toString()}${configHash ? `:${configHash}` : ""}`)
   const currentMappingVersion = mappingVersionParam(mapping)
   // Rating dinamici: con provider abilitato niente cache immutable annuale
   // (i rating cambiano) — vale anche il display-aware locale: solo la riga
   // davvero renderizzata rinuncia all'immutable.
-  const immutablePoster = !customRatingConfig.enabled && isImmutablePosterRequest(req.nextUrl.searchParams, {
+  const immutablePoster = !customRatingConfig.enabled && !sepDisplay && isImmutablePosterRequest(req.nextUrl.searchParams, {
     hasMapping: !!mapping,
     isRotating,
     mappingVersionMatches: !!currentMappingVersion && req.nextUrl.searchParams.get("mv") === currentMappingVersion,
   })
   const refreshRequest = isPosterRefreshRequest(req.nextUrl.searchParams)
-  const isPreview = req.nextUrl.searchParams.has("preview")
+  // isPreview effettivo calcolato a inizio richiesta (può essere declassato
+  // dalla blindatura opt-in PICTORIUM_PREVIEW_AUTH) — non rileggere la query.
   // Poster non-mappato (composto al volo con dati dinamici): TTL ridotto (6h)
   // invece delle 24h del path mappato, così rank/IMDb Top 250 non restano
   // stantii per un giorno intero. Il flag non cambia per tutta la richiesta.
   const dynamicPoster = !mapping
-  const mappingTag = mapping ? `poster:${mediaType}:${tmdbId}` : undefined
+  // Tag con UUID solo come hash (userTagFragment, stessa forma della cache
+  // key): mai l'UUID in chiaro nei tag di cache.
+  const mappingTag = mapping ? `poster:${mediaType}:${tmdbId}${scopedUser ? `:${userTagFragment(scopedUser)}` : ""}` : undefined
   // TTL reale della entry canonica (jitter deterministico ±10%): threadato
   // negli header così restano sincronizzati con lo storage (M3). La variante
-  // webp ha storage key propria → TTL proprio (vedi serveWebpVariant).
-  const dynamicTtlSec = dynamicPoster ? dynamicPosterTtlSec(cacheKey) : undefined
-  // La variante webp è un'entry separata (storage key propria) con TTL proprio.
-  const variantTtlSec = dynamicPoster && outputFormat === "webp" ? dynamicPosterTtlSec(variantKey) : undefined
+  // ha storage key propria → TTL proprio (vedi serveResponseVariant).
+  const dynamicTtlSec = dynamicPoster ? (dynamicCutTtlSec ?? dynamicPosterTtlSec(cacheKey)) : undefined
+  // La variante è un'entry separata (storage key propria) con TTL proprio.
+  const variantTtlSec = dynamicPoster && needsVariant ? (dynamicCutTtlSec ?? dynamicPosterTtlSec(variantKey)) : undefined
 
-  // C3: risposta webp da payload canonico jpeg (cache variante o conversione).
-  const serveWebpVariant = async (canonical: PosterCachePayload): Promise<Response> => {
+  // C3: risposta non-canonica da payload canonico (cache variante o conversione).
+  // opts (ttlMs/immutable) dal fresh render effimero; sulle HIT riuso record.
+  const serveResponseVariant = async (canonical: PosterCachePayload, opts?: { ttlMs?: number; immutable?: boolean }): Promise<Response> => {
     const variantHit = readCachedPoster(variantKey)
     if (variantHit.payload) {
-      return posterResponse(variantHit.payload, immutablePoster, isPreview, dynamicPoster, outputFormat, variantTtlSec)
+      return posterResponse(variantHit.payload, variantHit.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat, variantHit.ttlSec ?? variantTtlSec)
     }
-    const converted = await convertPosterFormat(canonical.buffer)
-    const variant: PosterCachePayload = { buffer: converted, etag: variantEtagFor(canonical.etag) }
-    writeCachedPoster(variantKey, variant, mappingTag)
-    return posterResponse(variant, immutablePoster, isPreview, dynamicPoster, outputFormat, variantTtlSec)
+    const converted = canonicalFormat === "webp" ? await convertToJpeg(canonical.buffer) : await convertPosterFormat(canonical.buffer)
+    const variant: PosterCachePayload = { buffer: converted, etag: variantEtagFor(canonical.etag, outputFormat as "jpeg" | "webp") }
+    // Le preview editor (`preview=1`, ogni tick di slider) non sporcano lo
+    // storage: la chiave le separa già, ma scrivere ogni tick è flood.
+    if (!isPreview) writeCachedPoster(variantKey, variant, mappingTag, opts)
+    const freshVariantTtl = opts?.ttlMs !== undefined ? Math.max(1, Math.round(opts.ttlMs / 1000)) : variantTtlSec
+    return posterResponse(variant, opts?.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat, freshVariantTtl)
   }
 
   // 3. Memory cache check
-  // C3: la variante webp ha fast-path dedicato; il canonico jpeg resta il
+  // C3: la variante ha fast-path dedicato; il canonico resta il
   // fallback (conversione) quando la variante è assente/evicted.
-  if (outputFormat === "webp" && !refreshRequest) {
+  if (needsVariant && !refreshRequest) {
     const variantHit = readCachedPoster(variantKey)
     if (variantHit.payload) {
       recordPosterRequest(true, outputFormat)
       if (!isPreview && req.headers.get("If-None-Match") === variantHit.payload.etag) {
         if (variantHit.stale) recordPosterStaleHit()
         log.debug("Poster cache: 304 (variant)", { mediaType, tmdbId, ms: Date.now() - startTime })
-        return new Response(null, { status: 304, headers: posterNotModifiedHeaders(variantHit.payload.etag, immutablePoster, dynamicPoster, variantTtlSec) })
+        return new Response(null, { status: 304, headers: posterNotModifiedHeaders(variantHit.payload.etag, variantHit.immutable ?? immutablePoster, dynamicPoster, variantHit.ttlSec ?? variantTtlSec) })
       }
       if (!variantHit.stale) {
         log.debug("Poster cache: fresh variant hit", { mediaType, tmdbId, ms: Date.now() - startTime })
-        return posterResponse(variantHit.payload, immutablePoster, isPreview, dynamicPoster, outputFormat, variantTtlSec)
+        return posterResponse(variantHit.payload, variantHit.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat, variantHit.ttlSec ?? variantTtlSec)
       }
       recordPosterStaleHit()
       schedulePosterRefresh(req, isPreview)
       log.debug("Poster cache: stale variant hit (refresh scheduled)", { mediaType, tmdbId, ms: Date.now() - startTime })
-      return posterResponse(variantHit.payload, immutablePoster, isPreview, dynamicPoster, outputFormat)
+      return posterResponse(variantHit.payload, variantHit.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat)
     }
   }
   const cachedPoster = readCachedPoster(cacheKey)
   if (cachedPoster.payload) {
     recordPosterRequest(true, outputFormat)
-    if (!isPreview && outputFormat !== "webp" && req.headers.get("If-None-Match") === cachedPoster.payload.etag) {
+    if (!isPreview && !needsVariant && req.headers.get("If-None-Match") === cachedPoster.payload.etag) {
       if (cachedPoster.stale) recordPosterStaleHit()
       log.debug("Poster cache: 304", { mediaType, tmdbId, ms: Date.now() - startTime })
-        return new Response(null, { status: 304, headers: posterNotModifiedHeaders(cachedPoster.payload.etag, immutablePoster, dynamicPoster, dynamicTtlSec) })
+        return new Response(null, { status: 304, headers: posterNotModifiedHeaders(cachedPoster.payload.etag, cachedPoster.immutable ?? immutablePoster, dynamicPoster, cachedPoster.ttlSec ?? dynamicTtlSec) })
     }
     if (!cachedPoster.stale) {
       log.debug("Poster cache: fresh hit", { mediaType, tmdbId, ms: Date.now() - startTime })
-      if (outputFormat === "webp") return serveWebpVariant(cachedPoster.payload)
-      return posterResponse(cachedPoster.payload, immutablePoster, isPreview, dynamicPoster, outputFormat, dynamicTtlSec,
+      if (needsVariant) return serveResponseVariant(cachedPoster.payload)
+      return posterResponse(cachedPoster.payload, cachedPoster.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat, cachedPoster.ttlSec ?? dynamicTtlSec,
         serverTimingValue([{ name: "cache", desc: "HIT" }, { name: "total", durMs: Date.now() - startTime }]))
     }
     if (!refreshRequest) {
       recordPosterStaleHit()
       schedulePosterRefresh(req, isPreview)
       log.debug("Poster cache: stale hit (refresh scheduled)", { mediaType, tmdbId, ms: Date.now() - startTime })
-      if (outputFormat === "webp") return serveWebpVariant(cachedPoster.payload)
-      return posterResponse(cachedPoster.payload, immutablePoster, isPreview, dynamicPoster, outputFormat, dynamicTtlSec)
+      if (needsVariant) return serveResponseVariant(cachedPoster.payload)
+      return posterResponse(cachedPoster.payload, cachedPoster.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat, cachedPoster.ttlSec ?? dynamicTtlSec)
     }
   }
 
@@ -376,8 +612,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       recordPosterCoalescedHit()
       // Finding 5: il waiter della preview deve ricevere gli header no-store
       // anche quando si coalesce con un render in flight (era hardcoded false).
-      // C3: il payload condiviso è canonico jpeg — il waiter webp converte.
-      if (outputFormat === "webp" && !legacyAvif) return serveWebpVariant(payload)
+      // C3: il payload condiviso è canonico — il waiter non-canonico converte.
+      if (needsVariant) return serveResponseVariant(payload)
       return posterResponse(payload, immutablePoster, isPreview, dynamicPoster, outputFormat, dynamicTtlSec)
     }
     // Coalesce scaduto: o il render è fallito (negative cache) o è ancora in
@@ -426,13 +662,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   }
   const renderDeadline = setTimeout(() => {
     deadlineFired = true
+    // Osservabilità hang (Bugonia): prima lo scatto era silenzioso e l'unica
+    // traccia era lo zombie-warn 10s dopo senza tmdbId — diagnosi cieca.
+    log.warn("Poster render deadline exceeded — waiter abandoned, zombie continues", { mediaType, tmdbId, ms: Date.now() - startTime })
     renderAbort.abort()
     // R4: risolve i waiter con null ma TIENE l'entry inflight prenotata allo
     // zombie (keepEntry) — i nuovi arrivati fanno 503 immediato invece di
     // duplicare il render. L'entry si libera alla fine dello zombie o al
     // timeout 60s di beginPosterRender.
     completePosterRender(null, true)
-    endZombieRender = recordZombieRenderStart()
+    endZombieRender = recordZombieRenderStart(`${mediaType}:${tmdbId}`)
     releaseSlotOnce()
   }, RENDER_TIMEOUT_MS)
   if (typeof renderDeadline.unref === "function") renderDeadline.unref()
@@ -445,7 +684,25 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // Block A fa il fetch normale.
   let logoPathBuffer: Buffer | null = null
   let logoPath: string | null = null
+  // Il poster finale del ramo automatico è clean (senza testo incorporato)?
+  // Solo TMDB iso_639_1===null o rescue TVDB textless. Serve a: (1) non
+  // sovrapporre mai il logo a un poster con testo, (2) forzare il profilo
+  // blur non-clean sui default iniettati da Stremio (Golden Rule col client).
+  let autoPosterClean = false
+  // Il rescue TVDB ha restituito artwork textless (base clean, logo tenuto)?
+  let tvdbRescueClean = false
+  // Lingua richiesta per artwork/logo (ramo non-mappato; default da posterRegion):
+  // serve al blocco debug=1 fuori dallo scope del ramo.
+  let posterRequestedLang = posterRegion.lang2
+  // Selezione logo per debug=1: iso scelto + motivo del fallback (null = logo
+  // esplicito da query/mapping, nessun fallback applicato).
+  let logoChosenIso: string | null = null
+  let logoFallbackReason: string | null = null
   let backdropPath: string | null = null
+  // Sfondi TMDB del ramo automatico (details.backdrop_path o primo backdrops
+  // di getImages): fallback per la base landscape quando query/mapping non
+  // ne forniscono uno.
+  let autoBackdropPath: string | null = null
   let backdropScale = 100
   let backdropOffsetX = 0
   let backdropOffsetY = 0
@@ -467,6 +724,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   let aggregatedRating: ReturnType<typeof fetchAggregatedRating> | null = null
   let multiRatingOnly = false
   const ratings: RatingItem[] = []
+  // Colonna rating separati: popolata dai sources aggregati dopo la race.
+  let sepItems: SeparateRating[] = []
   let ratingAbort: AbortController | null = null
   let showBadges = true
   let rankingBadges = true
@@ -477,41 +736,69 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   let originCountries: string[] = []
   let tvType: string | null = null
   let tvStatus: string | null = null
-  let voteCount: number | null = null
-  let nextEpisodeAirDate: string | null = null
   let tmdbStudios: string[] = []
   let tmdbNetworks: string[] = []
   let productionCompanies: string[] = []
   let tmdbNetworksDetailed: { name: string; logoPath: string | null }[] = []
   let productionCompaniesDetailed: { name: string; logoPath: string | null }[] = []
   let imdbId: string | null = pathImdbId
+  let voteCount: number | null = null
+  let nextEpisodeAirDate: string | null = null
   // Titolo nella lingua richiesta + "TMDB aveva un logo in quella lingua?".
   // Insieme decidono la riga di titolo sotto il logo (vedi titleUnderLogo).
   let resolvedTitle: string | null = null
   let hasLangLogo = false
+  // TMDB title from the auto branch, kept in scope for the JustWatch match:
+  // the session cache is a small LRU and can be evicted mid-render.
+  let autoTitle: string | null = null
+  // QID Wikidata per il fast-path REST awards (wbgetentities, ~150ms) invece
+  // della lotteria SPARQL (4-13s contro race da 2.5s). Catena: query
+  // `wikidata_id` (la preview lo ha già dai details, zero RTT) > mapping
+  // salvato > session cache TMDB del processo > resolve server-side con memo
+  // 7gg (quarto anello, prima della race) > ramo else (details +
+  // external_ids in append). Senza QID ovunque: fallback SPARQL invariato.
+  let wikidataId: string | null = null
+  {
+    const queryWikidataId = hardenedParams.get("wikidata_id")
+    const mappingWikidataId = mapping?.wikidataId ?? null
+    const sessionWikidataId = getTMDBSessionCache(mediaType, tmdbId)?.externalIds?.wikidata_id ?? null
+    if (isValidWikidataQid(queryWikidataId)) wikidataId = queryWikidataId
+    else if (isValidWikidataQid(mappingWikidataId)) wikidataId = mappingWikidataId
+    else if (isValidWikidataQid(sessionWikidataId)) wikidataId = sessionWikidataId
+  }
 
-  const queryPoster = req.nextUrl.searchParams.get("poster")
-  const queryLogo = req.nextUrl.searchParams.get("logo")
-  const queryBackdrop = req.nextUrl.searchParams.get("backdrop")
-  const queryGenre = req.nextUrl.searchParams.get("genreName")
-  const queryVote = req.nextUrl.searchParams.get("voteAverage")
-  const qRsrc = req.nextUrl.searchParams.get("rsrc")
-  const reqRatingSources = qRsrc !== null
-    ? qRsrc.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
-    : (configOverride?.ratingSources ?? undefined)
-  const t = createT(req.nextUrl.searchParams.get("lang") || mapping?.language || "it")
+  const queryPoster = hardenedParams.get("poster")
+  const queryLogo = hardenedParams.get("logo")
+  const queryBackdrop = hardenedParams.get("backdrop")
+  // Formato canvas: query `shape` > mapping > config > defaults (stessa
+  // catena degli altri parametri — vedi resolvePosterShape). Solo
+  // "landscape" attiva il ramo 16:9 con base = sfondo TMDB.
+  const isLandscape = resolvePosterShape(req.nextUrl.searchParams, mapping, configOverride, sd) === "landscape"
+  const queryGenre = hardenedParams.get("genreName")
+  const queryVote = hardenedParams.get("voteAverage")
+  // Fonti voto medio ★ — stessa catena canonica di poster-config/Stremio:
+  // query `rsrc` > mapping per-titolo > config token > server defaults > default.
+  // (Prima: senza whitelist e senza mapping/sd — la preview col client valeva
+  // una media diversa da Stremio a parità di titolo.)
+  const reqRatingSources = resolveRatingSources(
+    hardenedParams.get("rsrc"),
+    mapping?.ratingSources,
+    configOverride?.ratingSources,
+    sd.ratingSources,
+  )
+  const t = createT(req.nextUrl.searchParams.get("lang") || mapping?.language || posterRegion.lang2)
 
   if (queryPoster) {
     posterPath = queryPoster
     logoPath = queryLogo || null
     backdropPath = queryBackdrop || null
     if (queryBackdrop) {
-      backdropScale = Number(req.nextUrl.searchParams.get("bscale") || "100")
+      backdropScale = Number(hardenedParams.get("bscale") || "100")
       // Bound inferiore + superiore: un valore come 1e-7 produrrebbe resize(0,0) → 500.
       if (!Number.isFinite(backdropScale) || backdropScale < 5 || backdropScale > 500) backdropScale = 100
-      backdropOffsetX = Number(req.nextUrl.searchParams.get("box") || "0")
+      backdropOffsetX = Number(hardenedParams.get("box") || "0")
       if (!Number.isFinite(backdropOffsetX)) backdropOffsetX = 0
-      backdropOffsetY = Number(req.nextUrl.searchParams.get("boy") || "0")
+      backdropOffsetY = Number(hardenedParams.get("boy") || "0")
       if (!Number.isFinite(backdropOffsetY)) backdropOffsetY = 0
     }
     if (queryGenre) genreName = queryGenre
@@ -526,21 +813,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     // Date complete (`rd`/`fad`) quando il client le conosce: l'anno da solo
     // diventa `${y}-01-01` e cade fuori dalla finestra theatrical del
     // rilevamento pre-digitale (desync preview/finale).
-    const queryRd = req.nextUrl.searchParams.get("rd")
-    const queryFad = req.nextUrl.searchParams.get("fad")
+    const queryRd = hardenedParams.get("rd")
+    const queryFad = hardenedParams.get("fad")
     if (mediaType === "tv" && queryFad && /^\d{4}-\d{2}-\d{2}$/.test(queryFad)) {
       firstAirDate = queryFad
     } else if (mediaType !== "tv" && queryRd && /^\d{4}-\d{2}-\d{2}$/.test(queryRd)) {
       releaseDate = queryRd
     } else {
-      const queryYear = req.nextUrl.searchParams.get("year")
+      const queryYear = hardenedParams.get("year")
       if (queryYear && /^\d{4}$/.test(queryYear.slice(0, 4))) {
         const y = queryYear.slice(0, 4)
         if (mediaType === "tv") firstAirDate = `${y}-01-01`
         else releaseDate = `${y}-01-01`
       }
     }
-    imdbId = req.nextUrl.searchParams.get("imdbId") || imdbId
+    imdbId = hardenedParams.get("imdbId") || imdbId
     resolvedTitle = req.nextUrl.searchParams.get("title")
     // Il ramo preview non vede la lista loghi di TMDB, quindi non può dedurre
     // "manca il logo nella lingua": lo dichiara il client con `tul=1`
@@ -551,11 +838,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     etag = `"p${etagBase}"`
   } else if (mapping) {
     posterPath = mapping.posterPath
-    // Poster non-clean (language !== null) ha già testo incorporato → mai sovrapporre logo
+    // Poster non-clean (language !== null) ha già testo incorporato → mai
+    // sovrapporre il logo in portrait. In landscape la base è il backdrop
+    // (senza testo): il logo resta sempre, anche senza poster clean.
     const isMappingClean = mapping.language === null
-    const effectiveMappingLogo = isMappingClean && !mapping.logoDisabled ? mapping.logoPath : null
+    const effectiveMappingLogo = (isMappingClean || isLandscape) && !mapping.logoDisabled ? mapping.logoPath : null
     logoPath = queryLogo || effectiveMappingLogo
-    if (!isMappingClean) logoPath = null
+    if (!isMappingClean && !isLandscape) logoPath = null
     backdropPath = queryBackdrop || mapping?.backdropPath || null
     backdropScale = mapping?.backdropScale ?? 100
     // Fix M5: clamp difensivo anche sui mapping già salvati (pre-bounds zod):
@@ -568,7 +857,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     resolvedTitle = mapping.title || null
     // Il mapping salva il poster scelto, non la lingua del logo: senza quel
     // dato non si può dedurre "mancava il logo in ebraico", quindi qui la riga
-    // del titolo resta spenta (vedi nota di scope nel piano).
+    // del titolo resta spenta.
     hasLangLogo = true
     showBadges = mapping.showBadges ?? true
     rankingBadges = mapping.rankingBadges ?? true
@@ -582,8 +871,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       return new Response(null, { status: 304, headers: posterNotModifiedHeaders(etag, immutablePoster, dynamicPoster, dynamicTtlSec) })
     }
   } else {
-    const preferredLanguage = req.nextUrl.searchParams.get("lang") || "it"
-    const apiKey = resolveRequestApiKey(req)
+    const preferredLanguage = req.nextUrl.searchParams.get("lang") || posterRegion.lang2
+    posterRequestedLang = preferredLanguage
+    const apiKey = effTmdbKey
     try {
       // F6: session cache editor — i tick di preview sullo stesso titolo
       // non-mappato riusano details/images/externalIds senza rifare la rete.
@@ -597,39 +887,63 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       const sessionData = getTMDBSessionCache(mediaType, tmdbId)
       let details: Awaited<ReturnType<typeof getDetails>>
       let images: Awaited<ReturnType<typeof getImages>>
-      let extIds: { imdb_id: string | null; tvdb_id?: number | null }
+      let extIds: { imdb_id: string | null; tvdb_id?: number | null; wikidata_id?: string | null }
       if (sessionData?.details && sessionData.images) {
         details = sessionData.details
         images = sessionData.images
         extIds = sessionData.externalIds ?? { imdb_id: null, tvdb_id: null }
       } else {
         const baseLangs = `${preferredLanguage},en,null`
-        // Dettagli ed external_ids in una sola chiamata: erano due round trip
-        // separati per ogni poster freddo, ed è lo stesso append che il path
-        // cataloghi usa già.
+        // D4: details + external_ids in un colpo solo (niente RTT separato per
+        // gli external_ids). Stesso schema/chiavi del path cataloghi.
         const [det, imgs] = await Promise.all([
           getDetailsWithExternalIds(mediaType, tmdbId, preferredLanguage, apiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS),
           getImages(mediaType, tmdbId, baseLangs, apiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS),
         ])
         details = det
-        const ext = {
+        extIds = {
           imdb_id: det.external_ids?.imdb_id ?? null,
           tvdb_id: det.external_ids?.tvdb_id ?? null,
+          wikidata_id: det.external_ids?.wikidata_id ?? null,
         }
-        extIds = ext
         const origLang = det.original_language
         const needsOrigLang = origLang && origLang !== preferredLanguage && origLang !== "en"
           && (imgs.posters.length === 0 || imgs.logos.length === 0)
         images = needsOrigLang
           ? await getImages(mediaType, tmdbId, `${baseLangs},${origLang}`, apiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => imgs)
           : imgs
-        setTMDBSessionCache(mediaType, tmdbId, { details: det, images, externalIds: ext })
+        setTMDBSessionCache(mediaType, tmdbId, { details: det, images, externalIds: extIds })
       }
+      // Candidato sfondo per il ramo landscape: backdrop principale TMDB,
+      // poi il primo backdrops di /images (già 16:9 nativi).
+      autoTitle = details.title || details.name || null
+      autoBackdropPath = details.backdrop_path || images.backdrops[0]?.file_path || null
       imdbId = extIds.imdb_id
+      // Non sovrascrivere un QID già risolto a monte (query > mapping >
+      // session): il fetch qui è l'ultima ruota, non la prima.
+      if (!wikidataId) wikidataId = extIds.wikidata_id ?? null
       // A1: fetch deferito — la media TMDB+IMDb parte subito ma non blocca.
+      // Simkl solo se tra le fonti richieste: la colonna separati pesca da
+      // reqRatingSources, quindi sep=1 senza simkl in rsrc non deve pagare i
+      // 2 hop Simkl (BYOK: solo chi ha la chiave li pagherebbe comunque).
+      // Stessa regola per le fonti anime (AniZip + provider, solo se richieste).
+      const wantSimkl = reqRatingSources.includes("simkl") && !!effSimklKey
+      const wantAnilist = reqRatingSources.includes("anilist")
+      const wantKitsu = reqRatingSources.includes("kitsu")
+      const wantImdb = reqRatingSources.includes("imdb")
       ratingAbort = imdbId ? new AbortController() : null
       aggregatedRating = imdbId
-        ? fetchAggregatedRating(imdbId, req.nextUrl.searchParams.get("mdblist_key") || envWithFallback("MDBLIST_KEY") || undefined, ratingAbort!.signal).catch(() => null)
+        ? fetchAggregatedRating(imdbId, effMdblistKey, ratingAbort!.signal, {
+            simklKey: effSimklKey,
+            tmdbId,
+            mediaType,
+            wantSimkl,
+            wantAnilist,
+            wantKitsu,
+            wantImdb,
+            // Voto TMDB diretto come backfill di sources.tmdb (MDBList down).
+            tmdbFallbackVote: details.vote_average ?? undefined,
+          }).catch(() => null)
         : Promise.resolve(null)
       genreName = details.genres[0]?.name || null
       resolvedTitle = details.title || details.name || null
@@ -729,19 +1043,42 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         if (reason === "origLang") log.info("Logo fallback to original_language", { lang: details.original_language, mediaType, tmdbId })
         else if (reason === "any") log.info("Logo fallback to any (first available)", { mediaType, tmdbId })
         else if (reason === "none") log.info("No logo available", { mediaType, tmdbId })
-        if (chosenLogo) logoPath = chosenLogo.file_path
+        logoFallbackReason = reason
+        if (chosenLogo) { logoPath = chosenLogo.file_path; logoChosenIso = chosenLogo.iso_639_1 ?? null }
       }
 
-      const clean = images.posters.find((p: TMDBImage) => p.iso_639_1 === null)
+      // Opzione "disattiva clean" (default OFF = priorità ai clean): con flag ON
+      // il ramo clean è saltato del tutto e si usa la catena in lingua sotto
+      // (badge invariati, niente logo sopra in portrait). Mapping salvati e
+      // scelta manuale (query poster=) non passano di qui.
+      const cleanEnabled = sd.disableCleanPosters !== true
+      const clean = cleanEnabled ? images.posters.find((p: TMDBImage) => p.iso_639_1 === null) : undefined
       if (clean) {
+        // Ramo clean: best-fit pesca solo dalla pool clean, quindi il poster
+        // finale resta clean (logo tenuto) salvo il fallback in lingua sotto.
+        autoPosterClean = true
         const qLogoFit = req.nextUrl.searchParams.get("logoFit")
-        // Override globale dell'istanza (PICTORIUM_BEST_FIT_ENABLED): vince su
-        // query, config token e server defaults. Utile su Vercel/HF dove il
-        // toggle client o i defaults salvati non sempre arrivano al server.
-        const logoFitEnabled = BEST_FIT_GLOBAL === "off" ? false
-          : BEST_FIT_GLOBAL === "on" ? true
-          : qLogoFit !== null ? qLogoFit !== "0" : (configOverride !== null ? (configOverride.logoFitEnabled ?? sd.defaultLogoFitEnabled === true) : sd.defaultLogoFitEnabled === true)
-        if (logoPath && logoFitEnabled) {
+        // Catena in best-fit-config.ts: globale > query > config token >
+        // per-shape del namespace > legacy. Default spento.
+        const logoFitEnabled = resolveLogoFitEnabled({
+          global: BEST_FIT_GLOBAL,
+          queryLogoFit: qLogoFit,
+          configLogoFit: configOverride?.logoFitEnabled,
+          sdFit: sd,
+          isLandscape,
+        })
+        // Rotazione giornaliera dinamici portrait (solo clean, cut 02:00 UTC):
+        // precede il best-fit così il cambio giorno cambia davvero la base.
+        // Solo con logo (un clean senza logo non ha titolo da comporre) e con
+        // almeno 2 clean, altrimenti fallback storico invariato.
+        const dynamicCleanPool = (dynamicDayBucket !== null && !isLandscape && logoPath)
+          ? images.posters.filter((p: TMDBImage) => p.iso_639_1 === null)
+          : []
+        if (dynamicDayBucket !== null && dynamicCleanPool.length >= 2) {
+          const picked = dynamicCleanPool[rotationIndexFor(dynamicDayBucket, dynamicCleanPool.length)]
+          posterPath = picked.file_path
+          log.info("Dynamic rotation: daily clean poster", { mediaType, tmdbId, poster: picked.file_path, pool: dynamicCleanPool.length })
+        } else if (logoPath && logoFitEnabled) {
           try {
             const fitStart = Date.now()
             const qGradEarly = req.nextUrl.searchParams.get("gradHeight")
@@ -755,25 +1092,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
             const bestFit = await selectBestLogoFitPosterPath({
               posters: images.posters, logoPath,
               fetchImage: async (path: string) => {
-                // Byte-LRU come fetchImg: il best-fit scarica le stesse URL che
-                // il render poi rivorrà, e senza la cache le ripagava.
-                // B5: combina col watchdog — prima AbortSignal.timeout(5000)
-                // ignorava renderAbort: dopo la deadline i fetch continuavano
-                // come zombie (slot già liberato, lavoro buttato).
+                // Byte-LRU (F3): key = URL finale (imgSrc lancia su URL esterni
+                // come prima, fuori dalla cache). B5: signal combinato col
+                // watchdog così dopo la deadline non restano zombie.
                 const url = imgSrc(path)
                 return cachedImageBytes(url, async () => {
-                  const res = await fetch(url, { signal: combineAbortSignals(renderAbort.signal, 5000) })
+                  const res = await timedFetch(url, { signal: combineAbortSignals(renderAbort.signal, 5000) })
                   if (!res.ok) throw new Error(`HTTP ${res.status}`)
                   return Buffer.from(await res.arrayBuffer())
                 })
               },
               fetchCandidateImage: async (path: string) => {
-                if (path.startsWith("http") && !isAllowedImageUrl(path)) {
+                if (path.startsWith("http") && !path.startsWith("https://image.tmdb.org/t/p/")) {
                   throw new Error("Blocked external URL in fetchCandidateImage")
                 }
                 const url = path.startsWith("http") ? path : `https://image.tmdb.org/t/p/w342${path}`
                 return cachedImageBytes(url, async () => {
-                  const res = await fetch(url, { signal: combineAbortSignals(renderAbort.signal, 5000) })
+                  const res = await timedFetch(url, { signal: combineAbortSignals(renderAbort.signal, 5000) })
                   if (!res.ok) throw new Error(`HTTP ${res.status}`)
                   return Buffer.from(await res.arrayBuffer())
                 })
@@ -786,9 +1121,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
             })
             const fitMs = Date.now() - fitStart
             if (bestFit && bestFit.posterPath && bestFit.posterPath !== clean.file_path) {
-              log.info("Best-fit: improved poster selected", { mediaType, tmdbId, bestFit: bestFit.posterPath, original: clean.file_path, ms: fitMs })
+              log.info("Best-fit: improved poster selected", { mediaType, tmdbId, bestFit: bestFit.posterPath, original: clean.file_path, ms: fitMs, winnerIndex: bestFit.winnerIndex ?? null, candidateCount: bestFit.candidateCount ?? null })
             } else {
-              log.info("Best-fit: first clean already optimal", { mediaType, tmdbId, ms: fitMs })
+              log.info("Best-fit: first clean already optimal", { mediaType, tmdbId, ms: fitMs, winnerIndex: bestFit?.winnerIndex ?? null, candidateCount: bestFit?.candidateCount ?? null })
             }
             posterPath = bestFit?.posterPath ?? clean.file_path
             if (bestFit?.posterBuffer) posterPathBuffer = bestFit.posterBuffer
@@ -812,65 +1147,55 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           const fallbackPoster = langPoster || origPoster || nonCleanPoster || clean
           log.info("No logo — fallback to language poster", { mediaType, tmdbId, poster: fallbackPoster.file_path })
           posterPath = fallbackPoster.file_path
+          autoPosterClean = fallbackPoster.iso_639_1 === null
         }
       } else {
-        // Nessun poster senza testo su TMDB. Prima si finiva subito su un poster
-        // con il titolo già stampato; ora ci sono livelli intermedi.
-        //
-        //   1. poster textless di fanart.tv (lang "None")
-        //   1b. poster textless di TVDB                — solo se c'è un logo
-        //   2. backdrop TMDB ritagliato a 2:3      — solo se c'è un logo
-        //   3. sfondo fanart.tv ritagliato a 2:3   — solo se c'è un logo
-        //   4. poster TMDB con il testo            — come prima, ultima spiaggia
-        //
-        // I due livelli con backdrop richiedono il logo perché un backdrop
-        // ritagliato senza logo è un'immagine senza titolo: peggio di un poster
-        // con il testo, non meglio.
-        const fanartPoster = textlessOnly(fanart?.posters ?? [])[0]
-        if (fanartPoster) {
-          log.info("Fallback: textless fanart poster", { mediaType, tmdbId })
-          posterPath = fanartPoster.url
-        }
-
-
-        // TVDB entra come secondo livello, subito dopo fanart: un poster
-        // textless vero batte un backdrop ritagliato. Serve un logo (senza,
-        // resta un'immagine senza titolo) e la chiave TVDB; senza chiave il
-        // costo è zero. Fail-open: qualunque errore scende al livello dopo.
-        if (!posterPath && logoPath && tvdbApiKey) {
+        // B1: TVDB rescue — solo senza clean TMDB (o con clean disattivati il
+        // rescue è spento: ricadrebbe su una base textless vanificando l'opzione),
+        // con logo e chiave TVDB
+        // (gating fail-fast: niente chiave → costo zero). Il poster textless
+        // TVDB salva il logo che altrimenti verrebbe droppato col fallback
+        // in lingua. Solo portrait (il landscape ha già la base backdrop).
+        // Fail-open: qualsiasi errore → fallback in lingua sotto.
+        // Fork: prima di TVDB, il poster textless di fanart.tv (lang "None").
+        const fanartPoster = !isLandscape && cleanEnabled ? textlessOnly(fanart?.posters ?? [])[0] : undefined
+        let tvdbRescue: string | null = null
+        if (!fanartPoster && !isLandscape && logoPath && tvdbApiKey && cleanEnabled) {
           try {
             const remoteTvdbId = extIds.tvdb_id
               ?? (imdbId
                 ? (mediaType === "movie"
-                  ? await getTvdbMovieId(imdbId, tvdbApiKey)
-                  : await getTvdbSeriesId(imdbId, tvdbApiKey))
+                  ? await getTvdbMovieId(imdbId, tvdbApiKey, renderAbort.signal)
+                  : await getTvdbSeriesId(imdbId, tvdbApiKey, renderAbort.signal))
                 : null)
             if (remoteTvdbId) {
-              const arts = await getTvdbArtworks(mediaType, remoteTvdbId, tvdbApiKey)
-              const rescue = pickTvdbPoster(arts, preferredLanguage)?.image ?? null
-              if (rescue) {
-                log.info("Fallback: TVDB textless poster", { mediaType, tmdbId, poster: rescue })
-                recordTvdbRescue()
-                posterPath = rescue
-              }
+              const arts = await getTvdbArtworks(mediaType, remoteTvdbId, tvdbApiKey, renderAbort.signal)
+              const rescuedArt = pickTvdbPoster(arts, preferredLanguage)
+              tvdbRescue = rescuedArt?.image ?? null
+              // Solo il textless salva davvero il logo: con testo incorporato
+              // la base non è clean → niente logo sopra (doppio logo).
+              tvdbRescueClean = !!tvdbRescue && rescuedArt?.includesText === false
             }
           } catch {
-            // Si scende al livello successivo.
+            // Fallthrough al fallback in lingua.
           }
         }
-
-        if (!posterPath && logoPath) {
-          // Il ritaglio usa `position: "attention"`, non il centro: su un 16:9
-          // portato a 2:3 il centro geometrico è spesso cielo o sfondo vuoto.
+        // Fork: senza textless, un backdrop ritagliato a 2:3 (TMDB senza testo,
+        // poi sfondi fanart.tv) batte un poster con il titolo stampato — ma
+        // solo se c'è un logo da appoggiarci sopra, altrimenti resta
+        // un'immagine senza titolo. Il ritaglio usa `attention`, non il centro.
+        let backdropRescue = false
+        if (!fanartPoster && !tvdbRescue && !isLandscape && logoPath && cleanEnabled) {
           const backdropCandidates: string[] = [
             ...images.backdrops.filter((b: TMDBImage) => b.iso_639_1 === null).map((b: TMDBImage) => b.file_path),
             ...(fanart?.backgrounds ?? []).map((b: FanartImage) => b.url),
           ]
           for (const candidate of backdropCandidates) {
             try {
-              const raw = await fetchImg(imgSrc(candidate), renderAbort.signal)
-              posterPathBuffer = await cropToPoster(raw)
+              const raw = await fetchImg(imgSrc(candidate, "w1280"), renderAbort.signal)
+              posterPathBuffer = await cropBackdropToPortrait(raw)
               posterPath = candidate
+              backdropRescue = true
               log.info("Fallback: backdrop cropped to poster", { mediaType, tmdbId, backdrop: candidate })
               recordBackdropCropRescue()
               break
@@ -879,16 +1204,118 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
             }
           }
         }
-
-        if (!posterPath) {
+        if (fanartPoster) {
+          log.info("Fallback: textless fanart poster", { mediaType, tmdbId })
+          posterPath = fanartPoster.url
+          autoPosterClean = true
+        } else if (backdropRescue) {
+          autoPosterClean = true
+        } else if (tvdbRescue) {
+          log.info("TVDB poster rescue", { mediaType, tmdbId, poster: tvdbRescue })
+          recordTvdbRescue()
+          posterPath = tvdbRescue
+          autoPosterClean = tvdbRescueClean
+          if (!tvdbRescueClean) {
+            // Base con testo incorporato: mai il logo sopra (stesso invariante
+            // del fallback in lingua sotto e del client).
+            logoPath = null
+            logoPathBuffer = null
+          }
+        } else {
+          // Nessun clean disponibile: il poster in lingua ha già il titolo
+          // stampato → mai sovrapporre il logo in portrait (stesso invariante
+          // del client: buildPreviewUrl emette `logo=` solo con poster clean,
+          // e il mapping forza logoPath=null sui non-clean). In landscape la
+          // base è il backdrop (senza testo): il logo resta sempre e la base
+          // conta come clean per il profilo sfumatura.
           const langPoster = images.posters.find((p: TMDBImage) => p.iso_639_1 === preferredLanguage)
           const origPoster = details.original_language ? images.posters.find((p: TMDBImage) => p.iso_639_1 === details.original_language) : undefined
           const chosen = langPoster || origPoster || images.posters[0]
           if (chosen) posterPath = chosen.file_path
-          // Poster con il titolo già stampato: mai il logo sopra
-          // (stesso invariante del client).
-          logoPath = null
-          logoPathBuffer = null
+          if (isLandscape && logoPath) {
+            autoPosterClean = true
+          } else {
+            logoPath = null
+            logoPathBuffer = null
+          }
+        }
+      }
+      // Rotazione giornaliera dinamici landscape (solo backdrop clean, cut
+      // 02:00 UTC): precede il best-fit così il cambio giorno cambia davvero
+      // la base. Solo con logo e almeno 2 backdrop clean, altrimenti fallback
+      // storico invariato.
+      let dynamicLandscapeRotated = false
+      if (isLandscape && !queryBackdrop && logoPath && dynamicDayBucket !== null) {
+        const dynamicBackdropPool = (images.backdrops ?? []).filter((b) => b.iso_639_1 === null)
+        if (dynamicBackdropPool.length >= 2) {
+          autoBackdropPath = dynamicBackdropPool[rotationIndexFor(dynamicDayBucket, dynamicBackdropPool.length)].file_path
+          dynamicLandscapeRotated = true
+          log.info("Dynamic rotation: daily backdrop", { mediaType, tmdbId, backdrop: autoBackdropPath, pool: dynamicBackdropPool.length })
+        }
+      }
+      // Best-fit automatico dello sfondo landscape (mirror del portrait sopra):
+      // senza scelta esplicita (query/backdrop salvato) i titoli non-mappati
+      // usavano il primo backdrop TMDB mentre l'editor auto-seleziona il
+      // best-fit — l'anteprima Stremio mostrava un altro sfondo (desync
+      // WYSIWYG, "vedo comunque il primo poster"). Solo con logo disponibile
+      // (senza, niente da comporre sopra) e fit abilitato; qualsiasi fallimento
+      // mantiene il fallback storico (primo backdrop), mai 500.
+      if (isLandscape && !queryBackdrop && logoPath && !dynamicLandscapeRotated && (images.backdrops?.length ?? 0) > 0) {
+        const qLogoFitLand = req.nextUrl.searchParams.get("logoFit")
+        const landFitEnabled = resolveLogoFitEnabled({
+          global: BEST_FIT_GLOBAL,
+          queryLogoFit: qLogoFitLand,
+          configLogoFit: configOverride?.logoFitEnabled,
+          sdFit: sd,
+          isLandscape: true,
+        })
+        // <2 clean: niente da scegliere, fallback storico invariato.
+        if (!landFitEnabled) {
+          log.info("Best-fit landscape: disabled by config", { mediaType, tmdbId })
+        } else {
+          // Tutto dentro il try: qualsiasi throw (fit, candidati, mock
+          // parziali nei test) mantiene il fallback storico, mai 500/503.
+          try {
+            if (selectAutoFitCandidates(images.backdrops, "landscape").length < 2) {
+              // Niente da scegliere: fallback storico invariato.
+            } else {
+              const landFit = await selectBestLogoFitPosterPath({
+                posters: images.backdrops,
+                logoPath,
+                fetchImage: async (path: string) => {
+                  const url = imgSrc(path)
+                  return cachedImageBytes(url, async () => {
+                    const res = await timedFetch(url, { signal: combineAbortSignals(renderAbort.signal, 5000) })
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                    return Buffer.from(await res.arrayBuffer())
+                  })
+                },
+                fetchCandidateImage: async (path: string) => {
+                  if (path.startsWith("http") && !path.startsWith("https://image.tmdb.org/t/p/")) {
+                    throw new Error("Blocked external URL in fetchCandidateImage")
+                  }
+                  // w780 come il client (BackdropOptions): a w342 il testo dei
+                  // backdrop si perderebbe e la cleanliness sbaglierebbe.
+                  const url = path.startsWith("http") ? path : `https://image.tmdb.org/t/p/w780${path}`
+                  return cachedImageBytes(url, async () => {
+                    const res = await timedFetch(url, { signal: combineAbortSignals(renderAbort.signal, 5000) })
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                    return Buffer.from(await res.arrayBuffer())
+                  })
+                },
+                hasBadges: true,
+                shape: "landscape",
+              })
+              if (landFit?.posterPath) {
+                if (landFit.posterPath !== autoBackdropPath) {
+                  log.info("Best-fit: improved landscape backdrop selected", { mediaType, tmdbId, bestFit: landFit.posterPath, original: autoBackdropPath })
+                }
+                autoBackdropPath = landFit.posterPath
+              }
+            }
+          } catch (e) {
+            log.error("Best-fit landscape: fallback to first backdrop", { mediaType, tmdbId, error: e instanceof Error ? e.message : String(e) })
+          }
         }
       }
     } catch (e) {
@@ -898,27 +1325,86 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     etag = `"a${etagBase}"`
   }
 
-  if (!posterPath) {
-    clearTimeout(renderDeadline)
-    // C1: il ramo non-mappato può già detenere lo slot (logo-fit) — questo
-    // return è fuori dal try/finally, quindi il rilascio va fatto qui.
-    releaseSlotOnce()
-    // Deadline sforato o fetch upstream fallito: NIENTE 404. Il titolo può
-    // semplicemente essere lento/indisponibile upstream; la negative-cache 503
-    // (TTL breve) evita la tempesta di ri-render senza marchiare il titolo
-    // come inesistente.
-    if (deadlineFired || autoFetchFailed) {
-      writePosterError(cacheKey, 503)
-      completePosterRender(null)
-      return posterErrorResponse(503)
+  // Landscape senza backdrop esplicito (query `backdrop` o mapping): i rami
+  // query/mapping non toccano TMDB, ma la base 16:9 richiede uno sfondo —
+  // fallback live a details.backdrop_path (poi primo backdrops di /images).
+  // Solo ramo landscape: il portrait non ne ha bisogno. Su errore resta null
+  // e il blocco landscape sotto risponde 404 onesto.
+  if (isLandscape && !queryBackdrop && !mapping?.backdropPath && !autoBackdropPath) {
+    try {
+      const fbApiKey = effTmdbKey
+      const fbLang = req.nextUrl.searchParams.get("lang") || mapping?.language || posterRegion.lang2
+      const cached = getTMDBSessionCache(mediaType, tmdbId)
+      let fbDetails = cached?.details
+      if (!fbDetails) {
+        fbDetails = await getDetails(mediaType, tmdbId, fbLang, fbApiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS)
+        const prev = getTMDBSessionCache(mediaType, tmdbId)
+        setTMDBSessionCache(mediaType, tmdbId, { ...prev ?? undefined, details: fbDetails })
+      }
+      autoBackdropPath = fbDetails?.backdrop_path || null
+      if (!autoBackdropPath) {
+        const fbImages = cached?.images
+          ?? await getImages(mediaType, tmdbId, `${fbLang},en,null`, fbApiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => null)
+        if (fbImages && !cached?.images) {
+          const prev = getTMDBSessionCache(mediaType, tmdbId)
+          setTMDBSessionCache(mediaType, tmdbId, { ...prev ?? undefined, images: fbImages })
+        }
+        autoBackdropPath = fbImages?.backdrops?.[0]?.file_path || null
+      }
+    } catch {
+      autoBackdropPath = null
     }
-    // Nessun poster davvero disponibile per questo titolo: 404 + negative cache.
-    writePosterError(cacheKey, 404)
-    completePosterRender(null)
-    return new Response("Poster not found", { status: 404, headers: corsHeaders() })
+  }
+
+  // B2: fallback backdrop-crop — SOLO sostituzione del 404, mai su poster
+  // esistenti. Senza poster TMDB utilizzabile ma con un backdrop (query >
+  // mapping > automatico), la base diventa il cover-crop 2:3 del backdrop
+  // invece di 404. Vale per entrambi i canvas (in landscape la base coperta
+  // dal backdrop full-bleed alimenta comunque pillarbox e cache image-level,
+  // namespaced per path come le altre sorgenti). Deadline/fetch falliti
+  // restano 503/404: niente crop su dati degradati.
+  if (!posterPath && !deadlineFired && !autoFetchFailed) {
+    const cropSrc = queryBackdrop || mapping?.backdropPath || autoBackdropPath || backdropPath
+    if (cropSrc) {
+      try {
+        const cropBase = await fetchImg(landscapeBackdropUrl(cropSrc), renderAbort.signal).catch(() => null)
+        if (cropBase) {
+          posterPathBuffer = await cropBackdropToPortrait(cropBase)
+          posterPath = cropSrc
+          recordBackdropCropRescue()
+        }
+      } catch {
+        // Fallthrough al 404/503 sotto.
+      }
+    }
   }
 
   try {
+    if (!posterPath) {
+      // Deadline sforato o fetch upstream fallito: NIENTE 404. Il titolo può
+      // semplicemente essere lento/indisponibile upstream; la negative-cache 503
+      // (TTL breve) evita la tempesta di ri-render senza marchiare il titolo
+      // come inesistente. Dentro il try: il finally unifica il rilascio slot
+      // (releaseSlotOnce è idempotente) — nessun return fuori dal try/finally
+      // può più leakare lo slot acquisito dal logo-fit.
+      if (deadlineFired || autoFetchFailed) {
+        writePosterError(cacheKey, 503)
+        completePosterRender(null)
+        return posterErrorResponse(503)
+      }
+      // Nessun poster davvero disponibile per questo titolo: 404 + negative cache.
+      writePosterError(cacheKey, 404)
+      completePosterRender(null)
+      return new Response("Poster not found", { status: 404, headers: corsHeaders() })
+    }
+
+    // Ramo landscape: la base è lo sfondo TMDB (query `backdrop` > mapping >
+    // ramo automatico). Senza sfondo la base diventa pillarbox dal poster
+    // (mai 404: nessun riquadro rotto su Stremio).
+    if (isLandscape) {
+      backdropPath = queryBackdrop || mapping?.backdropPath || autoBackdropPath || backdropPath
+    }
+
     // Semaforo anti-OOM: limita i render costosi concorrenti (sharp composite,
     // blur, badge SVG→PNG). Se tutti i posti sono occupati per più del timeout,
     // risponde 503 invece di accodarsi e far crescere l'heap senza bound.
@@ -943,7 +1429,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     // trend. Con un config token la personalizzazione è esplicita → i flag off
     // devono valere.
     const hasQueryEarly = !!queryPoster || !!mapping || !!configToken
-    const rankingEnabledEarly = hasQueryEarly ? (qRankingEarly !== null ? qRankingEarly !== "0" : rankingBadges) : true
+    const rankingEnabledEarly = qRankingEarly !== null ? qRankingEarly !== "0" : (hasQueryEarly ? rankingBadges : true)
     const badgeQualityEarly = qBqEarly !== null ? qBqEarly !== "0" : (mapping?.badgeQuality ?? configOverride?.badgeQuality ?? sd.badgeQuality ?? true)
     // Flag pre-digitale per il fetch condizionato: query `pre` > config token
     // > server defaults > false (stessa catena di poster-config, senza mapping).
@@ -953,26 +1439,63 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     let preJw: boolean | null = null
     let preDigital: string | null = null
     // Rank anime inviato dal client nella preview WYSIWYG (override del fetch).
-    const qAnimeRankParam = req.nextUrl.searchParams.get("animerank")
+    const qAnimeRankParam = hardenedParams.get("animerank")
     const qAnimeRank = qAnimeRankParam ? Number(qAnimeRankParam) : NaN
+
+    // Quarto anello QID (mapping legacy senza wikidataId salvato): una
+    // external_ids con memo 7gg invece della lotteria SPARQL — il REST diventa
+    // il default anche per Stremio. Solo con ranking ON e chiave TMDB (senza
+    // chiave o a fetch fallito il QID resta null e vale lo SPARQL invariato);
+    // tetto 1500ms per non tassare il render a freddo oltre la race da 2.5s.
+    if (!wikidataId && rankingEnabledEarly && effTmdbKey) {
+      wikidataId = await resolveWikidataId(mediaType, tmdbId, effTmdbKey, 1500)
+    }
+
+    // Base custom da URL salvato: solo portrait (il landscape usa il backdrop
+    // TMDB). Scaricata in PARALLELO al TMDB con fallback automatico — mai in
+    // serie (deadline render 8.5s su Vercel). La validazione SSRF avviene a
+    // ogni render dentro fetchPosterBaseWithCustom: l'URL salvato resta input
+    // utente, mai fidato. safeTmdbImgSrc: un posterPath non-TMDB (mapping
+    // legacy scritto a mano) non deve far lanciare il render → fallback null.
+    const mappingCustomUrl = !earlyLandscape && mapping?.customPosterUrl ? mapping.customPosterUrl : null
+    const tmdbFallbackSrc = mapping?.posterPath ? safeTmdbImgSrc(mapping.posterPath) : null
+    // Scelta custom esplicita in query (tile custom selezionata in preview ma
+    // non ancora salvata): vince sul mapping salvato, come queryPoster vince
+    // su mapping.posterPath nel ramo query. Solo portrait, solo URL validati.
+    // La precedenza completa (preview vs Stremio) vive in
+    // resolveEffectiveCustomUrl: in preview un click su tile TMDB mostra
+    // davvero quel tile, su Stremio comanda sempre lo stato salvato.
+    const queryCustomUrl =
+      !earlyLandscape && queryPoster && isCustomPosterUrl(queryPoster) ? queryPoster : null
+    const effectiveCustomUrl = resolveEffectiveCustomUrl({
+      queryCustomUrl,
+      hasQueryPoster: queryPoster ? true : false,
+      mappingCustomUrl,
+      isPreview: hardenedParams.get("preview") === "1",
+    })
 
     // 5. Fetch all data in parallel: images + rankings + quality + wikidata + keywords + imdbTop250
     //    All dependencies are available before this point — no Block B depends on Block A
     const emptyWikidata = { awards: [], nominations: [], studios: [], director: null, directorHe: null }
     const WIKIDATA_TIMEOUT = Number(process.env.WIKIDATA_TIMEOUT) || 2500
+    // Esito temporale della race Wikidata, per debug=1 e TTL effimero: la
+    // degraded del risultato copre i fallimenti strutturali, questa il timeout.
+    let wikidataRaceTimedOut = false
     const [
-      [originalBuf, logoFetch, backdropFetch, rankingResult, animeRankResult, liveQualityResult, preReleaseDetected],
+      [originalBase, logoFetch, backdropFetch, rankingResult, animeRankResult, rawLiveQuality, preReleaseDetected],
       [wikidataResult, tmdbKeywords, imdbTop250, tmdbTrending],
     ] = await Promise.all([
       // Block A: images + ranking data + quality
       Promise.all([
         posterPathBuffer
-          ? Promise.resolve(posterPathBuffer)
-          : fetchImg(imgSrc(posterPath), renderAbort.signal).catch(() => null),
+          ? Promise.resolve({ buf: posterPathBuffer, custom: false })
+          : effectiveCustomUrl
+            ? fetchPosterBaseWithCustom(effectiveCustomUrl, tmdbFallbackSrc ?? safeTmdbImgSrc(posterPath), renderAbort.signal)
+            : fetchImg(imgSrc(posterPath), renderAbort.signal).catch(() => null).then((buf) => (buf ? { buf, custom: false } : null)),
         logoPathBuffer
           ? Promise.resolve(logoPathBuffer)
-          : logoPath ? fetchImg(imgSrc(logoPath), renderAbort.signal).catch(() => null) : Promise.resolve(null),
-        backdropPath ? fetchImg(imgSrc(backdropPath), renderAbort.signal).catch(() => null) : Promise.resolve(null),
+          : logoPath ? fetchLogoImg(logoPath, renderAbort.signal).catch(() => null) : Promise.resolve(null),
+        backdropPath ? fetchImg(isLandscape ? landscapeBackdropUrl(backdropPath) : imgSrc(backdropPath), renderAbort.signal).catch(() => null) : Promise.resolve(null),
         rankingEnabledEarly
           // R3: signal del watchdog — allo scatto della deadline il fetch
           // abortisce invece di proseguire come zombie in background.
@@ -999,7 +1522,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
               ? Promise.resolve(qAnimeRank)
               : fetchMDBList(
                   mediaType === "movie" ? "mdblistAnimeMovie" : "mdblistAnime",
-                  req.nextUrl.searchParams.get("mdblist_key") || envWithFallback("MDBLIST_KEY") || process.env.MDBLIST_KEY || process.env.MDBLIST_API_KEY || undefined,
+                  // Namespace incluso via effMdblistKey; coda env allargata
+                  // storica di questo sito (MDBLIST_KEY/MDBLIST_API_KEY).
+                  effMdblistKey || envWithFallback("MDBLIST_KEY") || process.env.MDBLIST_KEY || process.env.MDBLIST_API_KEY || undefined,
                   renderAbort.signal
                 )
                   .then((entries) => {
@@ -1021,13 +1546,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
                   const sessionTitle = getTMDBSessionCache(mediaType, tmdbId)?.details?.title
                     || getTMDBSessionCache(mediaType, tmdbId)?.details?.name
                     || null
-                  const fallbackTitle = mapping?.title || req.nextUrl.searchParams.get("title") || sessionTitle || genreName || null
+                  const fallbackTitle = mapping?.title || hardenedParams.get("title") || autoTitle || sessionTitle || genreName || null
+                  const effSeasonCount = seasonCount ?? getTMDBSessionCache(mediaType, tmdbId)?.details?.number_of_seasons ?? null
                   return resolveStreamQuality(
                     mediaType === "movie" ? "movie" : "series",
                     imdbId,
                     tmdbId,
                     fallbackTitle,
                     renderAbort.signal,
+                    effSeasonCount,
+                    posterRegion.code,
                   ).catch(() => null)
                 })())
           : Promise.resolve(null),
@@ -1043,14 +1571,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
               })
               const detect = (async (): Promise<boolean> => {
                 try {
-                  const apiKey = resolveRequestApiKey(req)
+                  const apiKey = effTmdbKey
                   // Titolo per la ricerca JW (stesso fallback del blocco
                   // qualità): senza searchQuery la query chiede 5 titoli
                   // popolari generici e il match per tmdbId fallisce quasi
                   // sempre → disponibilità ignota → poster normale.
                   const sessionDetails = getTMDBSessionCache(mediaType, tmdbId)?.details
                   const preTitle = mapping?.title
-                    || req.nextUrl.searchParams.get("title")
+                    || hardenedParams.get("title")
+                    || autoTitle
                     || sessionDetails?.title
                     || sessionDetails?.name
                     || genreName
@@ -1089,17 +1618,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           // pattern di ratingAbort): senza, campava fino ai suoi 5s interni
           // occupando uno slot del limiter awards (max 2).
           const wdAbort = new AbortController()
-          const wikidataTimeout = new Promise<typeof emptyWikidata>((r) => {
-            wikidataTimer = setTimeout(() => { wikidataTimedOut = true; r(emptyWikidata) }, WIKIDATA_TIMEOUT)
+          const wikidataTimeout = new Promise<WikidataResult>((r) => {
+            wikidataTimer = setTimeout(() => { wikidataTimedOut = true; r({ ...emptyWikidata, degraded: true }) }, WIKIDATA_TIMEOUT)
           })
-          const result = await Promise.race([
+          const result: WikidataResult = await Promise.race([
             rankingEnabledEarly
-              ? fetchAllWikidata(tmdbId, mediaType, combineAbortSignals(renderAbort.signal, wdAbort.signal)).catch(() => emptyWikidata)
-              : Promise.resolve(emptyWikidata),
+              ? fetchAllWikidata(tmdbId, mediaType, combineAbortSignals(renderAbort.signal, wdAbort.signal), { wikidataId }).catch((): WikidataResult => ({ ...emptyWikidata, degraded: true }))
+              : Promise.resolve({ ...emptyWikidata }),
             wikidataTimeout,
           ])
           if (wikidataTimer) clearTimeout(wikidataTimer)
           wdAbort.abort()
+          wikidataRaceTimedOut = wikidataTimedOut
           // a. Osservabilità lotteria badge: esito + tempo + contenuto. Un
           // timeout qui = poster senza premi (per le serie, senza rete: nessun
           // badge) congelato in cache per ore — dal log si distingue subito un
@@ -1111,25 +1641,52 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           return result
         })(),
         rankingEnabledEarly
-          ? getKeywords(mediaType, tmdbId, resolveRequestApiKey(req), renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => [])
+          ? getKeywords(mediaType, tmdbId, effTmdbKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => [])
           : Promise.resolve([]),
         (async () => {
-          if (!rankingEnabledEarly && !customRatingConfig.enabled) return false
+          // La colonna separati richiede gli stessi aggregated
+          // dei custom rating: senza, preview e poster mappati non avrebbero
+          // mai i sources (desync WYSIWYG).
+          const sepFetch = sepDisplay
+          if (!rankingEnabledEarly && !customRatingConfig.enabled && !sepFetch) return false
           if (!imdbId) {
             // F6: externalIds già in session cache (ramo non-mappato) → niente rete.
             const extIds = getTMDBSessionCache(mediaType, tmdbId)?.externalIds
-              ?? (await getExternalIds(mediaType, tmdbId, resolveRequestApiKey(req), renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => null))
+              ?? (await getExternalIds(mediaType, tmdbId, effTmdbKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => null))
             if (extIds?.imdb_id) imdbId = extIds.imdb_id
           }
           if (!imdbId) return false
-          if (customRatingConfig.enabled && !aggregatedRating) {
+          if ((customRatingConfig.enabled || sepFetch) && !aggregatedRating) {
             // Saved/query posters need source data only; keep their legacy vote intact.
             multiRatingOnly = true
             ratingAbort = new AbortController()
+            const wantSimkl = reqRatingSources.includes("simkl") && !!effSimklKey
+            const wantAnilist = reqRatingSources.includes("anilist")
+            const wantKitsu = reqRatingSources.includes("kitsu")
+            const wantImdb = reqRatingSources.includes("imdb")
+            // Backfill TMDB genuino (mai medie query/mapping congelate):
+            // solo details già in session cache (ramo non-mappato o fetch
+            // precedenti) — senza, niente backfill come prima. Stesso
+            // fallback del ramo auto, così la colonna separati non perde
+            // `tmdb` a MDBList down pur con chiave TMDB valida.
+            const cachedTmdbVote = getTMDBSessionCache(mediaType, tmdbId)?.details?.vote_average
+            const genuineTmdbVote = typeof cachedTmdbVote === "number" && Number.isFinite(cachedTmdbVote) && cachedTmdbVote > 0
+              ? cachedTmdbVote
+              : undefined
             aggregatedRating = fetchAggregatedRating(
               imdbId,
-              req.nextUrl.searchParams.get("mdblist_key") || envWithFallback("MDBLIST_KEY") || undefined,
+              effMdblistKey,
               combineAbortSignals(AbortSignal.any([renderAbort.signal, ratingAbort.signal]), RATING_WAIT_MS),
+              {
+                simklKey: effSimklKey,
+                tmdbId,
+                mediaType,
+                wantSimkl,
+                wantAnilist,
+                wantKitsu,
+                wantImdb,
+                tmdbFallbackVote: genuineTmdbVote,
+              },
             ).catch(() => null)
           }
           return rankingEnabledEarly ? isImdbTop250(imdbId, renderAbort.signal) : false
@@ -1138,10 +1695,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         // non per titolo), quindi una griglia catalogo paga una fetch sola.
         // `.catch` interno: un badge extra non deve poter far fallire un render.
         rankingEnabledEarly
-          ? isTmdbTrending(mediaType, tmdbId, resolveRequestApiKey(req))
+          ? isTmdbTrending(mediaType as "movie" | "tv", tmdbId, effTmdbKey)
           : Promise.resolve(false),
       ]),
     ])
+
+    // Base portrait: l'URL custom vince solo se scaricato e validato,
+    // altrimenti vale il TMDB (fallback parallelo, mai seriale).
+    const originalBuf = originalBase?.buf ?? null
+
+    // Normalizza il risultato qualità (oggetto statusato oppure legacy string /
+    // null da `?quality=` e dai mock): da qui in poi solo StreamQualityResult.
+    // Nota: la decisione effimera (TTL) sta dopo resolvePosterRenderConfig e
+    // usa il badgeQuality FINALE, non l'early (stessa catena, ma l'autorevole
+    // è quello — un futuro disallineamento non deve rompere la cache).
+    const liveQualityResult = normalizeQualityResult(rawLiveQuality as StreamQualityResult | StreamQuality | string | null)
+    const liveQuality = liveQualityResult.quality
 
     // A1: upgrade del voto con la media TMDB+IMDb, ma con tetto breve: oltre
     // RATING_WAIT_MS si usa il voto TMDB già impostato (niente blocco lungo).
@@ -1160,13 +1729,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         ratings.push({ id: "imdb", name: "IMDb", value: imdbRating, format: "decimal" })
       }
       if (!multiRatingOnly) {
-        const avgVote = calculateAverageRating(aggregated, reqRatingSources)
+        const avgVote = computeVote(aggregated, reqRatingSources)
         if (typeof avgVote === "number" && avgVote > 0) voteAverage = avgVote
       }
+      // Colonna separati: dai sources aggregati (anche con media skippata via
+      // multiRatingOnly — i sources servono comunque). Vuoto → fallback media.
+      // Vale per entrambi i canvas (la colonna segue il badge qualità).
+      if (sepDisplay) sepItems = pickSeparateRatings(aggregated, reqRatingSources)
       ratingAbort?.abort()
     }
 
-    if (!originalBuf) {
+    // Base effettiva: portrait = poster; landscape = sfondo TMDB o, in sua
+    // assenza, pillarbox ricavato dal poster (vedi sotto).
+    const baseBuf = isLandscape ? (backdropFetch ?? originalBuf) : originalBuf
+    if (!baseBuf) {
       // Deadline sforato → 503 con negative cache: il fetch dell'immagine è
       // stato abortito dal watchdog, non è un titolo inesistente.
       if (deadlineFired) {
@@ -1178,7 +1754,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       // waiter coalesced e per le richieste successive.
       writePosterError(cacheKey, 404)
       completePosterRender(null)
-      return new Response("Poster image not available", { status: 404, headers: corsHeaders() })
+      return new Response(isLandscape ? "Landscape backdrop not available" : "Poster image not available", { status: 404, headers: corsHeaders() })
     }
 
     // rankingResult è autoritativo: il fallback al mapping salvato avviene solo
@@ -1186,17 +1762,37 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     // titolo uscito dalla chart mostrerebbe per sempre il rank del save
     // precedente (es. "top 15" di un titolo oggi fuori top 20).
     const rankingRank = rankingResult
-    const qRank = req.nextUrl.searchParams.get("rank")
-    const qLabel = req.nextUrl.searchParams.get("label")
+    // rank/label dalla query hardenata (stessa del cache key): su presets il
+    // label free-text è droppato/canonicalizzato, il rank numerico resta.
+    const qRank = hardenedParams.get("rank")
+    const qLabel = hardenedParams.get("label")
     const finalRank = qRank !== null ? (parseInt(qRank, 10) >= 0 ? parseInt(qRank, 10) : rankingRank) : rankingRank
 
-    // Confine fetch/prep per Server-Timing: fin qui mapping/default, TMDB, JW,
-    // wikidata, immagini e selezione del logo. Da qui in poi è solo CPU locale.
+    // Fase 6 (observability): fine della fase fetch (mapping/defaults + TMDB +
+    // JW + wikidata + immagini + selezione logo). Da qui in poi solo CPU locale.
     const tFetchMs = Date.now() - startTime
 
     // 6. Resize poster + compute luminance
-    const posterBuf = await sharp(originalBuf).resize(STD_W, STD_H, { fit: 'cover', position: 'centre' }).toBuffer()
+    // Landscape: base = sfondo TMDB ritagliato sul canvas 16:9, oppure
+    // pillarbox dal poster quando il titolo non ha sfondi.
+    const posterBuf = isLandscape
+      ? (backdropFetch
+          ? await sharp(backdropFetch).resize(LAND_W, LAND_H, { fit: 'cover', position: 'centre' }).toBuffer()
+          : await pillarboxLandscapeBase(baseBuf))
+      : await sharp(baseBuf).resize(STD_W, STD_H, { fit: 'cover', position: 'centre' }).toBuffer()
     const qTopLight = req.nextUrl.searchParams.get("tl")
+    const qBottomLight = req.nextUrl.searchParams.get("bl")
+
+    // Base custom: hash dell'URL, mai l'URL in chiaro (e mai il posterPath
+    // TMDB, che con base custom non descrive i byte renderizzati). Stessa
+    // effettività del fetch sopra: effectiveCustomUrl decide in un solo punto.
+    const analysisKey = !isLandscape
+      ? (effectiveCustomUrl
+        ? customBaseAnalysisKey(effectiveCustomUrl)
+        : (posterPath && !isCustomPosterUrl(posterPath) ? `portrait:poster:${posterPath}` : null))
+      : backdropFetch
+        ? (backdropPath ? `landscape:backdrop:${backdropPath}` : null)
+        : (posterPath ? `landscape:pillarbox:${posterPath}` : null)
 
     // Apply mapping TV metadata (synchronous — no race, no side-effects in parallel closures)
     if (mapping?.tvType) tvType = mapping.tvType
@@ -1205,16 +1801,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     if (mapping?.firstAirDate) firstAirDate = mapping.firstAirDate
 
     // Luminance + optional TV details fetch (parallel, independent)
-    const [customRatings, topLum] = await Promise.all([
+    const [customRatings, topLum, bottomLum] = await Promise.all([
       customRatingConfig.enabled ? fetchCustomRatings(imdbId, customRatingConfig, renderAbort.signal) : Promise.resolve([]),
       (async (): Promise<number | null> => {
         if (qTopLight === "1" || qTopLight === "0" || qTopLight === "true" || qTopLight === "false") return null
-        return await topLuminance(posterBuf)
+        return await topLuminance(posterBuf, analysisKey)
+      })(),
+      (async (): Promise<number | null> => {
+        if (qBottomLight === "1" || qBottomLight === "0" || qBottomLight === "true" || qBottomLight === "false") return null
+        return await bottomLuminance(posterBuf, analysisKey)
       })(),
       (tmdbNetworks.length === 0 && productionCompanies.length === 0)
-        ? (async () => {
-            const apiKey = resolveRequestApiKey(req)
-            const preferredLang = req.nextUrl.searchParams.get("lang") || mapping?.language || "it"
+          ? (async () => {
+            const apiKey = effTmdbKey
+            const preferredLang = req.nextUrl.searchParams.get("lang") || mapping?.language || posterRegion.lang2
             // F6: anche il refetch dei dettagli TV riusa la session cache.
             // Un singolo retry sul fallimento transitorio (cold-start
             // upstream): senza dettagli saltano studio/network badge e il
@@ -1247,11 +1847,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         : Promise.resolve(),
     ])
 
-    const topLight = (qTopLight === "1" || qTopLight === "true") ? true : (qTopLight === "0" || qTopLight === "false") ? false : (topLum ?? 0.5) > 0.60
+    const topLight = (qTopLight === "1" || qTopLight === "true") ? true : (qTopLight === "0" || qTopLight === "false") ? false : (topLum ?? 0.5) > TOP_LIGHT_LUMINANCE
 
     // 7. Parse blur / badge / logo config from query
     const renderConfig = resolvePosterRenderConfig({
-      searchParams: req.nextUrl.searchParams,
+      searchParams: hardenedParams,
       mapping,
       configOverride,
       sd,
@@ -1262,36 +1862,123 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       rankingResult,
       finalRank,
       // Fix L32: lingua per la risoluzione delle label prefissate (__badge.*).
-      lang: req.nextUrl.searchParams.get("lang") || mapping?.language || "it",
+      lang: req.nextUrl.searchParams.get("lang") || mapping?.language || posterRegion.lang2,
     })
     const {
-      badgeStyle, rankingBadgeStyle,
-      blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness, tintStrength,
+      badgeStyle, rankingBadgeStyle, qualityBadgeStyle,
+      blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness, tintStrength, topShade,
       badgesEnabled, rankingEnabled,
-      badgeGenre, badgeYear, badgeRating, badgeQuality,
+      badgeGenre, badgeYear, badgeRating, badgeQuality, minQuality, sashOrder,
       logoScale, logoOffsetX, logoOffsetY,
-      topBadgeScale, topBadgeOffsetX, topBadgeOffsetY, genreBadgeScale, qualityBadgeScale, networkLogoScale,
-      genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY, networkLogoOffsetX, networkLogoOffsetY,
-      queryExtra, qNetLogo, networkLogo, ribbonSide, preRelease, accentDominant,
+      topBadgeScale, topBadgeOffsetX, topBadgeOffsetY,
+      genreBadgeScale, qualityBadgeScale, networkLogoScale,
+      genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY,
+      networkLogoOffsetX, networkLogoOffsetY,
+      queryExtra, qNetLogo, networkLogo, networkLogoPosition, ribbonSide, ribbonEnabled, rankingBadgeAccent,
+      preRelease, posterShape, logoAlign, hideLogo, accentDominant,
       badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset, textOpacity,
       textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo,
     } = renderConfig
+
+    // Allineamento blur non-clean (Golden Rule col client): se il poster
+    // finale del ramo automatico ha testo incorporato, i default globali
+    // iniettati negli URL Stremio (30/50) non devono vincere sul profilo
+    // non-clean (20/80) — come fa il client. Solo Stremio unmapped: mai su
+    // preview (slider editor), poster esplicito o mapping (intento utente).
+    let effBlurHeight = blurHeight
+    let effBlurFade = blurFade
+    if (!isPreview && !mapping && !queryPoster && !autoPosterClean) {
+      effBlurHeight = NON_CLEAN_GRADIENT_HEIGHT
+      effBlurFade = NON_CLEAN_BLUR_FADE
+    }
+
+    // Colonna rating separati attiva solo con badge voto visibili e almeno un
+    // valore: sostituisce il segmento ★ nel badge genere (sostituire, non
+    // sommare). Senza valori → fallback media invariato.
+    const useSeparate = badgesEnabled && badgeRating && sepItems.length > 0
+    const effectiveBadgeRating = badgeRating && !useSeparate
+
+    // Render degradato per timeout/errore upstream sulla qualità (solo se il
+    // badge FINALE è attivo e senza override esplicito): TTL effimero 120s
+    // invece di 6h/24h + niente header immutable, così Stremio riprova poco
+    // dopo. Early resta solo per il gating del fetch (Block A).
+    const qualityEphemeral = badgeQuality && !qQualityParam && liveQualityResult.status !== "resolved"
+    // Stesso trattamento per Wikidata degradato (race persa, breaker, outage):
+    // il poster senza premi resta in cache 2 minuti invece di 6h/24h, così un
+    // miss transitorio (es. Emmy intermittente) guarisce al ricaricamento
+    // senza togli/metti manuale del mapping. `degraded` assente (mock storici,
+    // ramo ranking OFF deterministico) = non effimero.
+    const wikidataEphemeral = wikidataResult.degraded === true || wikidataRaceTimedOut
+    // Stesso trattamento per il fallback TMDB causato da custom fallito: il
+    // poster senza base custom resta in cache 2 minuti invece di 6h/24h, così
+    // un'origine tornata su guarisce al ricaricamento senza re-save manuale.
+    // Solo fallback reale (custom richiesto ma base TMDB): custom riuscito o
+    // nessun custom = TTL pieno invariato.
+    const customFallbackEphemeral = !!effectiveCustomUrl && originalBase !== null && !originalBase.custom
+    const ephemeralTtl = qualityEphemeral || wikidataEphemeral || customFallbackEphemeral
+    const effectiveTtlSec = ephemeralTtl ? QUALITY_EPHEMERAL_TTL_SEC : dynamicTtlSec
+    const effectiveImmutable = immutablePoster && !ephemeralTtl
+
+    // Polarità del badge genere in basso: speculare a topLight, ma corretta per
+    // la banda blur (che scurisce il fondo) — vedi computeBottomLight. `bl`
+    // esplicito vince (preview WYSIWYG), altrimenti decide il server.
+    const bottomLight = (qBottomLight === "1" || qBottomLight === "true") ? true : (qBottomLight === "0" || qBottomLight === "false") ? false : (computeBottomLight(bottomLum, blurDarkness, blurEnabled) ?? topLight)
 
     // Il rilevamento (`preReleaseDetected`) cambia nel tempo: non entra nella
     // cache key (verrebbe letta prima del fetch), il ritorno al poster normale
     // avviene alla scadenza del TTL (6h non-mappati, 24h mappati).
     const applyPreRelease = preRelease && preReleaseDetected
 
-    const finalQuality = qQualityParam || liveQualityResult || null
+    // Database locale AV specs (prioritario per 4K e formati, zero rete):
+    const localSpec = lookupAVSpecs(imdbId)
+    // Soglia minima qualità all'uscita: la cache upstream (`resolveStreamQuality`)
+    // tiene sempre il raw — qui si sopprime solo il badge sotto soglia.
+    const effectiveRawQuality = qQualityParam || localSpec?.quality || liveQuality || null
+    const finalQuality = applyMinQuality(
+      effectiveRawQuality as StreamQuality | null,
+      minQuality,
+    )
 
-    const locale = req.nextUrl.searchParams.get("lang") || mapping?.language || "it"
-    // Centro della riga genere/voto, distanza dal bordo inferiore. Era 30
-    // (39px a STD_H=750): la riga sfiorava il bordo. 65 la porta a ~86px,
-    // staccata dal bordo e sotto un logo che ora finisce più in alto.
-    const targetCenter = Math.round(65 * STD_H / 570)
+    // Formati A/V (dv, atmos, imax, hdr, hdr10plus):
+    // Sempre rigorosamente automatici basati sulle specifiche reali del film (localSpec).
+    // Non vengono MAI mostrati loghi che il titolo non possiede nella realtà.
+    const availableFormats = localSpec?.formats ?? []
+    const qFormatsRaw = req.nextUrl.searchParams.get("formats")
+    const qFormats = qFormatsRaw !== null
+      ? (qFormatsRaw === "none" || qFormatsRaw === "" ? [] : (qFormatsRaw.split(",").map((s) => s.trim().toLowerCase()).filter(isVideoFormat) as VideoFormat[]))
+      : null
+    const allowedFormats = sd.videoFormats
+    const requestedFormats = qFormats ?? mapping?.videoFormats ?? null
+
+    const effectiveFormats = availableFormats.filter((f) => {
+      if (requestedFormats !== null) {
+        return requestedFormats.includes(f)
+      }
+      if (allowedFormats && allowedFormats.length > 0) {
+        return allowedFormats.includes(f)
+      }
+      return true
+    })
+    const finalVideoFormats = effectiveFormats.length > 0 ? effectiveFormats : null
+
+    const locale = req.nextUrl.searchParams.get("lang") || mapping?.language || posterRegion.lang2
+    // Formato data badge "in uscita": query `df` > default utente > `locale`
+    // (fail-closed: valori ignoti o assenti = comportamento storico).
+    const dateFormat = parseDateFormat(hardenedParams.get("df") ?? sd.dateFormat ?? null) ?? "locale"
+    // Normalizza i generi composti TV grezzi ("Sci-Fi & Fantasy" mai localizzato
+    // in it-IT) in etichette brevi da badge — stesso helper del client, così
+    // preview e poster Stremio non divergono e i mapping storici grezzi si
+    // sanano senza migrazione. Idempotente.
+    genreName = normalizeGenreName(genreName, locale) || null
+    // Centro della riga genere/voto, distanza dal bordo inferiore. Nel fork il
+    // portrait usa 65 (~86px a STD_H=750): la riga staccata dal bordo e sotto
+    // un logo che finisce più in alto. Il landscape resta quello di upstream.
+    const targetCenter = isLandscape
+      ? Math.round(30 * LAND_H / 570)
+      : Math.round(65 * STD_H / 570)
 
     // 8. Pre-resolve accent color override
-    const qAc = req.nextUrl.searchParams.get("ac")
+    const qAc = hardenedParams.get("ac")
     const accentOverride = (qAc && isValidHex(qAc))
       ? { genreColor: qAc, rankColor: qAc }
       : mapping?.accentColor
@@ -1303,6 +1990,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     if (isDebug) {
       const badgeInput = {
         mediaType: mediaType as "movie" | "tv",
+        tmdbId,
+        digitalReleaseDate: preDigital ?? null,
         releaseDate: releaseDate ?? null,
         firstAirDate: firstAirDate ?? null,
         lastAirDate: lastAirDate ?? null,
@@ -1314,14 +2003,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         awards: wikidataResult.awards,
         nominations: wikidataResult.nominations,
         studios: tmdbStudios.length ? [...tmdbStudios] : [...productionCompanies, ...tmdbNetworks],
-        director: wikidataResult.director,
-        directorHe: wikidataResult.directorHe,
+        director: directorBadgeLabel(wikidataResult.director, t, { nameHe: wikidataResult.directorHe, locale }),
         tvType: tvType ?? null,
         tvStatus,
         keywords: [...tmdbKeywords],
         imdbTop250: !!imdbTop250,
       }
-      const badgeComputed = computeTopBadge(badgeInput, t, locale)
+      const badgeComputed = computeTopBadge(badgeInput, t, locale, sashOrder, dateFormat)
       log.info("Debug mode", { mediaType, tmdbId, imdbId, imdbTop250: !!imdbTop250, badge: badgeComputed.badge?.label ?? "null", vote: voteAverage, genre: genreName, quality: finalQuality })
       completePosterRender(null)
       return Response.json({
@@ -1333,21 +2021,38 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           imdbId,
           imdbTop250: !!imdbTop250,
           renderVersion: RENDER_VERSION,
+          shape: isLandscape ? "landscape" : "poster",
+          mappingId: mapping ? `${mediaType}:${tmdbId}` : null,
         },
         images: {
           poster: posterPath,
           logo: logoPath,
           backdrop: backdropPath,
         },
+        logoSelection: {
+          requestedLang: posterRequestedLang,
+          usedLang: logoChosenIso,
+          fallbackReason: logoFallbackReason,
+        },
+        cache: {
+          hit: !!cachedPoster.payload,
+          stale: !!cachedPoster.payload && cachedPoster.stale,
+        },
         genre: { name: genreName, year: releaseDate?.slice(0, 4) },
         vote: { average: voteAverage },
-        quality: finalQuality,
+        quality: {
+          value: finalQuality,
+          source: liveQualityResult.source,
+          status: liveQualityResult.status,
+          rawTokens: liveQualityResult.rawTokens ?? [],
+        },
+        minQuality,
         preRelease: { enabled: preRelease, detected: preReleaseDetected, applied: applyPreRelease, jwAvailable: preJw, digitalDate: preDigital, theatricalDate: releaseDate ?? mapping?.releaseDate ?? null },
         rankings: {
           justwatch: rankingResult,
           anime: animeRankResult,
           finalRank,
-          qRank: req.nextUrl.searchParams.get("rank") || null,
+          qRank: hardenedParams.get("rank") || null,
           qLabel,
         },
         wikidata: {
@@ -1355,6 +2060,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           nominations: wikidataResult.nominations,
           studios: wikidataResult.studios,
           director: wikidataResult.director,
+          directorLabel: directorBadgeLabel(wikidataResult.director, t, { nameHe: wikidataResult.directorHe, locale }),
+          degraded: wikidataResult.degraded ?? false,
+          timedOut: wikidataRaceTimedOut,
         },
         keywords: [...tmdbKeywords],
         badge: {
@@ -1375,17 +2083,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
             badgeYear,
             badgeRating,
             badgeQuality,
+            separateRatings: useSeparate,
+            sashOrder,
             customBadge: queryExtra,
           },
         },
+        timings: {
+          fetchMs: tFetchMs,
+          prepMs: Date.now() - startTime - tFetchMs,
+          totalMs: Date.now() - startTime,
+        },
         appearance: {
           topLight,
+          bottomLight,
           blurEnabled,
-          blurHeight,
+          blurHeight: effBlurHeight,
           blurIntensity,
-          blurFade,
+          blurFade: effBlurFade,
           blurDarkness,
-          gradientHeight: blurHeight,
+          gradientHeight: effBlurHeight,
+          topShade,
           accentColor: accentOverride?.genreColor || null,
         },
         logos: {
@@ -1421,7 +2138,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     // TMDB restituisce il titolo ORIGINALE, quindi `resolvedTitle` sotto he-IL
     // è spesso inglese e finiremmo per scrivere "Fight Club" sotto il logo
     // "FIGHT CLUB".
-    const posterLang = (req.nextUrl.searchParams.get("lang") || mapping?.language || "it").slice(0, 2).toLowerCase()
+    const posterLang = (req.nextUrl.searchParams.get("lang") || mapping?.language || posterRegion.lang2).slice(0, 2).toLowerCase()
     const showTitleUnderLogo = TITLE_UNDER_LOGO_LANGS.has(posterLang)
       && !hasLangLogo
       && !!resolvedTitle
@@ -1431,13 +2148,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     const genInput: GenerationInput = {
       // Custom values override internal sources with the same ID, preserving order.
       ratings: customRatingConfig.enabled ? [...new Map([...ratings, ...customRatings].map(item => [item.id, item])).values()] : undefined,
-      posterBuf, logoFetch, backdropFetch,
+      posterBuf, logoFetch, backdropFetch: isLandscape ? null : backdropFetch,
       backdropScale, backdropOffsetX, backdropOffsetY,
-      blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness, tintStrength,
+      blurEnabled, blurHeight: effBlurHeight, blurIntensity, blurFade: effBlurFade, blurDarkness, tintStrength, topShade,
       badgesEnabled, rankingEnabled, genreName, voteAverage, badgeStyle,
-      rankingBadgeStyle, badgeGenre, badgeYear, badgeRating, badgeQuality,
+      rankingBadgeStyle, badgeGenre, badgeYear, badgeRating: effectiveBadgeRating, badgeQuality,
+      qualityBadgeStyle,
+      videoFormats: finalVideoFormats,
+      separateRatings: useSeparate ? sepItems : undefined,
+      sashOrder,
       quality: finalQuality,
-      topLight, targetCenter, ribbonSide,
+      topLight, bottomLight, targetCenter, ribbonSide, ribbonEnabled, rankingBadgeAccent,
       logoScale, logoOffsetX, logoOffsetY,
       title: resolvedTitle,
       titleUnderLogo: showTitleUnderLogo,
@@ -1447,7 +2168,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       networkLogoOffsetX, networkLogoOffsetY,
       mediaType: mediaType as "movie" | "tv",
       finalRank, animeRankResult, rankingResult,
-      mapping, tmdbNetworks, productionCompanies, tmdbStudios,
+      mapping, tmdbId, digitalReleaseDate: preDigital ?? null, tmdbNetworks, productionCompanies, tmdbStudios,
       tmdbNetworksDetailed, productionCompaniesDetailed,
       tvType, tvStatus, releaseDate, firstAirDate,
       lastAirDate, seasonCount, originCountries,
@@ -1456,17 +2177,25 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset,
       textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar, autoDarkText, textHalo,
       wikidataResult, tmdbKeywords, locale, t,
-      qLabel, queryExtra, qNetLogo, networkLogo, sd,
+      dateFormat,
+      qLabel, queryExtra, qNetLogo, networkLogo, networkLogoPosition, sd,
       accentOverride, imdbTop250, preRelease: applyPreRelease,
-      posterSrc: posterPath,
+      shape: posterShape,
+      logoAlign,
+      hideLogo,
+      posterSrc: isLandscape ? backdropPath : posterPath,
+      analysisKey,
       logoSrc: logoPath,
-      backdropSrc: backdropPath,
-      // C3: render sempre canonico jpeg (tranne ?fmt=avif legacy esplicito).
-      format: legacyAvif ? outputFormat : "jpeg",
+      backdropSrc: isLandscape ? null : backdropPath,
+      // C3: render sempre canonico (jpeg storico, webp con
+      // PICTORIUM_IMAGE_FORMAT=webp; avif solo ?fmt=avif legacy esplicito).
+      format: legacyAvif ? outputFormat : canonicalFormat,
     }
     if (renderAbort.signal.aborted) {
       throw new Error("Render deadline exceeded before poster compositing")
     }
+    // Fine della fase prep (resize, config, accent): da qui solo composite CPU.
+    const tCompositeStart = Date.now()
     const composited = await generatePosterBuffer(genInput)
     if (customRatingConfig.enabled) {
       etag = `${etag.slice(0, -1)}:cr${hashKey(JSON.stringify(genInput.ratings))}"`
@@ -1474,34 +2203,51 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
 
     // 10. Fix stale auto ETag: include dynamic data (rank, rating) so when it re-renders, the ETag changes
     if (!mapping && !isPreview) {
-      etag = `${etag.slice(0, -1)}:${finalRank ?? "X"}:${imdbTop250}:${voteAverage ?? "0"}:${applyPreRelease ? "P" : "x"}"`
+      const sepSig = useSeparate ? sepItems.map((s) => `${s.id}${s.value}`).join(",") : ""
+      // Rotazione dinamica: il bucket giorno entra nell'ETag così la
+      // rivalidazione tra giorni non risponde mai 304 sul poster di ieri.
+      const dynEtagSuffix = dynamicDayBucket !== null ? `:${dynamicDayBucket}` : ""
+      etag = `${etag.slice(0, -1)}:${finalRank ?? "X"}:${imdbTop250}:${voteAverage ?? "0"}:${applyPreRelease ? "P" : "x"}:${sepSig}${dynEtagSuffix}"`
     }
 
     // 11. Cache + response
     const payload = { buffer: composited, etag }
-    writeCachedPoster(cacheKey, payload, mappingTag)
+    // Qualità effimera (timeout/errore upstream) o Wikidata degradato: storage
+    // 120s + niente immutable, così il degradato non avvelena CDN per 6h/24h.
+    // Resolved (anche null) → TTL pieno invariato.
+    // Le preview editor (`preview=1`) si servono no-store e non vengono
+    // scritte in cache: ogni movimento di slider genererebbe una entry.
+    if (!isPreview) {
+      writeCachedPoster(cacheKey, payload, mappingTag, ephemeralTtl
+        ? { ttlMs: QUALITY_EPHEMERAL_TTL_SEC * 1000, immutable: false }
+        : dynamicCutTtlMs !== null
+          ? { ttlMs: dynamicCutTtlMs, immutable: immutablePoster }
+          : { immutable: immutablePoster })
+    }
     completePosterRender(payload)
     recordPosterRequest(false, outputFormat)
     // Enabled enrichment must revalidate against the final state, including [].
-    const responseEtag = outputFormat === "webp" ? variantEtagFor(etag) : etag
+    const responseEtag = needsVariant ? variantEtagFor(etag, outputFormat as "jpeg" | "webp") : etag
     if (customRatingConfig.enabled && !isPreview && req.headers.get("If-None-Match") === responseEtag) {
-      return new Response(null, { status: 304, headers: posterNotModifiedHeaders(responseEtag, immutablePoster, dynamicPoster, dynamicTtlSec) })
+      return new Response(null, { status: 304, headers: posterNotModifiedHeaders(responseEtag, effectiveImmutable, dynamicPoster, effectiveTtlSec) })
     }
-    log.info("Poster rendered", { mediaType, tmdbId, ms: Date.now() - startTime, bytes: composited.byteLength, cached: !!mappingTag, format: outputFormat })
+    log.info("Poster rendered", { mediaType, tmdbId, ms: Date.now() - startTime, bytes: composited.byteLength, cached: !!mappingTag, format: outputFormat, fetchMs: tFetchMs, prepMs: tCompositeStart - startTime - tFetchMs, compositeMs: Date.now() - tCompositeStart })
     // Registra l'URL ESATTA appena servita, così il warmup riscalda quello che
     // i client chiedono davvero invece di ricostruirlo dai default. Solo qui:
     // una richiesta che ha renderizzato è per definizione quella cara.
     recordPosterUrl(req.nextUrl)
-    // C3: il webp è variante di risposta (convertita + cachata), non un render.
-    if (outputFormat === "webp") return serveWebpVariant(payload)
-    const renderTiming = serverTimingValue([
-      { name: "fetch", durMs: tFetchMs },
-      { name: "prep", durMs: Date.now() - startTime - tFetchMs },
-      { name: "total", durMs: Date.now() - startTime },
-    ])
-    return new Response(new Uint8Array(composited), {
-      headers: { ...posterHeaders(etag, immutablePoster, isPreview, dynamicPoster, outputFormat, dynamicTtlSec), "Server-Timing": renderTiming },
-    })
+    // C3: il non-canonico è variante di risposta (convertita + cachata), non un render.
+    if (needsVariant) return serveResponseVariant(payload, ephemeralTtl ? { ttlMs: QUALITY_EPHEMERAL_TTL_SEC * 1000, immutable: false } : dynamicCutTtlMs !== null ? { ttlMs: dynamicCutTtlMs, immutable: immutablePoster } : { immutable: immutablePoster })
+    const renderHeaders = {
+      ...posterHeaders(etag, effectiveImmutable, isPreview, dynamicPoster, outputFormat, effectiveTtlSec),
+      "Server-Timing": serverTimingValue([
+        { name: "fetch", durMs: tFetchMs },
+        { name: "prep", durMs: tCompositeStart - startTime - tFetchMs },
+        { name: "composite", durMs: Date.now() - tCompositeStart },
+        { name: "total", durMs: Date.now() - startTime },
+      ]),
+    }
+    return new Response(new Uint8Array(composited), { headers: renderHeaders })
   } catch (e) {
     completePosterRender(null)
     recordPosterError()

@@ -35,20 +35,26 @@ vi.mock("@/lib/rate-limit", () => ({
 }))
 
 vi.mock("@/lib/store", () => ({
+  getAll: vi.fn(async () => []),
   getById: vi.fn(async () => null),
   upsert: vi.fn(),
+  getImdbAlias: vi.fn(async () => null),
 }))
 
-vi.mock("@/lib/server-defaults", () => ({
-  getServerDefaults: vi.fn(() => ({
+vi.mock("@/lib/server-defaults", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/lib/server-defaults")>()
+  return {
+    ...mod,
+    getServerDefaults: vi.fn(() => ({
     defaultLogoFitEnabled: true,
     badgeStyle: "shadow",
     rankingBadgeStyle: "default",
     region: "IT",
     badgeQuality: false,
     preRelease: false,
-  })),
-}))
+    })),
+  }
+})
 
 type Fault = "hang" | "reject" | { status: number; retryAfter?: string }
 
@@ -103,6 +109,9 @@ function tmdbDetails(id: number) {
     backdrop_path: null,
     networks: [],
     production_companies: [],
+    // F5a: il path poster usa details+external_ids in un colpo solo — il vero
+    // TMDB con append_to_response li include sempre (come il mock e2e).
+    external_ids: { imdb_id: `tt${id}`, tvdb_id: null },
   }
 }
 
@@ -169,14 +178,7 @@ async function router(input: unknown, init?: { signal?: AbortSignal }): Promise<
   if (/\/3\/(?:movie|tv)\/\d+/.test(url)) {
     calls.tmdb++
     const m = /\/3\/(?:movie|tv)\/(\d+)/.exec(url)
-    const id = Number(m?.[1] ?? 0)
-    // Come TMDB: con append_to_response=external_ids il blocco arriva dentro i
-    // details, ed è per questo che la route non paga più una seconda chiamata.
-    const details: Record<string, unknown> = { ...tmdbDetails(id) }
-    if (url.includes("append_to_response=external_ids")) {
-      details.external_ids = { id, imdb_id: `tt${m?.[1] ?? "1000000"}` }
-    }
-    return Response.json(details)
+    return Response.json(tmdbDetails(Number(m?.[1] ?? 0)))
   }
   throw new Error(`chaos router: URL non gestito ${url.slice(0, 120)}`)
 }

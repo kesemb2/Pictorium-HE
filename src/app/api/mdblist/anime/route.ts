@@ -3,10 +3,9 @@ import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { cacheGet, cacheSet } from "@/lib/cache"
 import { createLogger } from "@/lib/logger"
 import { fetchMDBList } from "@/lib/mdblist"
-import { getDetails } from "@/lib/tmdb"
+import { getDetails, resolveRouteApiKey } from "@/lib/tmdb"
 import { resolveImdbToTmdb } from "@/lib/imdb-resolver"
 import type { EnrichedAnimeItem } from "@/lib/validation"
-import { envWithFallback } from "@/lib/env-compat"
 
 const log = createLogger("mdblist-anime")
 
@@ -20,8 +19,8 @@ export async function GET(req: NextRequest) {
   const cached = cacheGet<EnrichedAnimeItem[]>(cacheKey)
   if (cached) return Response.json(cached)
 
-  const mdblistKey = req.nextUrl.searchParams.get("mdblist_key") || envWithFallback("MDBLIST_KEY") || process.env.MDBLIST_KEY || process.env.MDBLIST_API_KEY || ""
-  const tmdbKey = req.nextUrl.searchParams.get("api_key") || envWithFallback("TMDB_KEY") || process.env.TMDB_KEY || process.env.TMDB_API_KEY || undefined
+  const mdblistKey = (await resolveRouteApiKey(req, "mdblist")) || ""
+  const tmdbKey = await resolveRouteApiKey(req)
   if (!mdblistKey || !tmdbKey) return Response.json([])
 
   try {

@@ -24,11 +24,14 @@ import { PosterEditorProvider, usePosterEditor, type PosterEditorCtx } from "@/l
 const USER_SAVED = {
   badgeStyle: "shadow",
   rankingBadgeStyle: "default",
+  qualityBadgeStyle: "standard",
+  videoFormats: ["dv", "hdr", "hdr10plus", "atmos", "imax"],
   blurEnabled: true,
   blurIntensity: 9,
   blurFade: 60,
   blurDarkness: 40,
   tintStrength: 20,
+  topShade: 50,
   gradientHeight: 45,
   topBadgeScale: 100,
   topBadgeOffsetX: 0,
@@ -52,8 +55,13 @@ const USER_SAVED = {
   customRatingEndpoint: "",
   customRatingApiKeyHeader: "",
   ratingSources: ["imdb", "tmdb"],
+  separateRatings: false,
+  sashOrder: ["upcoming", "rank", "new", "award", "extra"],
   autoRotateClean: false,
-  defaultLogoFitEnabled: true,
+  defaultAutoRotateBackdrop: false,
+  disableCleanPosters: false,
+  defaultPortraitFitEnabled: true,
+  defaultLandscapeFitEnabled: true,
   networkLogo: true,
   // Campo aggiunto dopo: l'idratazione ne scrive il default nel payload, ed è
   // il comportamento voluto — un'impostazione nuova deve materializzarsi.
@@ -70,10 +78,19 @@ const USER_SAVED = {
   badgeTopOffset: 0,
   badgeBottomOffset: 0,
   logoBottomOffset: 0,
+  networkLogoPosition: "auto",
   preRelease: false,
   ribbonSide: "left",
+  ribbonEnabled: true,
+  posterShape: "poster",
+  logoAlign: null,
   episodeMetadataSource: "tvdb",
   region: "IT",
+  dateFormat: "locale",
+  logoScale: null,
+  logoOffsetX: null,
+  logoOffsetY: null,
+  landscape: {},
 }
 
 function strictWrapper({ children }: { children: ReactNode }) {
@@ -195,6 +212,16 @@ describe("useDefaults hydration", () => {
     expect(JSON.parse(storage.getItem("badgeDefaults")!).badgeYear).toBe(true)
   })
 
+  it("migra il vecchio flag unico sui due formati", async () => {
+    storage.setItem("badgeDefaults", JSON.stringify({ defaultLogoFitEnabled: false }))
+    const { result } = renderHook(() => useDefaults())
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1200)
+    })
+    expect(result.current.defaultPortraitFitEnabled).toBe(false)
+    expect(result.current.defaultLandscapeFitEnabled).toBe(false)
+  })
+
   it("setGradientHeight tocca solo il corrente, il default salvato resta", async () => {
     let latest: PosterEditorCtx | null = null
     function Probe() {
@@ -217,6 +244,50 @@ describe("useDefaults hydration", () => {
     })
     expect(latest!.gradientHeight).toBe(50)
     expect(latest!.defaultGradientHeight).toBe(45)
+  })
+
+  it("su path /u/<uuid> legge/scrive badgeDefaults:<uuid>, mai il globale", async () => {
+    const uuid = "11111111-1111-4111-8111-111111111111"
+    window.history.replaceState({}, "", `/u/${uuid}/configure`)
+    try {
+      // Avanzi di un altro profilo nel globale: non devono inquinare.
+      storage.setItem("badgeDefaults", JSON.stringify({ ...USER_SAVED, badgeYear: true, gradientHeight: 10 }))
+      storage.setItem(`badgeDefaults:${uuid}`, JSON.stringify(USER_SAVED))
+      const { result } = renderHook(() => useDefaults())
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1200)
+      })
+      // Vale il namespaced (badgeYear false), non il globale (true).
+      expect(result.current.badgeYear).toBe(false)
+      expect(result.current.defaultGradientHeight).toBe(45)
+      act(() => {
+        result.current.update({ defaultBadgeYear: true, badgeYear: true })
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1200)
+      })
+      // Scritture sul namespaced; il globale resta intatto.
+      expect(JSON.parse(storage.getItem(`badgeDefaults:${uuid}`)!).badgeYear).toBe(true)
+      expect(JSON.parse(storage.getItem("badgeDefaults")!).badgeYear).toBe(true)
+      expect(JSON.parse(storage.getItem("badgeDefaults")!).gradientHeight).toBe(10)
+    } finally {
+      window.history.replaceState({}, "", "/")
+    }
+  })
+})
+
+// Casi del fork (Pictorium-HE) che upstream non ha: aggiunti al sync
+// del 2026-10-02 per non perderne nessuno.
+describe("fork: useDefaults-hydration.test.tsx", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", createStorageStub())
+    vi.useFakeTimers()
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({}) })))
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
   })
 
   // Pre-release e lato del nastro sono globali: nessun mapping per-titolo li

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { getTVEpisodeGroups, resolveRequestApiKey } from "@/lib/tmdb"
+import { getTVEpisodeGroups, resolveRouteApiKey } from "@/lib/tmdb"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return Response.json({ results: [] }, { status: 400 })
   }
 
-  const apiKey = resolveRequestApiKey(req)
+  const apiKey = await resolveRouteApiKey(req)
   const results = await getTVEpisodeGroups(tvId, apiKey)
   return Response.json({ results })
 }

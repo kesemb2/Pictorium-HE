@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { isSameOrigin, originMismatchResponse } from "@/lib/auth"
 import { createLogger } from "@/lib/logger"
+import { readJsonBody, BodyTooLargeError } from "@/lib/read-body"
 
 const log = createLogger("validate-key")
 
@@ -20,8 +21,11 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   let body: { provider?: string; key?: string }
   try {
-    body = await req.json()
-  } catch {
+    // Body cappato (anti-OOM v1.23.0): req.json() bufferizzava payload
+    // arbitrari prima del controllo lunghezza chiave qui sotto.
+    body = (await readJsonBody(req, 4096)) as { provider?: string; key?: string }
+  } catch (e) {
+    if (e instanceof BodyTooLargeError) return Response.json({ valid: false, message: "Request body too large" }, { status: 413 })
     return Response.json({ valid: false, message: "Invalid JSON body" }, { status: 400 })
   }
 
@@ -89,6 +93,48 @@ export async function POST(req: NextRequest): Promise<Response> {
     } catch (e) {
       log.warn("TVDB key validation failed", { error: e instanceof Error ? e.message : String(e) })
       return invalidOrUnreachable("TVDB")
+    }
+  }
+
+  if (provider === "simkl") {
+    // Stesso code path di produzione (lib/simkl.ts): /redirect con redirect
+    // manuale — 301/302 + Location = Client ID funzionante.
+    try {
+      const res = await fetch("https://api.simkl.com/redirect?imdb=tt0111161", {
+        method: "GET",
+        redirect: "manual",
+        headers: { "simkl-api-key": cleanKey },
+        signal: AbortSignal.timeout(6000),
+      })
+      const location = res.headers.get("location")
+      if ((res.status === 301 || res.status === 302) && location) {
+        return Response.json({ valid: true })
+      }
+      return Response.json({ valid: false, message: "Chiave Simkl non valida" })
+    } catch (e) {
+      log.warn("Simkl key validation failed", { error: e instanceof Error ? e.message : String(e) })
+      return invalidOrUnreachable("Simkl")
+    }
+  }
+
+  if (provider === "fanart") {
+    // Chiave progetto: basta un titolo noto (Fight Club, tt0137523 → TMDB 550).
+    // 200 = chiave accettata; 401/403 = rifiutata; il resto è indistinguibile
+    // (C6: mai oracolo sullo stato della rete).
+    try {
+      const res = await fetch(`https://webservice.fanart.tv/v3/movies/550?api_key=${encodeURIComponent(cleanKey)}`, {
+        signal: AbortSignal.timeout(6000),
+      })
+      if (res.ok) {
+        return Response.json({ valid: true })
+      }
+      if (res.status === 401 || res.status === 403) {
+        return Response.json({ valid: false, message: "Chiave Fanart.tv non valida" })
+      }
+      return invalidOrUnreachable("Fanart.tv")
+    } catch (e) {
+      log.warn("Fanart.tv key validation failed", { error: e instanceof Error ? e.message : String(e) })
+      return invalidOrUnreachable("Fanart.tv")
     }
   }
 

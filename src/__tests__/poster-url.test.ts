@@ -61,19 +61,19 @@ describe("buildUrlPattern", () => {
     expect(url).toContain("/api/poster/{type}/{imdb_id}")
   })
 
-  // Le chiavi sono uscite dagli URL poster SERVITI, ma questo è il template che
-  // l'utente copia per sé: Stremio non invia header custom, quindi qui devono
-  // esserci, o il render resta senza chiave.
-  it("keeps both keys, because this is the template the user copies", () => {
-    const url = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "key", lang: "it", mdblistApiKey: "mdb" })
-    expect(url).toContain("api_key=key")
-    expect(url).toContain("mdblist_key=mdb")
+  it("uses {tmdb_id} placeholder when requested (same params otherwise)", () => {
+    const tmdb = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "key", lang: "it", idPlaceholder: "{tmdb_id}" })
+    const imdb = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "key", lang: "it" })
+    expect(tmdb).toContain("/api/poster/{type}/{tmdb_id}")
+    expect(tmdb).not.toContain("{imdb_id}")
+    expect(tmdb.replace("{tmdb_id}", "{imdb_id}")).toBe(imdb)
   })
 
-  it("omits each key when it is not configured", () => {
-    const url = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "", lang: "it" })
-    expect(url).not.toContain("api_key=")
-    expect(url).not.toContain("mdblist_key=")
+  it("uses {tmdb_id|imdb_id} auto placeholder when requested (same params otherwise)", () => {
+    const auto = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "key", lang: "it", idPlaceholder: "{tmdb_id|imdb_id}" })
+    const imdb = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "key", lang: "it" })
+    expect(auto).toContain("/api/poster/{type}/{tmdb_id|imdb_id}")
+    expect(auto.replace("{tmdb_id|imdb_id}", "{imdb_id}")).toBe(imdb)
   })
 
   it("uses poster CDN base URL when configured", () => {
@@ -125,18 +125,36 @@ describe("buildUrlPattern", () => {
   })
 
   it("includes gradientHeight, blur, bf, bd, bs, rs params", () => {
-    const url = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "k", lang: "it", gradientHeight: 50, blurIntensity: 8, blurFade: 70, blurDarkness: 50, badgeStyle: "pill", rankingBadgeStyle: "bar" })
+    const url = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "k", lang: "it", gradientHeight: 50, blurIntensity: 8, blurFade: 70, blurDarkness: 50, badgeStyle: "pill", rankingBadgeStyle: "pill" })
     expect(url).toContain("gradHeight=50")
     expect(url).toContain("blur=8")
     expect(url).toContain("bf=70")
     expect(url).toContain("bd=50")
     expect(url).toContain("bs=pill")
-    expect(url).toContain("rs=bar")
+    expect(url).toContain("rs=pill")
   })
 
   it("encodes lang param", () => {
     const url = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "k", lang: "it" })
     expect(url).toContain("lang=it")
+  })
+
+  it("emits u= for the user namespace without dropping api_key", () => {
+    const uuid = "11111111-1111-4111-8111-111111111111"
+    const url = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "k", lang: "it", userId: uuid })
+    expect(url).toContain(`u=${uuid}`)
+    expect(url).toContain("api_key=k")
+  })
+
+  it("omits api_key/mdblist_key when the namespace holds server-side keys", () => {
+    const uuid = "11111111-1111-4111-8111-111111111111"
+    const url = buildUrlPattern({
+      ...baseBadgeParams, tmdbKey: "k", mdblistApiKey: "m", lang: "it",
+      userId: uuid, omitApiKey: true, omitMdblistKey: true,
+    })
+    expect(url).toContain(`u=${uuid}`)
+    expect(url).not.toContain("api_key=")
+    expect(url).not.toContain("mdblist_key=")
   })
 })
 
@@ -159,6 +177,28 @@ describe("buildPreviewUrl", () => {
   it("includes api_key", () => {
     const url = buildPreviewUrl(basePosterState, baseBadgeParams)
     expect(url).toContain("api_key=test-key")
+  })
+
+  it("includes u= for the user namespace (WYSIWYG nel namespace)", () => {
+    const uuid = "11111111-1111-4111-8111-111111111111"
+    const url = buildPreviewUrl({ ...basePosterState, userId: uuid }, baseBadgeParams)
+    expect(url).toContain(`u=${uuid}`)
+  })
+
+  it("omits u= without a namespace", () => {
+    const url = buildPreviewUrl(basePosterState, baseBadgeParams)
+    expect(url).not.toContain("u=")
+  })
+
+  it("includes wikidata_id for the REST fast-path with a valid QID", () => {
+    const url = buildPreviewUrl({ ...basePosterState, metaInfo: { ...basePosterState.metaInfo, wikidata_id: "Q23577" } }, baseBadgeParams)
+    expect(url).toContain("wikidata_id=Q23577")
+  })
+
+  it("omits wikidata_id without a valid QID", () => {
+    expect(buildPreviewUrl(basePosterState, baseBadgeParams)).not.toContain("wikidata_id=")
+    const url = buildPreviewUrl({ ...basePosterState, metaInfo: { ...basePosterState.metaInfo, wikidata_id: "nope" } }, baseBadgeParams)
+    expect(url).not.toContain("wikidata_id=")
   })
 
   it("includes poster param from previewPoster", () => {
@@ -226,6 +266,17 @@ describe("buildPreviewUrl", () => {
     expect(url).not.toContain("logo=")
   })
 
+  it("includes logo params in landscape even when the vertical poster is not clean", () => {
+    const url = buildPreviewUrl({
+      ...basePosterState,
+      selectedLogo: { file_path: "/logo.png", iso_639_1: "it", vote_average: 1, width: 200, height: 80 },
+      logoScale: 60,
+    }, { ...baseBadgeParams, posterShape: "landscape" as const, logoAlign: "left" as const })
+    expect(url).toContain("logo=%2Flogo.png")
+    expect(url).toContain("scale=60")
+    expect(url).toContain("shape=landscape")
+  })
+
   it("includes backdrop params when backdrop selected", () => {
     const url = buildPreviewUrl({
       ...basePosterState,
@@ -258,6 +309,13 @@ describe("buildPreviewUrl", () => {
     expect(url).toContain("side=left")
   })
 
+  it("always emits shape in preview (portrait default, landscape on switch)", () => {
+    // Sempre esplicito come badges/cr: senza, un mapping salvato con shape
+    // diversa scavalcerebbe il toggle editor (desync WYSIWYG).
+    expect(buildPreviewUrl(basePosterState, baseBadgeParams)).toContain("shape=poster")
+    expect(buildPreviewUrl(basePosterState, { ...baseBadgeParams, posterShape: "landscape" })).toContain("shape=landscape")
+  })
+
   it("includes netLogo=0 when networkLogo is false", () => {
     const url = buildPreviewUrl(basePosterState, { ...baseBadgeParams, networkLogo: false })
     expect(url).toContain("netLogo=0")
@@ -269,13 +327,13 @@ describe("buildPreviewUrl", () => {
   })
 
   it("includes gradHeight, blur, bf, bd, bs, rs", () => {
-    const url = buildPreviewUrl(basePosterState, { ...baseBadgeParams, gradientHeight: 50, blurIntensity: 8, blurFade: 70, blurDarkness: 50, badgeStyle: "pill", rankingBadgeStyle: "bar" })
+    const url = buildPreviewUrl(basePosterState, { ...baseBadgeParams, gradientHeight: 50, blurIntensity: 8, blurFade: 70, blurDarkness: 50, badgeStyle: "pill", rankingBadgeStyle: "pill" })
     expect(url).toContain("gradHeight=50")
     expect(url).toContain("blur=8")
     expect(url).toContain("bf=70")
     expect(url).toContain("bd=50")
     expect(url).toContain("bs=pill")
-    expect(url).toContain("rs=bar")
+    expect(url).toContain("rs=pill")
   })
 
   it("includes be=0 when blurEnabled is false", () => {
@@ -330,32 +388,41 @@ describe("buildPreviewUrl", () => {
     expect(url).not.toContain("ac=")
   })
 
-  // `ac` è un override MANUALE. L'editor estrae da solo un accent dal poster e
-  // lo mette in accentColor: emetterlo comunque cortocircuitava
-  // `resolveBadgeColors` sul server, così `accentDominant` non girava mai nella
-  // preview e la fascia sfocata prendeva il tint del colore complementare.
-  it("omits ac when accentColor is just the auto-detected colour", () => {
+  it("does not include ac param when accentColor equals the auto-detected color", () => {
     const url = buildPreviewUrl(
-      { ...basePosterState, accentColor: "#3ba9c7", autoAccentColor: "#3ba9c7" },
+      { ...basePosterState, accentColor: "#aabbcc", autoAccentColor: "#AABBCC" },
       baseBadgeParams,
     )
     expect(url).not.toContain("ac=")
   })
 
-  it("omits ac when the two differ only by hex case", () => {
+  it("includes ac param when accentColor differs from the auto-detected color", () => {
     const url = buildPreviewUrl(
-      { ...basePosterState, accentColor: "#3BA9C7", autoAccentColor: "#3ba9c7" },
-      baseBadgeParams,
-    )
-    expect(url).not.toContain("ac=")
-  })
-
-  it("emits ac when the user picked a colour other than the auto one", () => {
-    const url = buildPreviewUrl(
-      { ...basePosterState, accentColor: "#ff0000", autoAccentColor: "#3ba9c7" },
+      { ...basePosterState, accentColor: "#ff0000", autoAccentColor: "#aabbcc" },
       baseBadgeParams,
     )
     expect(url).toContain("ac=%23ff0000")
+  })
+
+  it("omits bl param when bottomEdgeColor is not computed (server decides)", () => {
+    const url = buildPreviewUrl({ ...basePosterState, bottomEdgeColor: null }, baseBadgeParams)
+    expect(url).not.toContain("bl=")
+  })
+
+  it("emits bl=1 for a light bottom without blur", () => {
+    const url = buildPreviewUrl(
+      { ...basePosterState, bottomEdgeColor: "#f0f0f0" },
+      { ...baseBadgeParams, blurEnabled: false },
+    )
+    expect(url).toContain("bl=1")
+  })
+
+  it("emits bl=0 for a light bottom darkened by the blur band", () => {
+    const url = buildPreviewUrl(
+      { ...basePosterState, bottomEdgeColor: "#f0f0f0" },
+      baseBadgeParams,
+    )
+    expect(url).toContain("bl=0")
   })
 
   it("includes badges=1 when globalBadges is true", () => {
@@ -420,5 +487,41 @@ describe("buildPreviewUrl", () => {
       ratingSources: ["tomatoes", "metacritic"],
     })
     expect(patternUrl).toContain("rsrc=tomatoes%2Cmetacritic")
+  })
+
+  it("handles videoFormats in buildPreviewUrl correctly", () => {
+    expect(buildPreviewUrl(basePosterState, baseBadgeParams)).not.toContain("formats=")
+    expect(buildPreviewUrl(basePosterState, { ...baseBadgeParams, videoFormats: null })).not.toContain("formats=")
+    expect(buildPreviewUrl(basePosterState, { ...baseBadgeParams, videoFormats: [] })).toContain("formats=none")
+    expect(buildPreviewUrl(basePosterState, { ...baseBadgeParams, videoFormats: ["dv", "atmos"] })).toContain("formats=dv,atmos")
+  })
+
+  it("always emits df in preview (WYSIWYG), only non-locale in pattern", () => {
+    // Preview sempre esplicita: senza, un default salvato diverso
+    // scavalcerebbe la scelta editor (desync WYSIWYG).
+    expect(buildPreviewUrl(basePosterState, baseBadgeParams)).toContain("df=locale")
+    expect(buildPreviewUrl({ ...basePosterState, dateFormat: "dmy" }, baseBadgeParams)).toContain("df=dmy")
+    const patternDefault = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "k", lang: "it" })
+    expect(patternDefault).not.toContain("df=")
+    const patternExplicit = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "k", lang: "it", dateFormat: "iso" })
+    expect(patternExplicit).toContain("df=iso")
+  })
+})
+
+// Casi del fork (Pictorium-HE) che upstream non ha: aggiunti al sync
+// del 2026-10-02 per non perderne nessuno.
+describe("fork: poster-url.test.ts", () => {
+  // Le chiavi sono uscite dagli URL poster SERVITI, ma questo è il template che
+  // l'utente copia per sé: Stremio non invia header custom, quindi qui devono
+  // esserci, o il render resta senza chiave.
+  it("keeps both keys, because this is the template the user copies", () => {
+    const url = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "key", lang: "it", mdblistApiKey: "mdb" })
+    expect(url).toContain("api_key=key")
+    expect(url).toContain("mdblist_key=mdb")
+  })
+  it("omits each key when it is not configured", () => {
+    const url = buildUrlPattern({ ...baseBadgeParams, tmdbKey: "", lang: "it" })
+    expect(url).not.toContain("api_key=")
+    expect(url).not.toContain("mdblist_key=")
   })
 })

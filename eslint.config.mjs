@@ -48,6 +48,10 @@ const eslintConfig = defineConfig([
     // rispetta le regole eslint dell'app (require(), export anonimi). Come
     // .claude/**, fuori dal lint -- altrimenti npm run verify fallisce.
     ".pi/**",
+    // Tooling locale .opencode (plugin + node_modules con test di terze
+    // parti): stesso motivo di .pi/** — vitest li raccoglie come suite del
+    // repo e falliscono per dipendenze/env mancanti loro, non nostre.
+    ".opencode/**",
   ]),
 ]);
 

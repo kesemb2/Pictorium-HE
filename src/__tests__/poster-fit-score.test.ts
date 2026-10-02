@@ -246,3 +246,67 @@ describe("rankPostersByFit", () => {
     expect(ranked).toEqual([])
   })
 })
+
+describe("scorePosterLogoFit landscape", () => {
+  function makeLandscapePoster(r: number, g: number, b: number): Promise<Buffer> {
+    const data = Buffer.alloc(768 * 432 * 3)
+    for (let i = 0; i < 768 * 432; i++) {
+      data[i * 3] = r; data[i * 3 + 1] = g; data[i * 3 + 2] = b
+    }
+    return sharp(data, { raw: { width: 768, height: 432, channels: 3 } })
+      .jpeg()
+      .toBuffer()
+  }
+
+  it("high score: white logo on dark backdrop", async () => {
+    const poster = await makeLandscapePoster(20, 20, 30)
+    const logo = await makeLogo(200, 80, 255, 255, 255)
+    const result = await scorePosterLogoFit({
+      posterBuffer: poster,
+      logoBuffer: logo,
+      logoScale: 75,
+      logoOffsetX: 0,
+      logoOffsetY: 0,
+      hasBadges: true,
+      shape: "landscape",
+    })
+    expect(result.score).toBeGreaterThan(0.6)
+    expect(result.metrics.contrast).toBeGreaterThan(0.4)
+  })
+
+  it("anchors the logo zone left inside the 768×432 canvas", async () => {
+    const poster = await makeLandscapePoster(20, 20, 30)
+    const logo = await makeLogo(200, 80, 255, 255, 255)
+    const result = await scorePosterLogoFit({
+      posterBuffer: poster,
+      logoBuffer: logo,
+      logoScale: 75,
+      logoOffsetX: 0,
+      logoOffsetY: 0,
+      hasBadges: true,
+      shape: "landscape",
+    })
+    expect(result.logoZone).toBeDefined()
+    const z = result.logoZone!
+    // Cinematic Left: pad 36px (logoAlignPadX a 768px di larghezza).
+    expect(z.left).toBe(36)
+    expect(z.left + z.width).toBeLessThanOrEqual(768)
+    expect(z.top + z.height).toBeLessThanOrEqual(432)
+  })
+
+  it("ranks dark backdrop higher than light backdrop for white logo", async () => {
+    const darkPoster = await makeLandscapePoster(20, 20, 30)
+    const lightPoster = await makeLandscapePoster(230, 230, 240)
+    const logo = await makeLogo(200, 80, 255, 255, 255)
+    const ranked = await rankPostersByFit(
+      [
+        { posterPath: "/light.jpg", posterBuffer: lightPoster },
+        { posterPath: "/dark.jpg", posterBuffer: darkPoster },
+      ],
+      logo,
+      75, 0, 0, true, undefined, null, "landscape",
+    )
+    expect(ranked.length).toBe(2)
+    expect(ranked[0].posterPath).toBe("/dark.jpg")
+  })
+})

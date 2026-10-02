@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
-import { fetchAllWikidata } from "@/lib/awards"
-import { getKeywords } from "@/lib/tmdb"
+import { fetchAllWikidata, directorBadgeLabel, isValidWikidataQid } from "@/lib/awards"
+import { createT } from "@/lib/i18n"
+import { getKeywords, resolveRouteApiKey } from "@/lib/tmdb"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { createLogger } from "@/lib/logger"
 
@@ -17,15 +18,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   if (!Number.isInteger(tmdbId) || tmdbId <= 0) {
     return Response.json({ awards: [], nominations: [], studios: [], keywords: [] })
   }
-  const apiKey = req.nextUrl.searchParams.get("api_key") || undefined
+  const apiKey = await resolveRouteApiKey(req)
   // Fix L10: try/catch — prima un throw di fetchAllWikidata/getKeywords
   // (outage upstream) cascava in un 500 generico.
   try {
+    // Fast-path REST solo se il chiamante porta già il QID (mai fetch TMDB
+    // extra qui: endpoint leggero, SPARQL resta il default).
+    const qidParam = req.nextUrl.searchParams.get("wikidata_id")
+    const wikidataId = isValidWikidataQid(qidParam) ? qidParam : undefined
     const [data, keywords] = await Promise.all([
-      fetchAllWikidata(tmdbId, mediaType),
+      fetchAllWikidata(tmdbId, mediaType, undefined, wikidataId ? { wikidataId } : undefined),
       getKeywords(mediaType, tmdbId, apiKey),
     ])
-    return Response.json({ ...data, keywords })
+    // Il director in cache è canonico (chiave senza lingua): reso qui nella
+    // lingua richiesta (default "it" = comportamento storico senza lang).
+    const lang = req.nextUrl.searchParams.get("lang") || "it"
+    return Response.json({ ...data, director: directorBadgeLabel(data.director, createT(lang)), keywords })
   } catch (e) {
     log.warn("Awards fetch failed", { mediaType, tmdbId, error: e instanceof Error ? e.message : String(e) })
     return Response.json({ error: "Awards data unavailable" }, { status: 502 })

@@ -21,6 +21,90 @@ function shouldLog(level: LogLevel): boolean {
   return LOG_LEVELS[level] >= CURRENT_LEVEL
 }
 
+const SENSITIVE_EXACT_KEYS = new Set([
+  "token",
+  "secret",
+  "password",
+  "apikey",
+  "api_key",
+  "tmdbkey",
+  "tmdb_key",
+  "tvdbkey",
+  "tvdb_key",
+  "tvdbapikey",
+  "tvdb_api_key",
+  "mdblistkey",
+  "mdblist_key",
+  "fanartkey",
+  "fanart_key",
+  "authorization",
+  "cookie",
+  "newpin",
+  "pin",
+])
+
+export function isSensitiveKey(rawKey: string): boolean {
+  const k = rawKey.toLowerCase()
+  if (SENSITIVE_EXACT_KEYS.has(k)) return true
+  // Safe whitelist check: non tocca chiavi di cache, cataloghi o routing
+  if (
+    k.endsWith("cachekey") ||
+    k.endsWith("posterkey") ||
+    k.endsWith("catalogkey") ||
+    k.endsWith("ratelimitkey") ||
+    k.endsWith("bucketkey") ||
+    k === "keys" ||
+    k === "kinds"
+  ) {
+    return false
+  }
+  // Suffix check per credenziali composte (es. userToken, clientSecret, oldPassword, tmdbApiKey, userPin)
+  if (
+    k.endsWith("token") ||
+    k.endsWith("secret") ||
+    k.endsWith("password") ||
+    k.endsWith("apikey") ||
+    k.endsWith("api_key") ||
+    k.endsWith("pin")
+  ) {
+    return true
+  }
+  return false
+}
+
+const MAX_SANITIZE_DEPTH = 4
+
+export function sanitizeLogData(
+  val: unknown,
+  depth = 0,
+  seen = new WeakSet<object>()
+): unknown {
+  if (val === null || typeof val !== "object") {
+    return val
+  }
+  if (depth >= MAX_SANITIZE_DEPTH) {
+    return "[MAX_DEPTH]"
+  }
+  if (seen.has(val)) {
+    return "[CIRCULAR]"
+  }
+  seen.add(val)
+
+  if (Array.isArray(val)) {
+    return val.map((item) => sanitizeLogData(item, depth + 1, seen))
+  }
+
+  const result: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+    if (isSensitiveKey(k)) {
+      result[k] = "[REDACTED]"
+    } else {
+      result[k] = sanitizeLogData(v, depth + 1, seen)
+    }
+  }
+  return result
+}
+
 function toJSON(entry: LogEntry): string {
   return JSON.stringify(entry)
 }
@@ -37,7 +121,8 @@ function formatHuman(entry: LogEntry): string {
 
 function log(level: LogLevel, module: string, message: string, data?: Record<string, unknown>): void {
   if (!shouldLog(level)) return
-  const entry: LogEntry = { level, module, message, data, timestamp: new Date().toISOString() }
+  const sanitizedData = data ? (sanitizeLogData(data) as Record<string, unknown>) : undefined
+  const entry: LogEntry = { level, module, message, data: sanitizedData, timestamp: new Date().toISOString() }
   const formatted = envWithFallback("LOG_FORMAT") === "json" ? toJSON(entry) : formatHuman(entry)
   switch (level) {
     case "error": return void console.error(formatted)

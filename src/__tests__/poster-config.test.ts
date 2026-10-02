@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { resolvePosterRenderConfig, clamp, type PosterRenderConfigInput } from "@/lib/poster-config"
+import { resolvePosterRenderConfig, resolvePosterShape, clamp, type PosterRenderConfigInput } from "@/lib/poster-config"
+import { buildStremioPosterSearchParams } from "@/lib/stremio-poster-params"
 import type { Mapping } from "@/lib/types"
 import type { PictoriumUserConfig } from "@/lib/config-token"
 
@@ -60,6 +61,7 @@ describe("resolvePosterRenderConfig", () => {
     expect(r.blurFade).toBe(50)
     expect(r.blurDarkness).toBe(30)
     expect(r.tintStrength).toBe(20)
+    expect(r.topShade).toBe(50)
     expect(r.badgesEnabled).toBe(true)
     expect(r.rankingEnabled).toBe(true)
     expect(r.ribbonSide).toBe("left")
@@ -76,12 +78,38 @@ describe("resolvePosterRenderConfig", () => {
     expect(r.badgeStyle).toBe("pill")
   })
 
+  it("landscape honors the style chain like portrait (no shadow force)", () => {
+    const r = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ bs: "pill", shape: "landscape" }),
+      mapping: mapping({ posterShape: "landscape", badgeStyle: "colored" }),
+      configOverride: config({ badgeStyle: "bar" }),
+      sd: { badgeStyle: "bordo" },
+    }))
+    expect(r.posterShape).toBe("landscape")
+    expect(r.badgeStyle).toBe("pill")
+  })
+
+  it("landscape degrades genre bar to shadow (unavailable in 16:9)", () => {
+    // Query esplicita.
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ bs: "bar", shape: "landscape" }),
+    }))).toMatchObject({ posterShape: "landscape", badgeStyle: "shadow" })
+    // Mapping salvato.
+    expect(resolvePosterRenderConfig(baseInput({
+      mapping: mapping({ posterShape: "landscape", badgeStyle: "bar" }),
+    }))).toMatchObject({ posterShape: "landscape", badgeStyle: "shadow" })
+    // Portrait invariato: bar resta valido.
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ bs: "bar" }),
+    }))).toMatchObject({ posterShape: "poster", badgeStyle: "bar" })
+  })
+
   it("query rs beats mapping, config token and server defaults", () => {
     // M6: come per bs, la query `rs` vince sul mapping salvato (WYSIWYG).
     const r = resolvePosterRenderConfig(baseInput({
       searchParams: new URLSearchParams({ rs: "pill" }),
       mapping: mapping({ rankingBadgeStyle: "colored" }),
-      configOverride: config({ rankingBadgeStyle: "bar" }),
+      configOverride: config({ rankingBadgeStyle: "bordo" }),
       sd: { rankingBadgeStyle: "netflix" },
     }))
     expect(r.rankingBadgeStyle).toBe("pill")
@@ -91,7 +119,7 @@ describe("resolvePosterRenderConfig", () => {
     const r = resolvePosterRenderConfig(baseInput({
       mapping: mapping({ rankingBadgeStyle: "default" }),
       configOverride: config({ rankingBadgeStyle: "colored" }),
-      sd: { rankingBadgeStyle: "bar" },
+      sd: { rankingBadgeStyle: "pill" },
     }))
     expect(r.rankingBadgeStyle).toBe("colored")
   })
@@ -128,6 +156,41 @@ describe("resolvePosterRenderConfig", () => {
       searchParams: new URLSearchParams({ rs: "colored" }),
     }))
     expect(withoutRank.rankingBadgeStyle).toBe("colored")
+  })
+
+  it("bordo/vetro ranking styles flow from query and server defaults", () => {
+    const fromQuery = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ rs: "vetro" }),
+    }))
+    expect(fromQuery.rankingBadgeStyle).toBe("vetro")
+    const fromDefaults = resolvePosterRenderConfig(baseInput({
+      sd: { rankingBadgeStyle: "bordo" },
+    }))
+    expect(fromDefaults.rankingBadgeStyle).toBe("bordo")
+  })
+
+  it("non-clean mappings without frozen values fall back to the poster-type defaults (20/80)", () => {
+    const r = resolvePosterRenderConfig(baseInput({
+      mapping: mapping({ language: "it" }),
+    }))
+    expect(r.blurHeight).toBe(20)
+    expect(r.blurFade).toBe(80)
+  })
+
+  it("clean mappings keep the global fallbacks (30/50)", () => {
+    const r = resolvePosterRenderConfig(baseInput({
+      mapping: mapping({ language: null }),
+    }))
+    expect(r.blurHeight).toBe(30)
+    expect(r.blurFade).toBe(50)
+  })
+
+  it("frozen mapping values beat the poster-type defaults", () => {
+    const r = resolvePosterRenderConfig(baseInput({
+      mapping: mapping({ language: "it", gradientHeight: 35, blurFade: 60 }),
+    }))
+    expect(r.blurHeight).toBe(35)
+    expect(r.blurFade).toBe(60)
   })
 
   it("clamps out-of-range blur/gradient query values", () => {
@@ -205,49 +268,32 @@ describe("resolvePosterRenderConfig", () => {
     expect(resolvePosterRenderConfig(baseInput()).networkLogo).toBe(true)
   })
 
-  it("accentDominant: query ad wins, then mapping, then config token, then sd, then true", () => {
-    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ ad: "1" }), mapping: mapping({ accentDominant: false }) })).accentDominant).toBe(true)
-    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ ad: "0" }), mapping: mapping({ accentDominant: true }) })).accentDominant).toBe(false)
-    expect(resolvePosterRenderConfig(baseInput({ mapping: mapping({ accentDominant: false }) })).accentDominant).toBe(false)
-    expect(resolvePosterRenderConfig(baseInput({ configOverride: config({ accentDominant: false }) })).accentDominant).toBe(false)
-    expect(resolvePosterRenderConfig(baseInput({ sd: { accentDominant: false } })).accentDominant).toBe(false)
-    // Default acceso: è il look di riferimento.
-    expect(resolvePosterRenderConfig(baseInput()).accentDominant).toBe(true)
+  it("networkLogoPosition: query netPos=top wins, then mapping, then config token, then sd, then auto", () => {
+    expect(resolvePosterRenderConfig(baseInput()).networkLogoPosition).toBe("auto")
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ netPos: "top" }),
+      mapping: mapping({ networkLogoPosition: "auto" }),
+    })).networkLogoPosition).toBe("top")
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ netPos: "TOP" }),
+    })).networkLogoPosition).toBe("top")
+    // Garbage in query cade al livello successivo (qui mapping).
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ netPos: "left" }),
+      mapping: mapping({ networkLogoPosition: "top" }),
+    })).networkLogoPosition).toBe("top")
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ netPos: "left" }),
+    })).networkLogoPosition).toBe("auto")
+    expect(resolvePosterRenderConfig(baseInput({ mapping: mapping({ networkLogoPosition: "top" }) })).networkLogoPosition).toBe("top")
+    expect(resolvePosterRenderConfig(baseInput({ configOverride: config({ networkLogoPosition: "top" }) })).networkLogoPosition).toBe("top")
+    expect(resolvePosterRenderConfig(baseInput({ sd: { networkLogoPosition: "top" } })).networkLogoPosition).toBe("top")
   })
 
-  it("badge geometry: query wins, then mapping, then config token, then sd, then the default", () => {
-    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ bts: "150" }), mapping: mapping({ badgeTopScale: 80 }) })).badgeTopScale).toBe(150)
-    expect(resolvePosterRenderConfig(baseInput({ mapping: mapping({ badgeTopScale: 80 }) })).badgeTopScale).toBe(80)
-    expect(resolvePosterRenderConfig(baseInput({ configOverride: config({ badgeBottomScale: 70 }) })).badgeBottomScale).toBe(70)
-    expect(resolvePosterRenderConfig(baseInput({ sd: { badgeBottomOffset: 25 } })).badgeBottomOffset).toBe(25)
-    expect(resolvePosterRenderConfig(baseInput()).badgeTopScale).toBe(100)
-    expect(resolvePosterRenderConfig(baseInput()).badgeBottomOffset).toBe(0)
-  })
-
-  it("badge geometry: an explicit 0 offset survives instead of falling through", () => {
-    // La forma storica `q.get(x) ? Number(x) : NaN` tratta "0" come assente,
-    // perché è una stringa falsy. Per gli offset lo zero è il default ED è
-    // significativo: senza `q.has` un `bbo=0` esplicito cadrebbe sul mapping.
-    const r = resolvePosterRenderConfig(baseInput({
-      searchParams: new URLSearchParams({ bbo: "0", bto: "0" }),
-      mapping: mapping({ badgeBottomOffset: 60, badgeTopOffset: 40 }),
-    }))
-    expect(r.badgeBottomOffset).toBe(0)
-    expect(r.badgeTopOffset).toBe(0)
-  })
-
-  it("badge geometry: out-of-range and non-numeric values are clamped, not trusted", () => {
-    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ bts: "9999" }) })).badgeTopScale).toBe(200)
-    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ bts: "1" }) })).badgeTopScale).toBe(50)
-    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ bts: "abc" }) })).badgeTopScale).toBe(100)
-    expect(resolvePosterRenderConfig(baseInput({ mapping: mapping({ badgeTopScale: 9999 }) })).badgeTopScale).toBe(200)
-  })
-
-  it("logoBottomOffset skips the mapping level, which logoOffsetY already owns", () => {
-    // Due controlli per titolo sullo stesso asse si contenderebbero il logo.
-    expect(resolvePosterRenderConfig(baseInput({ configOverride: config({ logoBottomOffset: 40 }) })).logoBottomOffset).toBe(40)
-    expect(resolvePosterRenderConfig(baseInput({ sd: { logoBottomOffset: -30 } })).logoBottomOffset).toBe(-30)
-    expect(resolvePosterRenderConfig(baseInput()).logoBottomOffset).toBe(0)
+  it("hideLogo: only explicit query hides the film logo (default false, no mapping/config chain)", () => {
+    expect(resolvePosterRenderConfig(baseInput()).hideLogo).toBe(false)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ hideLogo: "1" }) })).hideLogo).toBe(true)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ hideLogo: "0" }) })).hideLogo).toBe(false)
   })
 
   it("tintStrength: query wins, then mapping, then config token, then sd, then 20 (clamped 0..100)", () => {
@@ -258,6 +304,20 @@ describe("resolvePosterRenderConfig", () => {
     expect(resolvePosterRenderConfig(baseInput({ mapping: mapping({ tintStrength: 40 }) })).tintStrength).toBe(40)
     expect(resolvePosterRenderConfig(baseInput({ configOverride: config({ tintStrength: 70 }) })).tintStrength).toBe(70)
     expect(resolvePosterRenderConfig(baseInput({ sd: { tintStrength: 35 } })).tintStrength).toBe(35)
+  })
+
+  it("topShade: query wins, then mapping, config token, sd, then 50 (clamped 0..100)", () => {
+    expect(resolvePosterRenderConfig(baseInput()).topShade).toBe(50)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ ts: "60" }) })).topShade).toBe(60)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ ts: "999" }) })).topShade).toBe(100)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ ts: "abc" }) })).topShade).toBe(50)
+    expect(resolvePosterRenderConfig(baseInput({ mapping: mapping({ topShade: 40 }) })).topShade).toBe(40)
+    expect(resolvePosterRenderConfig(baseInput({ configOverride: config({ topShade: 70 }) })).topShade).toBe(70)
+    expect(resolvePosterRenderConfig(baseInput({ sd: { topShade: 35 } })).topShade).toBe(35)
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ ts: "60" }),
+      mapping: mapping({ topShade: 40 }),
+    })).topShade).toBe(60)
   })
 
   it("queryExtra picks up extra param or config customBadge", () => {
@@ -548,6 +608,52 @@ describe("resolvePosterRenderConfig", () => {
     expect(r.badgeRating).toBe(true)
   })
 
+  it("qualityBadgeStyle defaults to standard; query/mapping/config/sd chain wins in order", () => {
+    expect(resolvePosterRenderConfig(baseInput()).qualityBadgeStyle).toBe("standard")
+
+    const rQuery = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ qbs: "mono" }),
+      mapping: mapping({ qualityBadgeStyle: "color" }),
+      configOverride: config({ qualityBadgeStyle: "color" }),
+      sd: { qualityBadgeStyle: "color" },
+    }))
+    expect(rQuery.qualityBadgeStyle).toBe("mono")
+
+    const rMapping = resolvePosterRenderConfig(baseInput({
+      mapping: mapping({ qualityBadgeStyle: "mono" }),
+      configOverride: config({ qualityBadgeStyle: "color" }),
+      sd: { qualityBadgeStyle: "color" },
+    }))
+    expect(rMapping.qualityBadgeStyle).toBe("mono")
+
+    const rConfig = resolvePosterRenderConfig(baseInput({
+      configOverride: config({ qualityBadgeStyle: "color" }),
+      sd: { qualityBadgeStyle: "mono" },
+    }))
+    expect(rConfig.qualityBadgeStyle).toBe("color")
+
+    const rSd = resolvePosterRenderConfig(baseInput({ sd: { qualityBadgeStyle: "mono" } }))
+    expect(rSd.qualityBadgeStyle).toBe("mono")
+  })
+
+  it("qualityBadgeStyle falls back to standard on invalid values", () => {
+    const rQuery = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ qbs: "bar" }),
+    }))
+    expect(rQuery.qualityBadgeStyle).toBe("standard")
+    const rMapping = resolvePosterRenderConfig(baseInput({
+      mapping: mapping({ qualityBadgeStyle: "bar" as never }),
+    }))
+    expect(rMapping.qualityBadgeStyle).toBe("standard")
+  })
+
+  it("qbs is emitted only for non-standard styles (cache-stable URLs)", () => {
+    expect(buildStremioPosterSearchParams({}).get("qbs")).toBeNull()
+    expect(buildStremioPosterSearchParams({ qualityBadgeStyle: "standard" }).get("qbs")).toBeNull()
+    expect(buildStremioPosterSearchParams({ qualityBadgeStyle: "mono" }).get("qbs")).toBe("mono")
+    expect(buildStremioPosterSearchParams({ qualityBadgeStyle: "color" }).get("qbs")).toBe("color")
+  })
+
   it("preRelease defaults to false; query/config/sd chain wins in order", () => {
     expect(resolvePosterRenderConfig(baseInput()).preRelease).toBe(false)
 
@@ -615,17 +721,211 @@ describe("resolvePosterRenderConfig", () => {
     }))
     expect(rConfig.ratingSources).toEqual(["letterboxd", "trakt"])
   })
-  it("logo scale/offsets are clamped (R1 anti-DoS)", () => {
-    // Scale assurda → clamp 10..200 (prima arrivava a sharp → OOM/500).
-    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ scale: "999999" }) })).logoScale).toBe(200)
-    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ scale: "-50" }) })).logoScale).toBe(10)
-    // Non-numerico e 0 restano null come prima (nessun override).
-    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ scale: "abc" }) })).logoScale).toBeNull()
-    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ scale: "0" }) })).logoScale).toBeNull()
-    // Offset oltre ±2000px → clamp (comunque fuori canvas).
-    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ ox: "99999" }) })).logoOffsetX).toBe(2000)
-    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ oy: "-99999" }) })).logoOffsetY).toBe(-2000)
-    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ ox: "xyz" }) })).logoOffsetX).toBeNull()
+
+  it("ratingSources chain is query > mapping > config > server defaults > imdb+tmdb", () => {
+    const rMapping = resolvePosterRenderConfig(baseInput({
+      mapping: mapping({ ratingSources: ["imdb"] }),
+      configOverride: config({ ratingSources: ["letterboxd"] }),
+      sd: { ratingSources: ["trakt"] },
+    }))
+    expect(rMapping.ratingSources).toEqual(["imdb"])
+
+    const rSd = resolvePosterRenderConfig(baseInput({
+      sd: { ratingSources: ["trakt", "letterboxd"] },
+    }))
+    expect(rSd.ratingSources).toEqual(["trakt", "letterboxd"])
+
+    const rQuery = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ rsrc: "IMDb, Tomatoes " }),
+      mapping: mapping({ ratingSources: ["trakt"] }),
+    }))
+    expect(rQuery.ratingSources).toEqual(["imdb", "tomatoes"])
+
+    const rGarbage = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ rsrc: "xyz,??? " }),
+      sd: { ratingSources: ["metacritic"] },
+    }))
+    expect(rGarbage.ratingSources).toEqual(["metacritic"])
   })
 
+  it("sashOrder defaults to standard order; query sash wins over server defaults", () => {
+    expect(resolvePosterRenderConfig(baseInput()).sashOrder).toEqual(
+      ["upcoming", "rank", "new", "award", "extra"],
+    )
+
+    const rQuery = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ sash: "award,rank" }),
+      sd: { sashOrder: ["new"] },
+    }))
+    expect(rQuery.sashOrder).toEqual(["award", "rank"])
+
+    const rSd = resolvePosterRenderConfig(baseInput({ sd: { sashOrder: ["rank"] } }))
+    expect(rSd.sashOrder).toEqual(["rank"])
+
+    const rEmpty = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ sash: "" }),
+    }))
+    expect(rEmpty.sashOrder).toEqual([])
+
+    const rInvalid = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ sash: "tarocco" }),
+    }))
+    expect(rInvalid.sashOrder).toEqual(["upcoming", "rank", "new", "award", "extra"])
+  })
+
+  it("posterShape: query shape wins, then mapping, then config token, then sd, then poster", () => {
+    expect(resolvePosterShape(new URLSearchParams({ shape: "landscape" }), mapping({ posterShape: "poster" }), config({ posterShape: "poster" }), { posterShape: "poster" })).toBe("landscape")
+    expect(resolvePosterShape(new URLSearchParams({ shape: "poster" }), mapping({ posterShape: "landscape" }), config({ posterShape: "landscape" }), { posterShape: "landscape" })).toBe("poster")
+    expect(resolvePosterShape(new URLSearchParams(), mapping({ posterShape: "landscape" }), config({ posterShape: "poster" }), { posterShape: "poster" })).toBe("landscape")
+    expect(resolvePosterShape(new URLSearchParams(), null, config({ posterShape: "landscape" }), { posterShape: "poster" })).toBe("landscape")
+    expect(resolvePosterShape(new URLSearchParams(), null, null, { posterShape: "landscape" })).toBe("landscape")
+    expect(resolvePosterShape(new URLSearchParams(), null, null, {})).toBe("poster")
+  })
+
+  it("posterShape: unknown query value falls back to mapping/config/sd (never garbage)", () => {
+    expect(resolvePosterShape(new URLSearchParams({ shape: "panorama" }), mapping({ posterShape: "landscape" }), null, {})).toBe("landscape")
+    expect(resolvePosterShape(new URLSearchParams({ shape: "panorama" }), null, null, {})).toBe("poster")
+  })
+
+  it("gradientHeight defaults to 20 in landscape, 30 in portrait", () => {
+    expect(resolvePosterRenderConfig(baseInput()).blurHeight).toBe(30)
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ shape: "landscape" }),
+    })).blurHeight).toBe(20)
+    // Query/mapping/config espliciti vincono sul default di formato.
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ shape: "landscape", gradHeight: "40" }),
+    })).blurHeight).toBe(40)
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ shape: "landscape" }),
+      mapping: mapping({ gradientHeight: 45 }),
+    })).blurHeight).toBe(45)
+  })
+
+  it("blurFade defaults to 70 in landscape, 50 in portrait", () => {
+    expect(resolvePosterRenderConfig(baseInput()).blurFade).toBe(50)
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ shape: "landscape" }),
+    })).blurFade).toBe(70)
+    // Query/mapping espliciti vincono sul default di formato.
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ shape: "landscape", bf: "40" }),
+    })).blurFade).toBe(40)
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ shape: "landscape" }),
+      mapping: mapping({ blurFade: 55 }),
+    })).blurFade).toBe(55)
+  })
+
+  it("resolvePosterRenderConfig exposes posterShape from the same chain", () => {
+    expect(resolvePosterRenderConfig(baseInput()).posterShape).toBe("poster")
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ shape: "landscape" }),
+    })).posterShape).toBe("landscape")
+    expect(resolvePosterRenderConfig(baseInput({
+      mapping: mapping({ posterShape: "landscape" }),
+    })).posterShape).toBe("landscape")
+  })
+
+  it("logoAlign: query wins, global only in landscape, portrait always center", () => {    expect(resolvePosterRenderConfig(baseInput()).logoAlign).toBe("center")
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ shape: "landscape" }),
+    })).logoAlign).toBe("left")
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ shape: "landscape", align: "center" }),
+    })).logoAlign).toBe("center")
+    // Il default globale non sposta mai i portrait (contratto legacy).
+    expect(resolvePosterRenderConfig(baseInput({
+      sd: { logoAlign: "left" },
+    })).logoAlign).toBe("center")
+    expect(resolvePosterRenderConfig(baseInput({
+      sd: { logoAlign: "center" },
+      searchParams: new URLSearchParams({ shape: "landscape" }),
+    })).logoAlign).toBe("center")
+    expect(resolvePosterRenderConfig(baseInput({
+      sd: { logoAlign: "left" },
+      searchParams: new URLSearchParams({ shape: "landscape" }),
+    })).logoAlign).toBe("left")
+    // Query align=left su portrait viene ignorato (portrait resta sempre centrato).
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ align: "left" }),
+    })).logoAlign).toBe("center")
+    // Valori ignoti cadono sul default di formato, mai spazzatura al renderer.
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ shape: "landscape", align: "diagonal" }),
+    })).logoAlign).toBe("left")
+  })
+
+  it("gradHeight/blur/bf/bd fall back to server defaults when query/mapping/config are absent (v1.23.0 minimal URLs)", () => {
+    expect(resolvePosterRenderConfig(baseInput({
+      sd: { gradientHeight: 55, blurIntensity: 33, blurFade: 66, blurDarkness: 11 },
+    })).blurHeight).toBe(55)
+    expect(resolvePosterRenderConfig(baseInput({
+      sd: { gradientHeight: 55, blurIntensity: 33, blurFade: 66, blurDarkness: 11 },
+    })).blurIntensity).toBe(33)
+    expect(resolvePosterRenderConfig(baseInput({
+      sd: { gradientHeight: 55, blurIntensity: 33, blurFade: 66, blurDarkness: 11 },
+    })).blurFade).toBe(66)
+    expect(resolvePosterRenderConfig(baseInput({
+      sd: { gradientHeight: 55, blurIntensity: 33, blurFade: 66, blurDarkness: 11 },
+    })).blurDarkness).toBe(11)
+    // Query/mapping/config vincono sui defaults come prima.
+    expect(resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ gradHeight: "40" }),
+      sd: { gradientHeight: 55 },
+    })).blurHeight).toBe(40)
+    expect(resolvePosterRenderConfig(baseInput({
+      mapping: mapping({ gradientHeight: 45 }),
+      sd: { gradientHeight: 55 },
+    })).blurHeight).toBe(45)
+    expect(resolvePosterRenderConfig(baseInput({
+      configOverride: config({ gradientHeight: 42 }),
+      sd: { gradientHeight: 55 },
+    })).blurHeight).toBe(42)
+  })
+})
+
+// Casi del fork (Pictorium-HE) che upstream non ha: aggiunti al sync
+// del 2026-10-02 per non perderne nessuno.
+describe("fork: poster-config.test.ts", () => {
+  it("accentDominant: query ad wins, then mapping, then config token, then sd, then true", () => {
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ ad: "1" }), mapping: mapping({ accentDominant: false }) })).accentDominant).toBe(true)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ ad: "0" }), mapping: mapping({ accentDominant: true }) })).accentDominant).toBe(false)
+    expect(resolvePosterRenderConfig(baseInput({ mapping: mapping({ accentDominant: false }) })).accentDominant).toBe(false)
+    expect(resolvePosterRenderConfig(baseInput({ configOverride: config({ accentDominant: false }) })).accentDominant).toBe(false)
+    expect(resolvePosterRenderConfig(baseInput({ sd: { accentDominant: false } })).accentDominant).toBe(false)
+    // Default acceso: è il look di riferimento.
+    expect(resolvePosterRenderConfig(baseInput()).accentDominant).toBe(true)
+  })
+  it("badge geometry: query wins, then mapping, then config token, then sd, then the default", () => {
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ bts: "150" }), mapping: mapping({ badgeTopScale: 80 }) })).badgeTopScale).toBe(150)
+    expect(resolvePosterRenderConfig(baseInput({ mapping: mapping({ badgeTopScale: 80 }) })).badgeTopScale).toBe(80)
+    expect(resolvePosterRenderConfig(baseInput({ configOverride: config({ badgeBottomScale: 70 }) })).badgeBottomScale).toBe(70)
+    expect(resolvePosterRenderConfig(baseInput({ sd: { badgeBottomOffset: 25 } })).badgeBottomOffset).toBe(25)
+    expect(resolvePosterRenderConfig(baseInput()).badgeTopScale).toBe(100)
+    expect(resolvePosterRenderConfig(baseInput()).badgeBottomOffset).toBe(0)
+  })
+  it("badge geometry: an explicit 0 offset survives instead of falling through", () => {
+    // La forma storica `q.get(x) ? Number(x) : NaN` tratta "0" come assente,
+    // perché è una stringa falsy. Per gli offset lo zero è il default ED è
+    // significativo: senza `q.has` un `bbo=0` esplicito cadrebbe sul mapping.
+    const r = resolvePosterRenderConfig(baseInput({
+      searchParams: new URLSearchParams({ bbo: "0", bto: "0" }),
+      mapping: mapping({ badgeBottomOffset: 60, badgeTopOffset: 40 }),
+    }))
+    expect(r.badgeBottomOffset).toBe(0)
+    expect(r.badgeTopOffset).toBe(0)
+  })
+  it("badge geometry: out-of-range and non-numeric values are clamped, not trusted", () => {
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ bts: "9999" }) })).badgeTopScale).toBe(200)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ bts: "1" }) })).badgeTopScale).toBe(50)
+    expect(resolvePosterRenderConfig(baseInput({ searchParams: new URLSearchParams({ bts: "abc" }) })).badgeTopScale).toBe(100)
+    expect(resolvePosterRenderConfig(baseInput({ mapping: mapping({ badgeTopScale: 9999 }) })).badgeTopScale).toBe(200)
+  })
+  it("logoBottomOffset skips the mapping level, which logoOffsetY already owns", () => {
+    // Due controlli per titolo sullo stesso asse si contenderebbero il logo.
+    expect(resolvePosterRenderConfig(baseInput({ configOverride: config({ logoBottomOffset: 40 }) })).logoBottomOffset).toBe(40)
+    expect(resolvePosterRenderConfig(baseInput({ sd: { logoBottomOffset: -30 } })).logoBottomOffset).toBe(-30)
+    expect(resolvePosterRenderConfig(baseInput()).logoBottomOffset).toBe(0)
+  })
 })

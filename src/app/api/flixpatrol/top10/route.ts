@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server"
 import { getTop10, getSupportedPlatforms, getSupportedCountries } from "@/lib/flixpatrol"
+import { resolveRouteApiKey } from "@/lib/tmdb"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { createLogger } from "@/lib/logger"
 
@@ -8,7 +9,7 @@ const log = createLogger("flixpatrol-api")
 export async function GET(req: NextRequest) {
   const rl = await rateLimit(rateLimitKey(req), "tmdb")
   if (!rl.ok) return rateLimitResponse(rl.retAfter)
-  const apiKey = req.nextUrl.searchParams.get("api_key") || undefined
+  const apiKey = await resolveRouteApiKey(req)
   const platform = req.nextUrl.searchParams.get("platform") || "netflix"
   const country = req.nextUrl.searchParams.get("country") || "italy"
   const valid = getSupportedPlatforms().find((p) => p.slug === platform)

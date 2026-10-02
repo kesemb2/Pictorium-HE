@@ -13,11 +13,79 @@
  */
 
 import sharp from "sharp"
+import { LAND_W, LAND_H } from "./constants"
 
 // ---- Standard poster dimensions (single source of truth) ----
 
 export const STD_W = 500
 export const STD_H = 750
+
+// ---- Landscape poster dimensions ----
+// Definite in constants.ts (browser-safe): qui solo re-export per
+// retrocompatibilità degli import server esistenti.
+// Canvas 16:9 per i poster orizzontali stile Nuvio: la base è il backdrop
+// TMDB (sfondo, già 16:9 nativo) invece del poster verticale.
+export { LAND_W, LAND_H } from "./constants"
+
+/**
+ * Tier dimensionale TMDB ottimale per la base landscape: `w780` pesa
+ * ~100-200KB contro i backdrop `original` (spesso <1MB ma talvolta
+ * multi-MB) ed è geometricamente perfetto per LAND_W=768 — niente
+ * upscale, niente spreco di RAM/latenza sul cold render.
+ */
+export const LANDSCAPE_BACKDROP_SIZE = "w780" as const
+
+/**
+ * URL CDN TMDB per un backdrop alla risoluzione landscape. Stessa allowlist
+ * SSRF di imgSrc (poster-render-helpers): solo path TMDB o host consentito,
+ * altrimenti lancia come imgSrc.
+ */
+const TMDB_IMG_BASE = process.env.TMDB_IMG_URL || "https://image.tmdb.org/t/p"
+
+export function landscapeBackdropUrl(path: string): string {
+  if (path.startsWith("http")) {
+    if (!path.startsWith(`${TMDB_IMG_BASE}/`)) {
+      throw new Error(`Blocked external image URL: ${path.slice(0, 60)}...`)
+    }
+    return path
+  }
+  return `${TMDB_IMG_BASE}/${LANDSCAPE_BACKDROP_SIZE}${path}`
+}
+
+/**
+ * Base 16:9 di fallback quando il titolo non ha backdrop TMDB: poster
+ * verticale centrato a piena altezza su fondo ricavato dal poster stesso
+ * (cover blurrato e scurito — pillarbox cinematografico). Nessun titolo
+ * resta mai con un riquadro rotto in landscape.
+ */
+export async function pillarboxLandscapeBase(portraitBuf: Buffer): Promise<Buffer> {
+  const bg = await sharp(portraitBuf)
+    .resize(LAND_W, LAND_H, { fit: "cover", position: "centre" })
+    .blur(18)
+    .modulate({ brightness: 0.55, saturation: 1.1 })
+    .toBuffer()
+  const meta = await sharp(portraitBuf).metadata()
+  const fw = Math.max(1, Math.round(LAND_H * ((meta.width || 2) / (meta.height || 3))))
+  const fg = await sharp(portraitBuf).resize(fw, LAND_H, { fit: "fill" }).toBuffer()
+  return sharp(bg)
+    .composite([{ input: fg, left: Math.round((LAND_W - fw) / 2), top: 0 }])
+    .jpeg({ quality: 90 })
+    .toBuffer()
+}
+
+/**
+ * Base 2:3 di fallback quando il titolo non ha alcun poster TMDB utilizzabile
+ * ma ha un backdrop: cover-crop del backdrop sul canvas portrait con focus
+ * sul soggetto (`sharp.strategy.attention` — salienza visiva/volti, non mero
+ * dettaglio come `entropy`). Nessun titolo orfano resta mai con un 404.
+ * Trigger SOLO in sostituzione del 404, mai su poster esistenti.
+ */
+export async function cropBackdropToPortrait(backdropBuf: Buffer): Promise<Buffer> {
+  return sharp(backdropBuf)
+    .resize(STD_W, STD_H, { fit: "cover", position: sharp.strategy.attention })
+    .jpeg({ quality: 90 })
+    .toBuffer()
+}
 
 // ---- Math utilities ----
 
@@ -221,13 +289,14 @@ export function sliceRgb(raw: RgbData, left: number, top: number, width: number,
 }
 
 /**
- * Decode a poster buffer once to raw RGB at STD_W × STD_H (fit: fill),
- * tightly packed (3 bytes/pixel). All region analyses then slice this buffer
- * instead of running sharp per region.
+ * Decode a poster buffer once to raw RGB at the given canvas size
+ * (default STD_W × STD_H portrait; landscape callers pass LAND_W × LAND_H),
+ * fit fill, tightly packed (3 bytes/pixel). All region analyses then slice
+ * this buffer instead of running sharp per region.
  */
-export async function decodePosterRaw(buffer: Buffer): Promise<RgbData> {
+export async function decodePosterRaw(buffer: Buffer, width = STD_W, height = STD_H): Promise<RgbData> {
   const { data, info } = await sharp(buffer)
-    .resize(STD_W, STD_H, { fit: "fill" })
+    .resize(width, height, { fit: "fill" })
     .removeAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true })

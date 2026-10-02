@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
+import { resolveRouteApiKey } from "@/lib/tmdb"
 import { cacheGet, cacheSet } from "@/lib/cache"
 import { MDBLISTS, fetchMDBList } from "@/lib/mdblist"
 import { createLogger } from "@/lib/logger"
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
     return Response.json({ match: cached })
   }
 
-  const apiKey = req.nextUrl.searchParams.get('api_key') || ""
+  const apiKey = (await resolveRouteApiKey(req, "mdblist")) || ""
   if (!apiKey) return Response.json({ match: null })
 
   try {

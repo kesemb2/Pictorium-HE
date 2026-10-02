@@ -29,6 +29,7 @@ or auditing it for speed, preserve them. They were established in the
 |---|---|---|---|
 | Auto-fit **scoring** (CPU) | 1200 ms | `PICTORIUM_AUTO_FIT_TIMEOUT_MS` | 300–10000 |
 | Auto-fit **fetch** (logo + candidates, I/O) | 5000 ms | `PICTORIUM_AUTO_FIT_FETCH_TIMEOUT_MS` | 1000–15000 |
+| Auto-fit **candidate count** (clean posters ranked) | 8 | `PICTORIUM_AUTO_FIT_CANDIDATE_COUNT` | 1–32 |
 | Wikidata awards | 2500 ms | `WIKIDATA_TIMEOUT` | – |
 | Rating wait (TMDB+IMDb upgrade) | 1500 ms | `PICTORIUM_RATING_WAIT_MS` | 300–10000 |
 | MDBList aggregated rating (internal fetch) | 1500 ms | `PICTORIUM_MDBLIST_TIMEOUT_MS` | 300–10000 |
@@ -59,8 +60,9 @@ Rating wait is SHARED with the tmdb-details route (same knob).
 ### 4. Blur as raw RGBA overlay (no PNG roundtrip)
 - `applyBlur` returns `{ overlay, top, height }` raw RGBA; `poster-service.ts`
   composites it as the FIRST layer of the final composite, under
-  backdrop/vignette/badges. The `modulate` lives in the same pipeline →
-  one decode + one encode total. Do NOT reintroduce the `blur → modulate`
+  backdrop/vignette/badges → one decode + one encode total. The artwork gets
+  NO global color retouch (the old `.modulate(1.01/1.06)` was removed: it
+  altered auteur grading). Do NOT reintroduce modulate or a `blur → modulate`
   PNG roundtrip.
 
 ### 5. Buffer reuse from best-fit
@@ -111,13 +113,17 @@ Rating wait is SHARED with the tmdb-details route (same knob).
 - `catalogLogo` memo: 24h hit / 1h miss, keyed without `api_key`. Never cache
   exceptions — a transient timeout must not hide an existing logo for an hour.
 
-### 11. Canonical jpeg render + webp variant (C3)
-- Posters ALWAYS render canonical jpeg; webp is a response-time conversion
-  (same q80/effort-2 opts as the direct pipeline encode), cached as variant
-  with a derived etag, 304-capable. Inflight/coalescing is keyed canonical so
-  one render serves both formats. Accept-avif negotiates to webp; only an
-  explicit `?fmt=avif` keeps a dedicated legacy render. Do NOT reintroduce
-  per-format render keys — that triples cold renders and cache memory.
+### 11. Canonical render + variant (C3)
+- Posters render ONE canonical (webp di default, jpeg con
+  `PICTORIUM_IMAGE_FORMAT=jpeg`); the other format is a response-time
+  conversion (same opts as the direct pipeline encode: webp q85/effort-2,
+  jpeg q82+mozjpeg), cached as variant with a derived etag, 304-capable.
+  Inflight/coalescing is keyed canonical so one render serves both formats.
+  The cache key carries a canonical marker (`:fmtwebp`) so an env flip can
+  never serve old-format bytes under a new key. Accept-avif negotiates to
+  webp; only an explicit `?fmt=avif` keeps a dedicated legacy render. Do NOT
+  reintroduce per-format render keys — that triples cold renders and cache
+  memory. `?fmt=` stays an explicit override in both directions.
 
 ### 12. KV L2 policy (C1, opt-in)
 - L2 (Vercel KV) carries small JSON only (≤64KB, never Buffers — no base64

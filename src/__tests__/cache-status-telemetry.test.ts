@@ -32,6 +32,16 @@ describe("Cache Status & Telemetry", () => {
     delete process.env.ADMIN_TOKEN
   })
 
+  const TEST_TOKEN = "secret"
+
+  /** Richiesta autenticata (il token va anche in env: resolveAdminToken). */
+  function statusReq() {
+    process.env.ADMIN_TOKEN = TEST_TOKEN
+    return new Request("http://localhost:3000/api/cache/status", {
+      headers: { "x-admin-token": TEST_TOKEN },
+    })
+  }
+
   it("exposes and increments telemetry counters in getPosterStats()", () => {
     const initial = getPosterStats()
     expect(initial.staleHits).toBe(0)
@@ -58,7 +68,7 @@ describe("Cache Status & Telemetry", () => {
   })
 
   it("returns circuit breaker booleans in GET /api/cache/status", async () => {
-    const req = new Request("http://localhost:3000/api/cache/status")
+    const req = statusReq()
     const res = await GET(req as never)
     expect(res.status).toBe(200)
 
@@ -87,7 +97,7 @@ describe("Cache Status & Telemetry", () => {
     }
     expect(isBreakerOpen()).toBe(true)
 
-    const req = new Request("http://localhost:3000/api/cache/status")
+    const req = statusReq()
     const res = await GET(req as never)
     expect(res.status).toBe(200)
 
@@ -102,7 +112,7 @@ describe("Cache Status & Telemetry", () => {
     recordPosterStaleHit()
     recordTvdbRescue()
 
-    const req = new Request("http://localhost:3000/api/cache/status")
+    const req = statusReq()
     const res = await GET(req as never)
     expect(res.status).toBe(200)
 

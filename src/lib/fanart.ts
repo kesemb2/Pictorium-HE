@@ -1,177 +1,239 @@
 /**
- * Client fanart.tv (API v3).
+ * Client Fanart.tv (poster verticali v1).
  *
- * Serve a colmare i buchi di TMDB: molti titoli non hanno nessun poster
- * "clean" (senza testo) e finora l'unica strada era un poster con il titolo
- * già stampato sopra. fanart.tv ha spesso poster textless e loghi trasparenti
- * — anche in lingue che TMDB non copre.
+ * Solo poster: film via ID TMDB (`/movies/{tmdbId}`), serie via ID TVDB
+ * (`/tv/{tvdbId}`, risolto dagli external_ids TMDB — mai il TMDB-id della
+ * serie passato diretto a Fanart). Niente SDK: fetch + `timedFetch`.
  *
- * La chiave è SOLO una variabile d'ambiente d'istanza: senza di essa ogni
- * funzione qui ritorna liste vuote e il resto del render si comporta
- * esattamente come prima.
+ * Chiave progetto server-only (`PICTORIUM_FANART_KEY`, fallback
+ * `POSTERIUM_FANART_KEY`): non entra mai in cache-key, mapping o URL.
+ * La `client_key` personale è rinviata (richiederebbe cache per-contesto).
  */
 
-import { envWithFallback } from "@/lib/env-compat"
-import { cacheGet, cacheSet } from "@/lib/cache"
-import { http } from "@/lib/http"
+import { z } from "zod"
 import { createLogger } from "@/lib/logger"
+import { envWithFallback } from "@/lib/env-compat"
+import { combineAbortSignals } from "./abort-signal"
+import { timedFetch } from "./outbound-stats"
 
 const log = createLogger("fanart")
 
-const FANART_BASE = "https://webservice.fanart.tv/v3"
+const FANART_BASE = process.env.FANART_API_URL || "https://webservice.fanart.tv/v3"
 
-/** Host da cui fanart.tv serve le immagini (allowlist SSRF in `imgSrc`). */
-export const FANART_ASSET_PREFIX = "https://assets.fanart.tv/"
+/** Deadline complessiva Fanart (rete upstream lenta = 502, mai hang). */
+export const FANART_TIMEOUT_MS = 5000
+/** Hit con poster: 24h. Assenza confermata (404/vuoto): 10 minuti. */
+export const FANART_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+export const FANART_EMPTY_TTL_MS = 10 * 60 * 1000
+const FANART_CACHE_MAX = 500
 
-const CACHE_TTL = 24 * 60 * 60 * 1000
-const CACHE_TAG = "fanart"
-
-/**
- * fanart.tv marca le immagini SENZA testo con lingua "None", che sull'API esce
- * come "00". È la regola che rende utile questo livello: senza il filtro
- * prenderemmo poster con il titolo già stampato, cioè quello che stiamo
- * cercando di evitare.
- */
-const TEXTLESS_LANG = "00"
-
-export interface FanartImage {
-  readonly id: string
+export interface FanartPoster {
   readonly url: string
-  /** ISO 639-1, "00" per textless, stringa vuota quando fanart la omette. */
-  readonly lang: string
+  /** Codice lingua Fanart così com'è ("en", "it", "00", ...). "00"/assente
+   *  = lingua ignota, MAI "senza scritte": la UI conserva la distinzione. */
+  readonly lang: string | null
   readonly likes: number
+  readonly width?: number
+  readonly height?: number
 }
 
-export interface FanartArtwork {
-  readonly posters: readonly FanartImage[]
-  readonly backgrounds: readonly FanartImage[]
-  readonly logos: readonly FanartImage[]
+export type FanartMediaType = "movie" | "tv"
+
+/** Errori tipizzati: solo questi distinguono "assenza" da "guasto". */
+export class FanartError extends Error {
+  readonly code: "not_configured" | "auth" | "upstream" | "timeout"
+  constructor(code: FanartError["code"], message: string) {
+    super(message)
+    this.code = code
+  }
 }
 
-const EMPTY: FanartArtwork = { posters: [], backgrounds: [], logos: [] }
+const fanartItemSchema = z.object({
+  id: z.union([z.string(), z.number()]).optional(),
+  url: z.string(),
+  lang: z.string().nullable().optional(),
+  likes: z.union([z.string(), z.number()]).nullable().optional(),
+}).passthrough()
 
-export function fanartApiKey(): string | undefined {
-  // Anche il nome NUDO, come ogni altro provider della casa (mdblist.ts,
-  // tmdb.ts, meta-handler.ts). Prima si leggeva solo `PICTORIUM_FANART_API_KEY`
-  // e una chiave messa come `FANART_API_KEY` veniva ignorata in silenzio.
-  const raw = envWithFallback("FANART_API_KEY")
-    || process.env.FANART_API_KEY
-    || process.env.FANART_KEY
-  return raw?.trim() || undefined
-}
+const fanartMovieSchema = z.object({
+  movieposter: z.array(fanartItemSchema).optional(),
+}).passthrough()
 
-export function isFanartEnabled(): boolean {
-  return !!fanartApiKey()
-}
+const fanartTvSchema = z.object({
+  tvposter: z.array(fanartItemSchema).optional(),
+}).passthrough()
 
-/** Immagini textless (lingua "None"). fanart omette il campo su record vecchi. */
-export function textlessOnly(images: readonly FanartImage[]): readonly FanartImage[] {
-  return images.filter((i) => i.lang === TEXTLESS_LANG || i.lang === "")
-}
-
-/** Solo URL sul CDN fanart: un record manomesso non deve farci uscire altrove. */
-function isFanartAsset(url: unknown): url is string {
-  return typeof url === "string" && url.startsWith(FANART_ASSET_PREFIX)
+function toLikes(raw: string | number | null | undefined): number {
+  if (typeof raw === "number") return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0
+  if (typeof raw === "string") {
+    const n = parseInt(raw, 10)
+    return Number.isFinite(n) && n > 0 ? n : 0
+  }
+  return 0
 }
 
 /**
- * Normalizza un array grezzo dell'API. Tutto è opzionale lato fanart, quindi si
- * scartano i record senza URL utilizzabile invece di propagare undefined.
- * L'ordine è per `likes` decrescente: è il voto della community, e senza di esso
- * prenderemmo semplicemente il primo caricato.
+ * Normalizza+ordina una lista poster Fanart: scarta URL non-http(s),
+ * deduplica per URL (tiene i likes massimi), ordina per likes desc.
+ * Pura e testabile.
  */
-function parseImages(raw: unknown): FanartImage[] {
-  if (!Array.isArray(raw)) return []
-  const out: FanartImage[] = []
-  for (const item of raw) {
-    if (!item || typeof item !== "object") continue
-    const rec = item as Record<string, unknown>
-    if (!isFanartAsset(rec.url)) continue
-    const likes = Number(rec.likes)
-    out.push({
-      id: typeof rec.id === "string" ? rec.id : String(rec.id ?? ""),
-      url: rec.url,
-      lang: typeof rec.lang === "string" ? rec.lang : "",
-      likes: Number.isFinite(likes) ? likes : 0,
-    })
+export function normalizeFanartPosters(items: readonly unknown[]): FanartPoster[] {
+  const byUrl = new Map<string, FanartPoster>()
+  for (const raw of items) {
+    const parsed = fanartItemSchema.safeParse(raw)
+    if (!parsed.success) continue
+    const url = parsed.data.url.trim()
+    if (!url.startsWith("http://") && !url.startsWith("https://")) continue
+    const entry: FanartPoster = {
+      url,
+      lang: typeof parsed.data.lang === "string" && parsed.data.lang.length > 0 ? parsed.data.lang : null,
+      likes: toLikes(parsed.data.likes),
+    }
+    const prev = byUrl.get(url)
+    if (!prev || entry.likes > prev.likes) byUrl.set(url, entry)
   }
-  return out.sort((a, b) => b.likes - a.likes)
+  return [...byUrl.values()].sort((a, b) => b.likes - a.likes)
 }
 
-function pick(body: Record<string, unknown>, ...keys: string[]): FanartImage[] {
-  return keys.flatMap((k) => parseImages(body[k]))
-    .sort((a, b) => b.likes - a.likes)
+/** Chiave progetto Fanart d'istanza (server-only, fallback quando lo spazio non ne ha una). */
+export function fanartProjectKey(): string | undefined {
+  const key = envWithFallback("FANART_KEY")
+  return key && key.trim().length > 0 ? key.trim() : undefined
 }
 
-async function fetchArtwork(path: string, cacheKey: string, signal?: AbortSignal): Promise<FanartArtwork> {
-  const apiKey = fanartApiKey()
-  if (!apiKey) return EMPTY
-  const cached = cacheGet<FanartArtwork>(cacheKey)
-  if (cached) return cached
-  let body: Record<string, unknown>
+export interface FanartFetchOpts {
+  /** Chiave TMDB per risolvere il tvdb_id delle serie (external_ids). */
+  tmdbApiKey?: string
+  /** Chiave progetto Fanart dello spazio utente: vince sull'env d'istanza. */
+  fanartKey?: string
+}
+
+interface FanartCacheEntry {
+  posters: FanartPoster[]
+  expiry: number
+}
+
+const fanartCache = new Map<string, FanartCacheEntry>()
+
+function cacheKeyFor(type: FanartMediaType, id: number): string {
+  // Solo tipo+id: la chiave progetto è globale d'istanza, mai per-utente.
+  return `${type}:${id}`
+}
+
+function cacheGetValid(key: string): FanartPoster[] | null {
+  const entry = fanartCache.get(key)
+  if (!entry) return null
+  if (Date.now() > entry.expiry) {
+    fanartCache.delete(key)
+    return null
+  }
+  return entry.posters
+}
+
+function cacheSetBounded(key: string, posters: FanartPoster[], ttlMs: number): void {
+  if (fanartCache.size >= FANART_CACHE_MAX) fanartCache.delete(fanartCache.keys().next().value!)
+  fanartCache.set(key, { posters, expiry: Date.now() + ttlMs })
+}
+
+/** Solo per i test. */
+export function __resetFanartCache(): void {
+  fanartCache.clear()
+}
+
+function isTimeoutError(e: unknown): boolean {
+  return e instanceof Error && (e.name === "AbortError" || e.name === "TimeoutError")
+}
+
+async function fetchFanartJson(path: string, apiKey: string, signal: AbortSignal): Promise<Response> {
+  const url = new URL(`${FANART_BASE}${path}`)
+  // Chiave solo nella URL outbound (contratto Fanart v3 `?api_key=`), mai
+  // in cache-key, log o risposta.
+  url.searchParams.set("api_key", apiKey)
+  return timedFetch(url.toString(), {
+    signal: combineAbortSignals(signal, FANART_TIMEOUT_MS),
+    headers: { Accept: "application/json" },
+  })
+}
+
+/**
+ * Poster verticali Fanart per un titolo TMDB.
+ * - movie: `/movies/{tmdbId}` diretto.
+ * - tv: risolve `tvdb_id` via TMDB external_ids (serve `opts.tmdbApiKey`), poi
+ *   `/tv/{tvdbId}`. Senza tvdb_id → [] (titolo non interrogabile, non un
+ *   guasto). Il TMDB-id della serie non viene MAI passato a Fanart.
+ *
+ * Chiave effettiva: `opts.fanartKey` (spazio utente) > env d'istanza. La cache
+ * resta globale per titolo (come il neutral-cache TMDB): i risultati non
+ * contengono segreti, solo URL CDN — nessuno spazio vede la chiave altrui.
+ *
+ * Lancia FanartError su: chiave mancante, auth (401/403), timeout, guasti
+ * (429/5xx/rete). Solo 404 e 200-senza-poster ritornano [] (e solo quelli
+ * finiscono nella negative cache da 10 minuti).
+ */
+export async function getFanartPosters(
+  type: FanartMediaType,
+  tmdbId: number,
+  opts?: FanartFetchOpts,
+  signal?: AbortSignal,
+): Promise<FanartPoster[]> {
+  const apiKey = opts?.fanartKey?.trim() || fanartProjectKey()
+  if (!apiKey) throw new FanartError("not_configured", "Fanart.tv project key is not configured")
+  if (!Number.isInteger(tmdbId) || tmdbId <= 0) return []
+
+  const key = cacheKeyFor(type, tmdbId)
+  const hit = cacheGetValid(key)
+  if (hit) return hit
+
+  const work = async (): Promise<FanartPoster[]> => {
+    if (type === "movie") {
+      const res = await fetchFanartJson(`/movies/${tmdbId}`, apiKey, signal ?? AbortSignal.timeout(FANART_TIMEOUT_MS))
+      return await readPosterList(res, fanartMovieSchema, "movieposter")
+    }
+    // Serie: serve il TVDB id.
+    let tvdbId: number | null = null
+    try {
+      const { getExternalIds } = await import("@/lib/tmdb")
+      const ext = await getExternalIds("tv", tmdbId, opts?.tmdbApiKey, signal)
+      tvdbId = ext?.tvdb_id && ext.tvdb_id > 0 ? ext.tvdb_id : null
+    } catch {
+      // external_ids fallito = guasto upstream, non "nessun artwork".
+      throw new FanartError("upstream", "TMDB external_ids unavailable")
+    }
+    if (!tvdbId) return []
+    const res = await fetchFanartJson(`/tv/${tvdbId}`, apiKey, signal ?? AbortSignal.timeout(FANART_TIMEOUT_MS))
+    return await readPosterList(res, fanartTvSchema, "tvposter")
+  }
+
+  let posters: FanartPoster[]
   try {
-    body = await http<Record<string, unknown>>(
-      `${FANART_BASE}${path}?api_key=${encodeURIComponent(apiKey)}`,
-      { signal, timeout: 8000, retries: 1 },
-    )
+    posters = await work()
   } catch (e) {
-    // Un 404 significa solo "fanart non conosce questo titolo", che è normale.
-    // Non si mette in cache un fallimento: un outage non deve spegnere il
-    // livello per 24 ore.
-    log.info("fanart lookup failed", { path, error: e instanceof Error ? e.message : String(e) })
-    return EMPTY
+    if (e instanceof FanartError) throw e
+    if (isTimeoutError(e) || signal?.aborted) throw new FanartError("timeout", "Fanart.tv request timed out")
+    log.warn("Fanart fetch failed", { type, tmdbId })
+    throw new FanartError("upstream", "Fanart.tv unavailable")
   }
-  if (!body || typeof body !== "object") return EMPTY
-  const artwork: FanartArtwork = {
-    posters: pick(body, "movieposter", "tvposter"),
-    backgrounds: pick(body, "moviebackground", "showbackground"),
-    // hd* prima: stessa immagine a risoluzione maggiore.
-    logos: pick(body, "hdmovielogo", "movielogo", "hdtvlogo", "clearlogo"),
+  // Cache: hit 24h, assenza confermata 10min. Guasti non arrivano qui.
+  cacheSetBounded(key, posters, posters.length > 0 ? FANART_CACHE_TTL_MS : FANART_EMPTY_TTL_MS)
+  return posters
+}
+
+async function readPosterList(
+  res: Response,
+  schema: typeof fanartMovieSchema | typeof fanartTvSchema,
+  field: "movieposter" | "tvposter",
+): Promise<FanartPoster[]> {
+  // 404 Fanart = voce assente: assenza confermata, non guasto.
+  if (res.status === 404) return []
+  if (res.status === 401 || res.status === 403) throw new FanartError("auth", "Fanart.tv rejected the project key")
+  if (res.status === 429 || res.status >= 500) throw new FanartError("upstream", `Fanart.tv responded with status ${res.status}`)
+  if (!res.ok) throw new FanartError("upstream", `Fanart.tv responded with status ${res.status}`)
+  const json = (await res.json().catch(() => null)) as unknown
+  const parsed = schema.safeParse(json)
+  if (!parsed.success) {
+    log.warn("Fanart response shape changed", { field })
+    throw new FanartError("upstream", "Fanart.tv returned an unexpected response")
   }
-  cacheSet(cacheKey, artwork, [CACHE_TAG], CACHE_TTL)
-  return artwork
-}
-
-/**
- * Immagine fanart nella forma che l'editor già sa disegnare. `file_path` è un
- * URL assoluto: `posterUrl` (utils.ts) lo lascia passare intatto, `imgSrc` lo
- * ammette perché assets.fanart.tv è in allowlist, e la CSP lo consente.
- * `source: "fanart"` serve alla griglia per marcare la provenienza.
- */
-export interface FanartAsTmdbImage {
-  readonly file_path: string
-  readonly iso_639_1: string | null
-  readonly width: number
-  readonly height: number
-  readonly vote_average: number
-  readonly source: "fanart"
-}
-
-/**
- * `lang` "00" (senza testo) diventa `iso_639_1: null`, che è esattamente come
- * TMDB marca i poster puliti: così i filtri "clean" dell'editor funzionano sui
- * due insiemi senza sapere da dove vengono.
- */
-export function toTmdbShape(images: readonly FanartImage[]): FanartAsTmdbImage[] {
-  return images.map((i) => ({
-    file_path: i.url,
-    iso_639_1: i.lang && i.lang !== TEXTLESS_LANG ? i.lang : null,
-    width: 0,
-    height: 0,
-    vote_average: i.likes,
-    source: "fanart" as const,
-  }))
-}
-
-/** Artwork di un film, per id TMDB o IMDb (fanart accetta entrambi). */
-export function getFanartMovie(id: string | number, signal?: AbortSignal): Promise<FanartArtwork> {
-  return fetchArtwork(`/movies/${encodeURIComponent(String(id))}`, `fanart:movie:${id}`, signal)
-}
-
-/**
- * Artwork di una serie. fanart indicizza le serie per id TheTVDB, NON TMDB:
- * il chiamante lo ricava da `external_ids`. Senza quell'id il livello si salta.
- */
-export function getFanartTv(tvdbId: string | number, signal?: AbortSignal): Promise<FanartArtwork> {
-  return fetchArtwork(`/tv/${encodeURIComponent(String(tvdbId))}`, `fanart:tv:${tvdbId}`, signal)
+  const raw = (parsed.data as Record<string, unknown[]>)[field]
+  return normalizeFanartPosters(Array.isArray(raw) ? raw : [])
 }

@@ -1,6 +1,20 @@
-import { combineAbortSignals } from "./abort-signal"
 import { cacheGetShared, cacheSet } from "./cache"
+import { matchStudios, isValidWikidataQid } from "./badge-labels"
+
+// Re-export per compatibilità: le label pure vivono in badge-labels.ts
+// (foglia client-safe); poster route, poster-badge e test continuano a
+// importarle da qui senza modifiche.
+export { matchTMDBStudios, getAwardBadgeLabel, getNominationBadgeLabel, isValidWikidataQid } from "./badge-labels"
+import { combineAbortSignals } from "./abort-signal"
+import { timedFetch } from "./outbound-stats"
 import { createCircuitBreaker } from "@/lib/circuit-breaker"
+import { createLogger } from "@/lib/logger"
+import { matchDirectorName } from "./director-label"
+
+// Re-export: i chiamanti storici importano da qui.
+export { directorBadgeLabel, matchDirectorName } from "./director-label"
+
+const log = createLogger("awards")
 
 interface AwardRule {
   keywords: string[]
@@ -30,7 +44,15 @@ export interface WikidataResult {
    */
   director: string | null
   /** Etichetta ebraica dello stesso regista, quando Wikidata ce l'ha. */
-  directorHe: string | null
+  directorHe?: string | null
+  /**
+   * True quando il risultato è un fallback da fallimento upstream (negative
+   * cache, breaker aperto, timeout, 5xx) invece di un esito accertato.
+   * Assente nei mock storici dei test → trattato come false dal chiamante.
+   * Serve a non congelare in cache 24h un poster senza premi per un miss
+   * transitorio (stesso pattern di qualityEphemeral nella route poster).
+   */
+  degraded?: boolean
 }
 
 // ---- Circuit breaker (Wikidata SPARQL) ----
@@ -63,9 +85,10 @@ function recordFailure(): void {
 // Esposte per i test unitari del circuito (stesso pattern di __resetJWRankingsCache).
 export { isBreakerOpen, recordSuccess, recordFailure }
 
-/** Solo per i test: azzera lo stato del circuit breaker. */
+/** Solo per i test: azzera lo stato dei circuit breaker Wikidata. */
 export function __resetCircuitBreaker(): void {
   wikidataBreaker.reset()
+  wikidataRestBreaker.reset()
 }
 
 // ---- Concurrency limiter (max 2 parallel SPARQL queries) ----
@@ -111,7 +134,7 @@ async function sparqlQuery(query: string, signal?: AbortSignal): Promise<Record<
     for (let attempt = 0; attempt < 2; attempt++) {
       const timeout = 5000 + Math.round(Math.random() * 1000)
       try {
-        const res = await fetch(url, {
+        const res = await timedFetch(url, {
           headers: { "User-Agent": "Pictorium/1.0" },
           signal: combineAbortSignals(signal, timeout),
         })
@@ -145,7 +168,7 @@ async function sparqlQuery(query: string, signal?: AbortSignal): Promise<Record<
   }
 }
 
-// ---- Matching logic ----
+// ---- Matching logic (studio/network + label vivono in badge-labels.ts) ----
 
 function matchRules(labels: string[]): string[] {
   const found = new Set<string>()
@@ -159,116 +182,17 @@ function matchRules(labels: string[]): string[] {
   return [...found]
 }
 
-const NETWORKS = [
-  "Netflix", "Amazon Prime Video", "Apple TV+", "Disney+", "HBO", "Max",
-  "Paramount+", "Crunchyroll", "Prime Video",
-  "Rai", "Mediaset", "Sky", "Cartoon Network", "Nickelodeon", "Adult Swim",
-  "Universal Pictures", "Warner Bros.", "Paramount Pictures", "Columbia Pictures",
-  "20th Century Studios", "Walt Disney Pictures", "Marvel Studios", "Pixar",
-  "Studio Ghibli", "Sony Pictures",
-]
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-}
-
-/** Match network name with word boundaries to avoid false positives (e.g. "rai" in "raindrop") */
-function nameMatchesNetwork(name: string, network: string): boolean {
-  if (name === network) return true
-  // Use word boundary: matches "rai cinema" but not "raindrop" or "tutorial"
-  // Escape network for RegExp (e.g. "Apple TV+", "Paramount+" contain +)
-  return new RegExp(`\\b${escapeRegExp(network)}\\b`).test(name)
-}
-
-export function matchTMDBStudios(names: string[]): string[] {
-  const found = new Set<string>()
-  for (const name of names) {
-    const lower = name.toLowerCase().trim()
-    for (const net of NETWORKS) {
-      const nLower = net.toLowerCase()
-      if (lower === nLower || nameMatchesNetwork(lower, nLower)) {
-        found.add(net)
-        break
-      }
-    }
-  }
-  return [...found]
-}
-
-function matchStudios(labels: string[]): string[] {
-  const unique = [...new Set(labels.map((l) => l.trim()))].filter(Boolean)
-  const found = new Set<string>()
-  for (const label of unique) {
-    const lower = label.toLowerCase()
-    for (const net of NETWORKS) {
-      const nLower = net.toLowerCase()
-      if (lower === nLower || nameMatchesNetwork(lower, nLower)) {
-        found.add(net)
-        break
-      }
-    }
-  }
-  return [...found]
-}
-
-const DIRECTORS = [
-  "Alfred Hitchcock", "Orson Welles", "John Ford", "Akira Kurosawa",
-  "Charles Chaplin", "Federico Fellini", "Ingmar Bergman", "Steven Spielberg",
-  "Stanley Kubrick", "D.W. Griffith", "William Wyler", "Howard Hawks",
-  "David Lean", "Martin Scorsese", "Jean Renoir", "Robert Bresson",
-  "Jean-Luc Godard", "Frank Capra", "Andrei Tarkovsky", "Luis Buñuel",
-  "Michael Powell", "John Huston", "Michael Curtiz", "Billy Wilder",
-  "Carl Theodor Dreyer", "Yasujirō Ozu", "Woody Allen", "Abel Gance",
-  "Ernst Lubitsch", "Paul Thomas Anderson", "Francis Ford Coppola",
-  "Michelangelo Antonioni", "Sergio Leone", "F.W. Murnau", "Ridley Scott",
-  "David Lynch", "George Stevens", "Fritz Lang", "Roman Polanski",
-  "Miloš Forman", "James Cameron", "Tim Burton", "Elia Kazan",
-  "François Truffaut", "George Cukor", "Buster Keaton", "Werner Herzog",
-  "Sergei Eisenstein", "Cecil B. DeMille", "Kenji Mizoguchi", "Nicholas Ray",
-  "Tod Browning", "John Sturges", "Otto Preminger", "Victor Fleming",
-  "Carol Reed", "Roberto Rossellini", "Fred Zinnemann", "Sidney Lumet",
-  "Marcel Carné", "Quentin Tarantino", "Raoul Walsh", "Henry King",
-  "Dziga Vertov", "Lewis Milestone", "Rex Ingram", "Christopher Nolan",
-  "Max Ophüls",
-]
-
-/**
- * Nomi ebraici curati. Vincono sull'etichetta di Wikidata, che per alcuni
- * registi manca e per altri usa una traslitterazione insolita. Non serve
- * coprire tutta la lista: chi non è qui prende l'etichetta di Wikidata, e chi
- * non ha nemmeno quella resta in inglese.
- */
-const DIRECTOR_HE: Record<string, string> = {
-  "Alfred Hitchcock": "אלפרד היצ'קוק",
-  "Steven Spielberg": "סטיבן ספילברג",
-  "Stanley Kubrick": "סטנלי קובריק",
-  "Martin Scorsese": "מרטין סקורסזה",
-  "Quentin Tarantino": "קוונטין טרנטינו",
-  "Christopher Nolan": "כריסטופר נולאן",
-  "Akira Kurosawa": "אקירה קורוסאווה",
-  "Orson Welles": "אורסון וולס",
-  "Francis Ford Coppola": "פרנסיס פורד קופולה",
-  "Ridley Scott": "רידלי סקוט",
-  "James Cameron": "ג'יימס קמרון",
-  "David Lynch": "דיוויד לינץ'",
-  "Woody Allen": "וודי אלן",
-  "Tim Burton": "טים ברטון",
-  "Roman Polanski": "רומן פולנסקי",
-  "Billy Wilder": "בילי ויילדר",
-  "Ingmar Bergman": "אינגמר ברגמן",
-  "Federico Fellini": "פדריקו פליני",
-  "Charles Chaplin": "צ'רלי צ'פלין",
-  "Sergio Leone": "סרג'ו ליאונה",
-  "Paul Thomas Anderson": "פול תומאס אנדרסון",
-  "Sidney Lumet": "סידני לומט",
-}
-
 /** Estrae "Q123" da un URI entità Wikidata (o da un QID già nudo). */
 function qidFromEntityUri(value: string | null | undefined): string | null {
   if (!value) return null
   const m = value.match(/(Q\d+)\s*$/)
   return m ? m[1] : null
 }
+
+// Base Action API sovrascrivibile via env: nei test E2E punta al mock server
+// locale (stesso pattern di WIKIDATA_SPARQL_URL per lo SPARQL).
+const wikidataApiBase = () =>
+  process.env.WIKIDATA_API_URL || "https://www.wikidata.org/w/api.php"
 
 /**
  * Titolo del sitelink enwiki di un item (es. Q25191 → "Christopher Nolan").
@@ -277,8 +201,8 @@ function qidFromEntityUri(value: string | null | undefined): string | null {
  */
 async function enwikiTitle(qid: string, signal?: AbortSignal): Promise<string | null> {
   try {
-    const url = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${encodeURIComponent(qid)}&props=sitelinks&sitefilter=enwiki&format=json`
-    const res = await fetch(url, {
+    const url = `${wikidataApiBase()}?action=wbgetentities&ids=${encodeURIComponent(qid)}&props=sitelinks&sitefilter=enwiki&format=json`
+    const res = await timedFetch(url, {
       headers: { "User-Agent": "Pictorium/1.0" },
       signal: combineAbortSignals(signal, 4000),
     })
@@ -291,45 +215,15 @@ async function enwikiTitle(qid: string, signal?: AbortSignal): Promise<string | 
   }
 }
 
-/**
- * Il nome CANONICO del regista riconosciuto (una voce di DIRECTORS), o null.
- * Non compone nessuna etichetta: quello è compito di `directorBadgeLabel`,
- * che conosce la lingua della richiesta.
- */
-function matchDirectorName(name: string | null): string | null {
-  if (!name) return null
-  const lower = name.toLowerCase().trim()
-  for (const d of DIRECTORS) {
-    if (lower === d.toLowerCase() || lower.includes(d.toLowerCase())) return d
-  }
-  return null
-}
+const WIKIDATA_CACHE_TTL = 24 * 60 * 60 * 1000
 
-/**
- * Etichetta del badge regista nella lingua della richiesta. In ebraico prova
- * prima la mappa curata, poi l'etichetta di Wikidata, e in ultimo ripiega sul
- * nome inglese: un nome in latino è meglio di nessun badge.
- */
-export function directorBadgeLabel(
-  name: string | null,
-  hebrewLabel: string | null | undefined,
-  t: (key: string, params?: Record<string, string | number>) => string,
-  locale?: string,
-): string | null {
-  if (!name) return null
-  const wantsHebrew = (locale || "").slice(0, 2).toLowerCase() === "he"
-  const localized = wantsHebrew ? (DIRECTOR_HE[name] || hebrewLabel || null) : null
-  return t("badge.director", { name: localized || name })
-}
-
-// Negativa in memoria per i fallimenti TRANSITORI (breaker, timeout, 5xx).
-// Senza, un outage SPARQL fa pagare la race da 2500ms a ogni singolo render, e
-// su una griglia fredda è il costo che domina. Mai in KV: durante un outage il
-// KV è l'ultima cosa da stressare. TTL 60s, così al recupero i premi tornano
-// entro un minuto.
+// Negative cache in-memory per i fallimenti transitori (breaker, timeout,
+// 5xx): senza, un outage SPARQL fa pagare la race da 2500ms a OGNI render.
+// Solo memoria locale (mai KV: durante un outage il KV è l'ultima cosa da
+// stressare), TTL 60s: al recovery i premi ricompaiono entro un minuto.
 const WIKIDATA_NEGATIVE_TTL_MS = 60_000
-const WIKIDATA_NEGATIVE_MAX = 500
 const wikidataNegative = new Map<string, number>()
+const WIKIDATA_NEGATIVE_MAX = 500
 
 function wikidataNegativeHit(cacheKey: string): boolean {
   const at = wikidataNegative.get(cacheKey)
@@ -346,21 +240,141 @@ function wikidataNegativeSet(cacheKey: string): void {
   wikidataNegative.set(cacheKey, Date.now())
 }
 
-/** Solo per i test. */
+/** Solo per i test: svuota la negative cache. */
 export function __resetWikidataNegativeForTest(): void {
   wikidataNegative.clear()
 }
 
-const WIKIDATA_CACHE_TTL = 24 * 60 * 60 * 1000
+// ---- Circuit breaker isolato per il fast-path REST (Action API) ----
+// Stesse soglie dello SPARQL ma finestre indipendenti: un outage SPARQL non
+// deve chiudere il REST (CDN diversa) e viceversa.
+const wikidataRestBreaker = createCircuitBreaker({ name: "awards-rest", failureThreshold: 5, backoffMs: 60_000 })
+
+/** Solo per i test: azzera il breaker REST. */
+export function __resetWikidataRestBreakerForTest(): void {
+  wikidataRestBreaker.reset()
+}
+
+interface WikidataClaims {
+  awardQids: string[]
+  nominationQids: string[]
+  directorQids: string[]
+  networkQids: string[]
+}
+
+function claimQids(claims: Record<string, unknown> | undefined, prop: string): string[] {
+  if (!claims || !Array.isArray((claims as Record<string, unknown>)[prop])) return []
+  const out: string[] = []
+  for (const item of (claims as Record<string, unknown[]>)[prop]) {
+    const qid = qidFromEntityUri(
+      (item as { mainsnak?: { datavalue?: { value?: { id?: string } } } })?.mainsnak?.datavalue?.value?.id,
+    )
+    if (qid) out.push(qid)
+  }
+  return out
+}
+
+/**
+ * Fast-path REST via Wikidata Action API (CDN Fastly, sub-secondo) usando il
+ * wikidata_id nativo di TMDB. Due RTT sequenziali dentro il budget della race
+ * (claims ~1000ms + labels batch ~800ms < 2500ms):
+ *  1. claims P166 (premi) / P1411 (nomination) / P57 (regista) / P449 (network, solo tv);
+ *  2. un'unica labels batch en (cap 50 QID).
+ * Ritorna null su qualsiasi fallimento (fallback SPARQL a valle).
+ */
+export async function fetchWikidataRest(
+  qid: string,
+  mediaType: "movie" | "tv",
+  signal?: AbortSignal,
+): Promise<WikidataResult | null> {
+  if (!isValidWikidataQid(qid)) return null
+  if (wikidataRestBreaker.isOpen()) return null
+  if (signal?.aborted) return null
+  try {
+    const claimsUrl = `${wikidataApiBase()}?action=wbgetentities&ids=${encodeURIComponent(qid)}&props=claims&format=json`
+    const claimsRes = await timedFetch(claimsUrl, {
+      headers: { "User-Agent": "Pictorium/1.0" },
+      signal: combineAbortSignals(signal, 1000),
+    })
+    if (!claimsRes.ok) {
+      wikidataRestBreaker.recordFailure()
+      return null
+    }
+    const claimsJson = await claimsRes.json()
+    const claims = claimsJson?.entities?.[qid]?.claims as Record<string, unknown> | undefined
+    if (!claims) {
+      wikidataRestBreaker.recordFailure()
+      return null
+    }
+    const parsed: WikidataClaims = {
+      awardQids: claimQids(claims, "P166"),
+      nominationQids: claimQids(claims, "P1411"),
+      directorQids: claimQids(claims, "P57"),
+      // P449 (network) ha senso solo per le serie: lo SPARQL lo chiede solo lì.
+      networkQids: mediaType === "tv" ? claimQids(claims, "P449") : [],
+    }
+    const allQids = [...new Set([...parsed.awardQids, ...parsed.nominationQids, ...parsed.directorQids, ...parsed.networkQids])].slice(0, 50)
+    const labels = new Map<string, string>()
+    // Etichette ebraiche dallo stesso batch, per il badge regista in ebraico:
+    // senza, il fast-path vincerebbe sullo SPARQL e i registi tornerebbero
+    // in latino ogni volta che il QID è noto.
+    const labelsHe = new Map<string, string>()
+    if (allQids.length > 0) {
+      const labelsUrl = `${wikidataApiBase()}?action=wbgetentities&ids=${encodeURIComponent(allQids.join("|"))}&props=labels&languages=en%7Che&format=json`
+      const labelsRes = await timedFetch(labelsUrl, {
+        headers: { "User-Agent": "Pictorium/1.0" },
+        signal: combineAbortSignals(signal, 800),
+      })
+      if (!labelsRes.ok) {
+        wikidataRestBreaker.recordFailure()
+        return null
+      }
+      const labelsJson = await labelsRes.json()
+      const entities = labelsJson?.entities as Record<string, { labels?: Record<string, { value?: string }> }> | undefined
+      if (entities) {
+        for (const [id, ent] of Object.entries(entities)) {
+          const label = ent?.labels?.en?.value
+          if (typeof label === "string" && label.length > 0) labels.set(id, label)
+          const he = ent?.labels?.he?.value
+          if (typeof he === "string" && he.length > 0) labelsHe.set(id, he)
+        }
+      }
+    }
+    const labelOf = (ids: string[]): string[] =>
+      ids.map((id) => labels.get(id)).filter((l): l is string => !!l)
+
+    // Regista: label batch, poi sitelink enwiki come ultima spiaggia (stesso
+    // pattern del ramo SPARQL per item senza label).
+    const directorQid = parsed.directorQids.find((id) => labels.has(id)) ?? parsed.directorQids[0] ?? null
+    let director: string | null = directorQid ? labels.get(directorQid) ?? null : null
+    const directorHe = directorQid ? labelsHe.get(directorQid) ?? null : null
+    if (!director && parsed.directorQids[0]) {
+      director = await enwikiTitle(parsed.directorQids[0], signal).catch(() => null)
+    }
+
+    wikidataRestBreaker.recordSuccess()
+    return {
+      awards: matchRules(labelOf(parsed.awardQids)),
+      nominations: matchRules(labelOf(parsed.nominationQids)),
+      studios: matchStudios(labelOf(parsed.networkQids)),
+      director: matchDirectorName(director),
+      directorHe,
+    }
+  } catch {
+    wikidataRestBreaker.recordFailure()
+    return null
+  }
+}
 
 export async function fetchAllWikidata(
   tmdbId: number,
   mediaType: "movie" | "tv",
-  // Signal esterno, es. la deadline del render: senza, il fetch sopravvive al
-  // watchdog e continua in background dopo che la route ha già risposto 503.
+  // R3: signal esterno (es. deadline render) — senza, il fetch sopravvive al
+  // watchdog come zombie anche dopo il 503.
   signal?: AbortSignal,
+  opts?: { wikidataId?: string | null },
 ): Promise<WikidataResult> {
-  const cacheKey = `wikidata:${mediaType}:${tmdbId}`
+  const cacheKey = `wikidata:v2:${mediaType}:${tmdbId}`
 
   // Check shared cache first (typed, with TTL). L1 + L2 KV cross-istanza:
   // la prima istanza che riesce condivide con tutte (prima ogni istanza
@@ -368,8 +382,25 @@ export async function fetchAllWikidata(
   const cached = await cacheGetShared<WikidataResult>(cacheKey, ["wikidata"])
   if (cached) return cached
   if (wikidataNegativeHit(cacheKey)) {
-    return { awards: [], nominations: [], studios: [], director: null, directorHe: null }
+    return { awards: [], nominations: [], studios: [], director: null, directorHe: null, degraded: true }
   }
+
+  // Fast-path REST a costo zero RTT TMDB (QID già in mano dalla route via
+  // append_to_response=external_ids). Successo → stessa cache condivisa 24h
+  // dello SPARQL; fallimento → fallback SPARQL sotto (QID null o assente
+  // compreso: TMDB lo restituisce null per una fetta reale di titoli).
+  if (isValidWikidataQid(opts?.wikidataId)) {
+    const rest = await fetchWikidataRest(opts.wikidataId, mediaType, signal).catch(() => null)
+    if (rest) {
+      // Osservabilità path (Dexter): con PICTORIUM_LOG_LEVEL=debug si vede se
+      // il badge è arrivato via REST veloce o via lotteria SPARQL.
+      log.debug("Wikidata fast-path REST hit", { mediaType, tmdbId, awards: rest.awards.length })
+      const hit: WikidataResult = { ...rest, degraded: false }
+      cacheSet(cacheKey, hit, ["wikidata"], WIKIDATA_CACHE_TTL)
+      return hit
+    }
+  }
+  log.debug("Wikidata SPARQL fallback", { mediaType, tmdbId, hadQid: isValidWikidataQid(opts?.wikidataId) })
 
   const tmdbProp = mediaType === "movie" ? "P4947" : "P4983"
   const networkQuery = mediaType === "tv" ? `OPTIONAL { ?item wdt:P449 ?network . ?network rdfs:label ?networkLabel . FILTER(LANG(?networkLabel) = "en") }` : ""
@@ -388,10 +419,12 @@ export async function fetchAllWikidata(
   try {
     const bindings = await sparqlQuery(query, signal)
     if (bindings === null) {
-      // Fallimento transitorio (breaker, timeout, 5xx): non inquinare la cache
-      // 24h, ma nemmeno ripagarlo a ogni render per i prossimi 60 secondi.
-      wikidataNegativeSet(cacheKey)
-      return { awards: [], nominations: [], studios: [], director: null, directorHe: null }
+      // Fallimento transitorio (breaker, timeout, 5xx): non inquinare la cache 24h,
+      // ma registra la negativa breve così l'outage non tassa ogni render.
+      // Mai a breaker già aperto: lì sopprime già lui (stesso TTL), e la
+      // negativa non deve nascondere i fallimenti che il breaker deve contare.
+      if (!isBreakerOpen()) wikidataNegativeSet(cacheKey)
+      return { awards: [], nominations: [], studios: [], director: null, directorHe: null, degraded: true }
     }
 
     const awardLabels = new Set<string>()
@@ -420,10 +453,12 @@ export async function fetchAllWikidata(
       if (qid) directorQids.add(qid)
     }
 
-    // Item regista senza label (vandalismo o decadimento dei dati: Q25191 è
-    // rimasto senza label ma col sitelink "Christopher Nolan"). Una sola
-    // chiamata API veloce, mai un join sitelink in SPARQL — lì manderebbe in
-    // timeout l'intera query. Il nome canonico resta quello di matchDirectorName.
+    // Titolo enwiki come fallback quando l'item regista non ha label
+    // (vandalismo/decadimento dati: es. Q25191 senza label ma con sitelink
+    // "Christopher Nolan"). Solo quando la label manca: 1 chiamata API
+    // veloce, mai join sitelink in SPARQL (troppo lento, manda in timeout
+    // l'intera query). In cache va il nome canonico (matchDirectorName),
+    // mai reso: la chiave non contiene la lingua.
     if (!director) {
       const fallbackQid = [...directorQids][0]
       if (fallbackQid) {
@@ -431,41 +466,24 @@ export async function fetchAllWikidata(
         if (wikiTitle) director = matchDirectorName(wikiTitle)
       }
     }
-
     const result: WikidataResult = {
       awards: matchRules([...awardLabels]),
       nominations: matchRules([...nominationLabels]),
       studios: matchStudios([...networkLabels]),
       director,
       directorHe,
+      degraded: false,
     }
 
     // Store in shared cache with tags for targeted invalidation
     cacheSet(cacheKey, result, ["wikidata"], WIKIDATA_CACHE_TTL)
     return result
   } catch {
-    wikidataNegativeSet(cacheKey)
-    return { awards: [], nominations: [], studios: [], director: null, directorHe: null }
+    return { awards: [], nominations: [], studios: [], director: null, directorHe: null, degraded: true }
   }
 }
 
 export async function fetchAwards(tmdbId: number, mediaType: "movie" | "tv"): Promise<string[]> {
   const data = await fetchAllWikidata(tmdbId, mediaType)
   return data.awards
-}
-
-export function getAwardBadgeLabel(awards: string[], t?: (key: string, params?: Record<string, string | number>) => string): string | null {
-  const priority = ["Oscar", "Cannes", "Venezia", "BAFTA", "Golden Globe", "Emmy", "David"]
-  for (const a of priority) {
-    if (awards.includes(a)) return t ? t("badge.winner", { name: t(`award.${a.toLowerCase().replace(/ /g, "_")}`) }) : `${a}`
-  }
-  return null
-}
-
-export function getNominationBadgeLabel(nominations: string[], t?: (key: string, params?: Record<string, string | number>) => string): string | null {
-  const priority = ["Oscar", "Cannes", "Venezia", "BAFTA", "Golden Globe", "Emmy", "David"]
-  for (const a of priority) {
-    if (nominations.includes(a)) return t ? t("badge.nominee", { name: t(`award.${a.toLowerCase().replace(/ /g, "_")}`) }) : `Candidato ${a}`
-  }
-  return null
 }

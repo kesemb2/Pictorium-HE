@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server"
+import { resolveRouteApiKey } from "@/lib/tmdb"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { cacheGet, cacheSet } from "@/lib/cache"
 import { createLogger } from "@/lib/logger"
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest) {
   const rl = await rateLimit(rateLimitKey(req), "tmdb")
   if (!rl.ok) return rateLimitResponse(rl.retAfter)
 
-  const apiKey = req.nextUrl.searchParams.get("api_key") || ""
+  const apiKey = (await resolveRouteApiKey(req)) || ""
   const origLang = req.nextUrl.searchParams.get("with_original_language")
   // Fix L18: la cache key NON frammenta per chiave — i dati sono pubblici e
   // identici per ogni chiave (la chiave è solo un gate di accesso, come nelle

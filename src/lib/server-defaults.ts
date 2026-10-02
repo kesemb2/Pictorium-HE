@@ -3,22 +3,88 @@ import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { DATA_DIR } from "@/lib/data-dir"
 import { createLogger } from "@/lib/logger"
-import type { BadgeStyle, RankingBadgeStyle } from "@/lib/badge-styles"
-import { isBadgeStyle, isRankingBadgeStyle } from "@/lib/badge-styles"
+import type { BadgeStyle, RankingBadgeStyle, QualityBadgeStyle } from "@/lib/badge-styles"
+import type { StreamQuality } from "@/lib/quality-tiers"
+import type { SashBucket } from "@/lib/badge-priority"
+import type { VideoFormat } from "@/lib/av-specs"
+import { isVideoFormat } from "@/lib/av-specs"
+import { isBadgeStyle, isRankingBadgeStyle, isQualityBadgeStyle } from "@/lib/badge-styles"
+import type { DateFormat } from "@/lib/release-badge"
 import { normalizeRegion } from "@/lib/regions"
 import { envWithFallback } from "@/lib/env-compat"
+import { atomicWriteFile } from "@/lib/atomic-write"
+import { getKv, getStorageMode } from "@/lib/kv"
 
 const log = createLogger("server-defaults")
+
+/**
+ * Default di resa per il formato landscape: sfumatura/blur + scale e offset
+ * dei badge (gli stessi parametri regolabili per-titolo per formato). Stili,
+ * toggle, tinta e ombra restano condivisi tra i formati per scelta.
+ * Ogni chiave assente/undefined segue il flat (portrait).
+ */
+export interface LandscapeServerDefaults {
+  gradientHeight?: number
+  blurEnabled?: boolean
+  blurIntensity?: number
+  blurFade?: number
+  blurDarkness?: number
+  tintStrength?: number
+  topShade?: number
+  /** Scala % logo film (null = auto-fit per aspect, come senza default). */
+  logoScale?: number | null
+  /** Offset px logo film (null = 0). */
+  logoOffsetX?: number | null
+  logoOffsetY?: number | null
+  topBadgeScale?: number
+  topBadgeOffsetX?: number
+  topBadgeOffsetY?: number
+  genreBadgeScale?: number
+  genreBadgeOffsetX?: number
+  genreBadgeOffsetY?: number
+  qualityBadgeScale?: number
+  qualityBadgeOffsetX?: number
+  qualityBadgeOffsetY?: number
+  networkLogoScale?: number
+  networkLogoOffsetX?: number
+  networkLogoOffsetY?: number
+}
+
+/** Solo chiavi definite (undefined = segui il flat, mai clobberare). */
+function pickDefined<T extends object>(obj: T): Partial<T> {
+  const out: Partial<T> = {}
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) (out as Record<string, unknown>)[k] = v
+  }
+  return out
+}
+
+/**
+ * Default effettivi per il formato richiesto: in landscape i valori definiti
+ * di `defaults.landscape` vincono sui flat. Ritorna lo stesso oggetto quando
+ * non c'è overlay da applicare (shape portrait o nessun profilo).
+ */
+export function effectiveDefaultsForShape(defaults: ServerDefaults, shape: "poster" | "landscape"): ServerDefaults {
+  if (shape !== "landscape" || !defaults.landscape) return defaults
+  return { ...defaults, ...pickDefined(defaults.landscape) }
+}
 
 export interface ServerDefaults {
   badgeStyle?: BadgeStyle
   rankingBadgeStyle?: RankingBadgeStyle
+  /** Stile icone del badge qualità (standard = pill testuale). */
+  qualityBadgeStyle?: QualityBadgeStyle | null
+  /** Formati A/V abilitati di default (dv, hdr, hdr10plus, atmos, imax). */
+  videoFormats?: VideoFormat[] | null
+  defaultVideoFormats?: VideoFormat[] | null
   blurEnabled?: boolean
   blurIntensity?: number
   blurFade?: number
   blurDarkness?: number
   /** Intensità tinta di scena 0-100 (default 20). */
   tintStrength?: number
+  /** Ombra lineare superiore 0-100 (default 50). */
+  topShade?: number
   gradientHeight?: number
   globalBadges?: boolean
   rankingBadges?: boolean
@@ -26,6 +92,8 @@ export interface ServerDefaults {
   badgeYear?: boolean
   badgeRating?: boolean
   badgeQuality?: boolean
+  /** Soglia minima tier qualità streaming (SD < HD < FHD < 4K): sotto soglia niente badge. Default SD. */
+  minQuality?: StreamQuality
   /** Riga rating custom provider (display). Default ON quando il provider è configurato. */
   customRatings?: boolean
   /** Endpoint provider custom rating (UI). Non-segreto; la chiave resta solo env. */
@@ -33,8 +101,20 @@ export interface ServerDefaults {
   /** Header della chiave provider (UI). Default "X-API-Key". */
   customRatingApiKeyHeader?: string
   ratingSources?: string[]
+  /** Colonna rating separati a destra (sostituisce la media ★). Default OFF. */
+  separateRatings?: boolean
+  /** Ordine/priorità sash (sottoinsieme ammesso: non listati = spenti). Default = ordine standard. */
+  sashOrder?: SashBucket[]
   autoRotateClean?: boolean
+  /** Rotazione giornaliera backdrop landscape (anche titoli non salvati). Default OFF. */
+  defaultAutoRotateBackdrop?: boolean
+  /** Esclude i poster clean TMDB dalla selezione automatica (catena lingua -> originale -> primo). Default OFF. */
+  disableCleanPosters?: boolean
   defaultLogoFitEnabled?: boolean
+  /** Fit logo per-shape (toggle UI Impostazioni): vince sul legacy qui sopra.
+   *  Già accettati dallo schema PUT e persistiti — mancava solo il tipo. */
+  defaultPortraitFitEnabled?: boolean
+  defaultLandscapeFitEnabled?: boolean
   networkLogo?: boolean
   accentDominant?: boolean
   badgeTopScale?: number
@@ -49,6 +129,13 @@ export interface ServerDefaults {
   badgeTopOffset?: number
   badgeBottomOffset?: number
   logoBottomOffset?: number
+  /** Posizione del logo network ("auto" = specchio dinamico, "top" = angolo alto lato nastro). */
+  networkLogoPosition?: import("@/lib/types").NetworkLogoPosition
+  /** Scala % logo film (null = auto-fit per aspect, comportamento storico). */
+  logoScale?: number | null
+  /** Offset px logo film (null = 0). */
+  logoOffsetX?: number | null
+  logoOffsetY?: number | null
   /** Scala % del badge superiore (rank/extra). Default 100. */
   topBadgeScale?: number
   /** Offset px del badge superiore (solo stili centrati). Default 0. */
@@ -72,9 +159,24 @@ export interface ServerDefaults {
   /** Effetto pre-digitale (darken + badge Coming Soon, solo film). Default OFF. */
   preRelease?: boolean
   ribbonSide?: "left" | "right"
+  /** Nastro stile Netflix all'angolo (false = badge classifica centrato). Default ON. */
+  ribbonEnabled?: boolean
+  /** Formato canvas globale: "landscape" = 16:9 da backdrop TMDB. Default portrait. */
+  posterShape?: import("@/lib/types").PosterShape
+  /** Allineamento blocco logo/metadati (default di formato se assente). */
+  logoAlign?: "left" | "center"
   episodeMetadataSource?: "tmdb" | "tvdb"
   /** Regione classifiche JustWatch/FlixPatrol + lingua titoli (codice JW, es. "IT"). */
   region?: string
+  /** Formato data badge "in uscita" (default `locale` = segue la lingua). */
+  dateFormat?: DateFormat
+  /**
+   * Tuning di resa specifico per il canvas landscape 16:9 (default globali
+   * orizzontali). I campi flat restano i default portrait E il fallback per
+   * ogni chiave landscape assente/undefined. Istanze senza `landscape` si
+   * comportano esattamente come prima (backward compatible).
+   */
+  landscape?: LandscapeServerDefaults | null
   customCatalogs?: import("@/lib/types").CustomCatalogConfig[]
   disabledCatalogIds?: string[]
   homeDisabledCatalogIds?: string[]
@@ -83,7 +185,11 @@ export interface ServerDefaults {
 }
 
 const FILE = path.join(DATA_DIR, "defaults.json")
-const useKv = !!process.env.KV_REST_API_URL && !!process.env.KV_REST_API_TOKEN
+// Lettura live (mai a module level): i test mutano le env + resetModules.
+// Nome senza prefisso `use`: la regola react-hooks lo scambierebbe per un Hook.
+function isKvMode(): boolean {
+  return getStorageMode() === "kv"
+}
 const KV_KEY = "defaults"
 
 // ── Default di stile da env d'istanza (PICTORIUM_*, con fallback alle legacy POSTERIUM_*) ─────────────────────────
@@ -135,8 +241,10 @@ function defaultsFromEnv(): ServerDefaults {
     ["badgeBottomOffset", envNum("BADGE_BOTTOM_OFFSET")],
     ["logoBottomOffset", envNum("LOGO_BOTTOM_OFFSET")],
   ]
+  const ribbonEn = envBool("RIBBON_ENABLED")
   const preRel = envBool("PRE_RELEASE")
   const autoRotate = envBool("AUTO_ROTATE_CLEAN")
+  const disableClean = envBool("DISABLE_CLEAN_POSTERS")
   const logoFit = envBool("LOGO_FIT_ENABLED")
   if (bG !== undefined) d.globalBadges = bG
   if (bR !== undefined) d.rankingBadges = bR
@@ -147,6 +255,20 @@ function defaultsFromEnv(): ServerDefaults {
   if (cr !== undefined) d.customRatings = cr
   const rsrcEnv = getEnv("RATING_SOURCES")?.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
   if (rsrcEnv && rsrcEnv.length > 0) d.ratingSources = rsrcEnv
+  const sepR = envBool("SEPARATE_RATINGS")
+  if (sepR !== undefined) d.separateRatings = sepR
+  // Ordine sash da env (stesso formato della query): token validi, dedup.
+  // Vuoto/invalido → ignorato (default). Array salvato via UI non toccato qui.
+  const sashEnv = getEnv("SASH_ORDER")?.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+  if (sashEnv && sashEnv.length > 0) {
+    const valid = sashEnv.filter((s): s is SashBucket =>
+      s === "upcoming" || s === "rank" || s === "new" || s === "award" || s === "extra")
+    if (valid.length > 0) d.sashOrder = [...new Set(valid)]
+  }
+  // Soglia minima qualità (solo type-import da stream-quality: nessun ciclo
+  // di dipendenze runtime). Valori non validi → ignorati (default SD).
+  const qminRaw = getEnv("QUALITY_MIN")?.trim().toUpperCase()
+  if (qminRaw === "SD" || qminRaw === "HD" || qminRaw === "FHD" || qminRaw === "4K") d.minQuality = qminRaw
   if (blurEn !== undefined) d.blurEnabled = blurEn
   if (netLogo !== undefined) d.networkLogo = netLogo
   if (accentDom !== undefined) d.accentDominant = accentDom
@@ -156,16 +278,24 @@ function defaultsFromEnv(): ServerDefaults {
   for (const [key, val] of geomEnv) {
     if (val !== undefined) (d as Record<string, unknown>)[key] = val
   }
+  if (ribbonEn !== undefined) d.ribbonEnabled = ribbonEn
   if (preRel !== undefined) d.preRelease = preRel
   if (autoRotate !== undefined) d.autoRotateClean = autoRotate
+  if (disableClean !== undefined) d.disableCleanPosters = disableClean
   if (logoFit !== undefined) d.defaultLogoFitEnabled = logoFit
   const bs = getEnv("BADGE_STYLE")?.trim()
   const rbs = getEnv("RANKING_BADGE_STYLE")?.trim()
+  const qbs = getEnv("QUALITY_BADGE_STYLE")?.trim()
   const side = getEnv("RIBBON_SIDE")?.trim().toLowerCase()
+  const shapeEnv = getEnv("POSTER_SHAPE")?.trim().toLowerCase()
+  if (shapeEnv === "poster" || shapeEnv === "landscape") d.posterShape = shapeEnv
+  const alignEnv = getEnv("LOGO_ALIGN")?.trim().toLowerCase()
+  if (alignEnv === "left" || alignEnv === "center") d.logoAlign = alignEnv
   const blurI = envNum("BLUR_INTENSITY")
   const blurF = envNum("BLUR_FADE")
   const blurD = envNum("BLUR_DARKNESS")
   const tintS = envNum("TINT_STRENGTH")
+  const topSh = envNum("TOP_SHADE")
   const gradH = envNum("GRADIENT_HEIGHT")
   const topBadgeScale = envNum("TOP_BADGE_SCALE")
   const topBadgeOX = envNum("TOP_BADGE_OFFSET_X")
@@ -192,11 +322,13 @@ function defaultsFromEnv(): ServerDefaults {
   if (regionRaw) d.region = normalizeRegion(regionRaw)
   if (bs && isBadgeStyle(bs)) d.badgeStyle = bs
   if (rbs && isRankingBadgeStyle(rbs)) d.rankingBadgeStyle = rbs
+  if (qbs && isQualityBadgeStyle(qbs)) d.qualityBadgeStyle = qbs
   if (side === "left" || side === "right") d.ribbonSide = side
   if (blurI !== undefined) d.blurIntensity = blurI
   if (blurF !== undefined) d.blurFade = blurF
   if (blurD !== undefined) d.blurDarkness = blurD
   if (tintS !== undefined) d.tintStrength = tintS
+  if (topSh !== undefined) d.topShade = topSh
   if (gradH !== undefined) d.gradientHeight = gradH
   if (topBadgeScale !== undefined) d.topBadgeScale = topBadgeScale
   if (topBadgeOX !== undefined) d.topBadgeOffsetX = topBadgeOX
@@ -210,6 +342,11 @@ function defaultsFromEnv(): ServerDefaults {
   if (networkLogoScale !== undefined) d.networkLogoScale = networkLogoScale
   if (networkLogoOX !== undefined) d.networkLogoOffsetX = networkLogoOX
   if (networkLogoOY !== undefined) d.networkLogoOffsetY = networkLogoOY
+  const vfEnv = getEnv("VIDEO_FORMATS")?.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+  if (vfEnv && vfEnv.length > 0) {
+    const valid = vfEnv.filter(isVideoFormat)
+    if (valid.length > 0) d.videoFormats = valid
+  }
   return d
 }
 const ENV_DEFAULTS: ServerDefaults = defaultsFromEnv()
@@ -239,8 +376,7 @@ async function loadFromDisk(): Promise<ServerDefaults> {
 
 async function kvLoadDefaults(): Promise<ServerDefaults> {
   try {
-    const { kv } = await import("@vercel/kv")
-    const raw = await kv.get<ServerDefaults>(KV_KEY)
+    const raw = await getKv().get<ServerDefaults>(KV_KEY)
     return raw ?? {}
   } catch (error) {
     logDefaultsError("failed to load defaults (KV)", error)
@@ -252,7 +388,7 @@ async function kvLoadDefaults(): Promise<ServerDefaults> {
 function warmDefaults(): Promise<void> {
   if (warmPromise) return warmPromise
   warmPromise = (async () => {
-    const d = useKv ? await kvLoadDefaults() : await loadFromDisk()
+    const d = isKvMode() ? await kvLoadDefaults() : await loadFromDisk()
     cached = d
   })().catch(() => {})
   return warmPromise
@@ -265,7 +401,7 @@ export function getServerDefaults(): ServerDefaults {
   // coprire solo i campi NON salvati.
   if (cached) return { ...ENV_DEFAULTS, ...cached }
   let loaded: ServerDefaults | null = null
-  if (!useKv) {
+  if (!isKvMode()) {
     try {
       if (existsSync(FILE)) {
         const raw = readFileSync(FILE, "utf-8")
@@ -280,10 +416,9 @@ export function getServerDefaults(): ServerDefaults {
   return { ...ENV_DEFAULTS, ...cached }
 }
 export async function setServerDefaults(d: ServerDefaults): Promise<void> {
-  if (useKv) {
+  if (isKvMode()) {
     try {
-      const { kv } = await import("@vercel/kv")
-      await kv.set(KV_KEY, d)
+      await getKv().set(KV_KEY, d)
       cached = { ...d }
     } catch (error) {
       logDefaultsError("failed to write defaults (KV)", error)
@@ -296,7 +431,7 @@ export async function setServerDefaults(d: ServerDefaults): Promise<void> {
     await existing
     try {
       await fs.mkdir(DATA_DIR, { recursive: true })
-      await fs.writeFile(FILE, JSON.stringify(d, null, 2))
+      await atomicWriteFile(FILE, JSON.stringify(d, null, 2))
       cached = { ...d }
     } catch (error) {
       logDefaultsError("failed to write defaults", error)
@@ -304,4 +439,133 @@ export async function setServerDefaults(d: ServerDefaults): Promise<void> {
     }
   })()
   await writeQueue
+}
+
+// ── Defaults per-utente (multi-user, slice 1) ─────────────────────────────
+// `getServerDefaults()` sopra resta SINCRONA e invariata (hot path poster).
+// Il namespace utente vive qui: LRU con cap + TTL, miss = fetch reale con
+// attesa (mai fallback inventato). Isolamento stretto: i defaults salvati
+// GLOBALI non entrano nell'effettivo utente (solo ENV_DEFAULTS + salvato
+// utente) — altrimenti un cambio globale toccherebbe i poster altrui.
+
+function userDefaultsFile(userId: string): string {
+  return path.join(DATA_DIR, "users", userId, "defaults.json")
+}
+
+function userDefaultsKvKey(userId: string): string {
+  return `defaults:${userId}`
+}
+
+function assertValidUserId(userId: string): void {
+  if (!/^[0-9a-f-]{36}$/i.test(userId)) throw new Error("Invalid user id")
+}
+
+const USER_DEFAULTS_TTL_MS = 5 * 60 * 1000
+const USER_DEFAULTS_CAP = 500
+
+const userDefaultsCache = new Map<string, { defaults: ServerDefaults; at: number }>()
+const userDefaultsQueues = new Map<string, Promise<void>>()
+
+function userDefaultsCacheGet(userId: string): ServerDefaults | null {
+  const hit = userDefaultsCache.get(userId)
+  if (!hit) return null
+  if (Date.now() - hit.at >= USER_DEFAULTS_TTL_MS) {
+    userDefaultsCache.delete(userId)
+    return null
+  }
+  // Promote LRU.
+  userDefaultsCache.delete(userId)
+  userDefaultsCache.set(userId, hit)
+  return hit.defaults
+}
+
+function userDefaultsCacheSet(userId: string, defaults: ServerDefaults): void {
+  if (userDefaultsCache.size >= USER_DEFAULTS_CAP) {
+    const oldest = userDefaultsCache.keys().next().value
+    if (oldest !== undefined) userDefaultsCache.delete(oldest)
+  }
+  userDefaultsCache.set(userId, { defaults: { ...defaults }, at: Date.now() })
+}
+
+async function loadUserDefaults(userId: string): Promise<ServerDefaults> {
+  if (isKvMode()) {
+    try {
+      const raw = await getKv().get<ServerDefaults>(userDefaultsKvKey(userId))
+      return raw ?? {}
+    } catch (error) {
+      logDefaultsError("failed to load user defaults (KV)", error)
+      return {}
+    }
+  }
+  try {
+    const raw = await fs.readFile(userDefaultsFile(userId), "utf-8")
+    return JSON.parse(raw) as ServerDefaults
+  } catch (error: unknown) {
+    if (!(error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT")) {
+      logDefaultsError("failed to load user defaults", error)
+    }
+    return {}
+  }
+}
+
+/**
+ * Defaults SALVATI del namespace, senza ENV d'istanza. Serve ai merge di PUT:
+ * fondere sul merge effettivo (ENV + salvato) cuocerebbe i valori env nel file
+ * utente, e un successivo cambio env dell'operatore non avrebbe più effetto
+ * per quell'utente (shadowing implicito mai scelto). Lettura effettiva resta
+ * getServerDefaultsForUser (ENV + questi).
+ */
+export async function getStoredUserDefaults(userId: string | null | undefined): Promise<ServerDefaults> {
+  if (!userId) return {}
+  assertValidUserId(userId)
+  const hit = userDefaultsCacheGet(userId)
+  // La cache contiene il raw caricato (mai ENV): copia difensiva.
+  if (hit) return { ...hit }
+  return loadUserDefaults(userId)
+}
+
+/**
+ * Defaults effettivi di un namespace: ENV d'istanza + salvato utente.
+ * `userId` null = path globale (wrapper di getServerDefaults, per i caller).
+ */
+export async function getServerDefaultsForUser(userId: string | null | undefined): Promise<ServerDefaults> {
+  if (!userId) return getServerDefaults()
+  assertValidUserId(userId)
+  const hit = userDefaultsCacheGet(userId)
+  if (hit) return { ...ENV_DEFAULTS, ...hit }
+  const loaded = await loadUserDefaults(userId)
+  userDefaultsCacheSet(userId, loaded)
+  return { ...ENV_DEFAULTS, ...loaded }
+}
+
+export async function setServerDefaultsForUser(userId: string, d: ServerDefaults): Promise<void> {
+  assertValidUserId(userId)
+  if (isKvMode()) {
+    try {
+      await getKv().set(userDefaultsKvKey(userId), d)
+      userDefaultsCacheSet(userId, d)
+    } catch (error) {
+      logDefaultsError("failed to write user defaults (KV)", error)
+      throw error
+    }
+    return
+  }
+  const existing = userDefaultsQueues.get(userId) ?? Promise.resolve()
+  const run = existing.then(async () => {
+    try {
+      await fs.mkdir(path.dirname(userDefaultsFile(userId)), { recursive: true })
+      await atomicWriteFile(userDefaultsFile(userId), JSON.stringify(d, null, 2))
+      userDefaultsCacheSet(userId, d)
+    } catch (error) {
+      logDefaultsError("failed to write user defaults", error)
+      throw error
+    }
+  })
+  userDefaultsQueues.set(userId, run.catch(() => {}))
+  await run
+}
+
+/** Evict della cache defaults del namespace (wipe account). Solo test + user-activity. */
+export function __evictUserDefaultsCache(userId: string): void {
+  userDefaultsCache.delete(userId)
 }

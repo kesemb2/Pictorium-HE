@@ -68,4 +68,22 @@ describe("SetupWizard", () => {
     expect(screen.getByText("ui.setupRegionTitle")).toBeInTheDocument()
     expect(onDone).not.toHaveBeenCalled()
   })
+
+  it("salta il passaggio del PIN quando skipPin=true (es. multi-user)", async () => {
+    const user = userEvent.setup()
+    const onPickLang = vi.fn()
+    const onPickRegion = vi.fn()
+    const onDone = vi.fn()
+    renderWithCtx(
+      <LangPicker onPickLang={onPickLang} onPickRegion={onPickRegion} onDone={onDone} skipPin={true} />
+    )
+
+    await user.click(screen.getByText("USA · English"))
+    expect(onPickLang).toHaveBeenCalledWith("en")
+
+    await user.click(screen.getByText("Giappone"))
+    expect(onPickRegion).toHaveBeenCalledWith("JP")
+    expect(screen.queryByText("Proteggi il tuo pannello")).not.toBeInTheDocument()
+    expect(onDone).toHaveBeenCalledTimes(1)
+  })
 })

@@ -2,12 +2,16 @@ import crypto from "node:crypto"
 import { cacheGet, cacheSet } from "./cache"
 import { envWithFallback } from "./env-compat"
 import { combineAbortSignals } from "./abort-signal"
+import { timedFetch } from "./outbound-stats"
 
 export interface MDBListEntry {
   imdb: string
   title: string
   year: number
   tmdb?: number
+  /** Id TVDB (liste TVDB: gli entity espongono solo questo + tipo). La
+   *  pipeline lo risolve in TMDB via tmdbFindByTvdb, come per gli imdb-only. */
+  tvdb?: number
   mediatype?: "movie" | "show" | "anime" | "tv"
   poster_path?: string | null
 }
@@ -23,6 +27,11 @@ export const MDBLISTS = [
 // rete (catch → []) non deve congelare la lista per 30min, si ritenta al
 // prossimo accesso.
 const CACHE_TTL_MS = 30 * 60 * 1000
+
+// Blocco unico cachato per lista: Stremio pagina con skip=0,20,40... su
+// finestre da 20, ma l'upstream viene chiamato 1 sola volta ogni 30min.
+// Allineato a fetchCustomMDBList (default limit 500).
+export const MDBLIST_BLOCK_SIZE = 500
 
 export async function fetchMDBList(
   listKey: string,
@@ -50,9 +59,9 @@ export async function fetchMDBList(
     let res: Response | null = null
 
     if (explicitUrl) {
-      res = await fetch(`${explicitUrl}/lists/snoak/${slug}`, { signal: combineAbortSignals(signal, 8000) }).catch(() => null)
+      res = await timedFetch(`${explicitUrl}/lists/snoak/${slug}`, { signal: combineAbortSignals(signal, 8000) }).catch(() => null)
     } else if (key) {
-      res = await fetch(`https://api.mdblist.com/lists/snoak/${slug}/items?apikey=${encodeURIComponent(key)}&limit=20`, {
+      res = await timedFetch(`https://api.mdblist.com/lists/snoak/${slug}/items?apikey=${encodeURIComponent(key)}&limit=${MDBLIST_BLOCK_SIZE}`, {
         headers: { "User-Agent": "Mozilla/5.0 Pictorium" },
         signal: combineAbortSignals(signal, 8000),
       }).catch(() => null)
@@ -60,7 +69,7 @@ export async function fetchMDBList(
 
     if (!res || !res.ok) {
       // Fallback endpoint pubblico JSON diretto
-      res = await fetch(`https://mdblist.com/lists/snoak/${slug}/json`, {
+      res = await timedFetch(`https://mdblist.com/lists/snoak/${slug}/json`, {
         headers: { "User-Agent": "Mozilla/5.0 Pictorium" },
         signal: combineAbortSignals(signal, 8000),
       }).catch(() => null)
@@ -99,7 +108,7 @@ export async function fetchMDBList(
       if (seenIds.has(dedupeKey)) continue
       seenIds.add(dedupeKey)
       items.push({ imdb, title, year, tmdb })
-      if (items.length >= 20) break
+      if (items.length >= MDBLIST_BLOCK_SIZE) break
     }
     if (items.length > 0) {
       cacheSet(cacheKey, items, ["mdblist"], CACHE_TTL_MS)
@@ -167,7 +176,7 @@ export async function fetchCustomMDBList(urlOrSlug: string, apiKey?: string, lim
 
     if (explicitUrl) {
       const slug = target.slug || target.id || "custom"
-      res = await fetch(`${explicitUrl}/lists/custom/${slug}`, { signal: AbortSignal.timeout(10000) }).catch(() => null)
+      res = await timedFetch(`${explicitUrl}/lists/custom/${slug}`, { signal: AbortSignal.timeout(10000) }).catch(() => null)
     } else if (key) {
       let keyUrl = ""
       if (target.id) {
@@ -178,7 +187,7 @@ export async function fetchCustomMDBList(urlOrSlug: string, apiKey?: string, lim
         keyUrl = `https://api.mdblist.com/lists/${encodeURIComponent(target.slug)}/items?apikey=${encodeURIComponent(key)}&limit=${limit}`
       }
       if (keyUrl) {
-        res = await fetch(keyUrl, {
+        res = await timedFetch(keyUrl, {
           headers: { "User-Agent": "Mozilla/5.0 Pictorium" },
           signal: AbortSignal.timeout(10000),
         }).catch(() => null)
@@ -196,7 +205,7 @@ export async function fetchCustomMDBList(urlOrSlug: string, apiKey?: string, lim
         publicUrl = `https://mdblist.com/lists/${encodeURIComponent(target.slug)}/json`
       }
       if (publicUrl) {
-        res = await fetch(publicUrl, {
+        res = await timedFetch(publicUrl, {
           headers: { "User-Agent": "Mozilla/5.0 Pictorium" },
           signal: AbortSignal.timeout(10000),
         }).catch(() => null)
@@ -228,7 +237,12 @@ export async function fetchCustomMDBList(urlOrSlug: string, apiKey?: string, lim
     } else if (Array.isArray(payload?.items)) {
       rawItems = payload.items
     } else if (Array.isArray(payload?.movies) || Array.isArray(payload?.shows)) {
-      rawItems = [...(payload.movies || []), ...(payload.shows || [])]
+      // Le sezioni movies/shows portano il tipo: lo si annota come default
+      // (il campo proprio dell'item vince se presente) così i cataloghi
+      // "mixed" non sdoppiano gli item senza tipo in film+serie.
+      const movies = (payload.movies || []).map((m: { mediatype?: string }) => ({ mediatype: "movie" as const, ...m }))
+      const shows = (payload.shows || []).map((s: { mediatype?: string }) => ({ mediatype: "show" as const, ...s }))
+      rawItems = [...movies, ...shows]
     }
 
     const seenCustom = new Set<string>()

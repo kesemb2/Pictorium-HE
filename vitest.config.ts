@@ -9,6 +9,7 @@ export default defineConfig({
       "node_modules/**",
       ".kilo/**",
       ".claude/**",
+      ".opencode/**",
       ".next/**",
       "e2e/**",
       "test-results/**",
@@ -17,7 +18,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],
-      include: ["src/lib/**/*.ts", "src/components/**/*.tsx"],
+      include: ["src/lib/**/*.ts", "src/components/**/*.tsx", "src/app/**/*.ts"],
       exclude: ["src/generated/**", "src/lib/render-version.ts", "src/**/__tests__/**"],
     },
   },

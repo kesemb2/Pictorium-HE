@@ -1,8 +1,90 @@
+import { currentPathUuid, getStoredUserPassword, getStoredUserToken, isUserUnlocked, retryWithPasswordAuth } from "./user-token"
+import { applyAdminAuthHeaders } from "./admin-token"
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message)
     this.name = "ApiError"
   }
+}
+
+// Famiglie API namespaced (multi-user): solo a queste si aggiungono `?u=` e
+// `x-user-token`. `POST /api/users` (creazione identità, pre-uuid) è esclusa
+// di proposito: il prefisso richiede lo slash finale. Le famiglie proxy
+// upstream (tmdb/mdblist/awards/trending/flixpatrol/tvdb) sono incluse: senza
+// `?u=` il server non può risolvere le chiavi salvate nel profilo (chiave
+// salvata ma poster vuoti su profilo fresco).
+const SCOPED_PREFIXES = ["/api/mappings", "/api/defaults", "/api/users/", "/api/tmdb", "/api/mdblist", "/api/awards", "/api/trending", "/api/flixpatrol", "/api/tvdb", "/api/fanart", "/api/preview", "/api/poster-fit", "/api/presets", "/api/resolve-image", "/api/custom-rating"]
+
+function isScopedPath(path: string): boolean {
+  if (!path.startsWith("/api/")) return false
+  return SCOPED_PREFIXES.some((p) => path === p || path.startsWith(p))
+}
+
+function mergeNamedHeader(
+  headers: HeadersInit | undefined,
+  name: string,
+  value: string,
+): HeadersInit {
+  if (typeof Headers !== "undefined" && headers instanceof Headers) {
+    if (!headers.get("x-user-token") && !headers.get("authorization") && !headers.get("x-user-password")) {
+      headers.set(name, value)
+    }
+    return headers
+  }
+  if (Array.isArray(headers)) {
+    const has = headers.some(([k]) => {
+      const kl = k.toLowerCase()
+      return kl === "x-user-token" || kl === "authorization" || kl === "x-user-password"
+    })
+    return has ? headers : [...headers, [name, value] as [string, string]]
+  }
+  const record = { ...(headers as Record<string, string> | undefined) }
+  const keys = Object.keys(record).map((k) => k.toLowerCase())
+  if (!keys.includes("x-user-token") && !keys.includes("authorization") && !keys.includes("x-user-password")) {
+    record[name] = value
+  }
+  return record
+}
+
+/**
+ * Applica il namespace utente a una chiamata API: `?u=` sempre (identità
+ * pubblica, serve anche a Stremio) + credenziale (`x-user-token` o
+ * `x-user-password`) SOLO se sbloccato in sessione. Senza unlock, niente
+ * header auth: chiudere il modal con la X non lascia una sessione operativa
+ * (letture pubbliche ok, scritture 401). Header espliciti del chiamante
+ * vincono sempre (mai sovrascritti).
+ */
+export function scopedApiInit(
+  path: string,
+  init?: { headers?: HeadersInit },
+): { path: string; headers: HeadersInit | undefined } {
+  const uuid = currentPathUuid()
+  if (!uuid || !isScopedPath(path)) return { path, headers: init?.headers }
+  let out = path
+  if (!/[?&]u=/.test(path)) out += (path.includes("?") ? "&" : "?") + `u=${uuid}`
+  if (!isUserUnlocked(uuid)) return { path: out, headers: init?.headers }
+  const token = getStoredUserToken(uuid)
+  if (token) return { path: out, headers: mergeNamedHeader(init?.headers, "x-user-token", token) }
+  const password = getStoredUserPassword(uuid)
+  if (password) return { path: out, headers: mergeNamedHeader(init?.headers, "x-user-password", password) }
+  return { path: out, headers: init?.headers }
+}
+
+/**
+ * Fetch namespaced (multi-user): come fetch ma con `?u=` + `x-user-token`
+ * automatici sui path utente. Per le chiamate con retry/timeout usare http().
+ * Timeout di default 15s (stesso di http): senza, un upstream appeso lascia
+ * `loading` per sempre (es. /api/poster-fit su render incastrato).
+ */
+export async function userFetch(input: string, init: RequestInit & { timeout?: number } = {}): Promise<Response> {
+  const { timeout = 15000, ...fetchInit } = init
+  const scoped = scopedApiInit(input, fetchInit)
+  const scopedInit = { ...fetchInit, headers: applyAdminAuthHeaders(scoped.path, scoped.headers) }
+  const res = await fetch(scoped.path, { ...scopedInit, signal: scopedInit.signal ?? AbortSignal.timeout(timeout) })
+  // Secret stantio + password fresca: un solo retry con password (butta il
+  // secret se il retry passa). Senza entrambe le credenziali è passthrough.
+  return (await retryWithPasswordAuth(scoped.path, scopedInit, res)) ?? res
 }
 
 interface ApiOptions extends Omit<RequestInit, "signal"> {
@@ -13,6 +95,11 @@ interface ApiOptions extends Omit<RequestInit, "signal"> {
 
 export async function http<T = unknown>(path: string, opts: ApiOptions = {}): Promise<T> {
   const { timeout = 15000, retries = 2, signal: externalSignal, ...fetchOpts } = opts
+  // Namespace utente (multi-user): `?u=` + `x-user-token` automatici sui
+  // path scoped quando si è su un link `/u/<uuid>`. Fuori da lì è passthrough.
+  const scoped = scopedApiInit(path, { headers: fetchOpts.headers })
+  path = scoped.path
+  const scopedOpts = { ...fetchOpts, headers: applyAdminAuthHeaders(path, scoped.headers) }
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     const controller = new AbortController()
@@ -24,7 +111,10 @@ export async function http<T = unknown>(path: string, opts: ApiOptions = {}): Pr
     const combinedSignal = signalPair?.signal ?? controller.signal
 
     try {
-      const res = await fetch(path, { ...fetchOpts, signal: combinedSignal })
+      let res = await fetch(path, { ...scopedOpts, signal: combinedSignal })
+      // Secret stantio + password fresca: un solo retry con password prima di
+      // trattare il 401 come definitivo (vedi userFetch sopra).
+      res = (await retryWithPasswordAuth(path, scopedOpts, res)) ?? res
 
       if (!res.ok) {
         // Fix L21: retry anche per i 5xx (il server può essere in riavvio o
