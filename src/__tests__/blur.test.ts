@@ -218,7 +218,7 @@ describe("applyBlur", () => {
     expect(Math.max(...vals) - Math.min(...vals)).toBeLessThanOrEqual(2) // ampiezza ±1 LSB
   })
 
-  it("has no flat plateau: alpha rises continuously to 255 only at the last row (bf=80)", async () => {
+  it("fork: reaches full cover at fadeStop and holds it to the bottom (bf=80)", async () => {
     const posterBuf = await createTestImage()
     const result = await applyBlur({
       posterBuf,
@@ -238,14 +238,15 @@ describe("applyBlur", () => {
       for (let x = 0; x < STD_W; x++) sum += overlay[off + x * 4 + 3]!
       return sum / STD_W
     }
+    // Il fork tiene il plateau (è ciò che nasconde logo e genere); lo scalino
+    // che upstream eliminava lo toglie la pendenza zero di opacità e
+    // scurimento a fadeStop (vedi blur-curve.test.ts).
+    const a50 = rowAlpha(Math.floor(height * 0.5))
     const a85 = rowAlpha(Math.floor(height * 0.85))
     const a95 = rowAlpha(Math.floor(height * 0.95))
-    const aLast = rowAlpha(height - 1)
-    // Niente plateau: sotto il 100% fino all'ultima riga, in salita continua
-    // (col vecchio min(t/fadeStop,1) a85 e a95 erano già a 255).
-    expect(a85).toBeLessThan(255)
-    expect(a95).toBeLessThan(255)
-    expect(a95).toBeGreaterThan(a85)
-    expect(aLast).toBe(255)
+    expect(a50).toBeLessThan(255)
+    expect(a85).toBe(255)
+    expect(a95).toBe(255)
+    expect(rowAlpha(height - 1)).toBe(255)
   })
 })

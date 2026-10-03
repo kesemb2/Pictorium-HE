@@ -2,7 +2,7 @@ import sharp from "sharp"
 import { STD_W, STD_H } from "./image-utils"
 
 /**
- * Build the bottom-blur RGBA overlay (dual-stage progressive blur + linear scrim + accent tint).
+ * Build the bottom-blur RGBA overlay (dual-stage progressive blur + smooth scrim + accent tint).
  *
  * ## Performance Contract
  *
@@ -17,14 +17,18 @@ import { STD_W, STD_H } from "./image-utils"
  * 1. Estrazione con bleed (16px sopra gradTop) per eliminare artefatti di cucitura.
  * 2. Doppio passaggio gaussiano concorrente (low-sigma all'inizio zona, high-sigma al fondo).
  * 3. Interpolazione progressiva nel loop raw RGBA:
- *    - Curva opacità: ease-out continuo u(t) = 1-(1-t)^γ, γ da blurFade
- *      (default 80 → γ=1.5, look di riferimento). NESSUN plateau: u tocca 1
- *      solo all'ultima riga — niente "scalino" orizzontale.
- *    - Curva scurimento: shade(u) = 1 - darkAlpha · u (stessa rampa di u,
- *      atterraggio a derivata zero, nessun kink a metà fascia)
+ *    - Rampa: s = min(t / fadeStop, 1), fadeStop = blurFade/100. La fascia
+ *      arriva a copertura piena a `blurFade`% della sua altezza e la tiene fino
+ *      al fondo: è quello che nasconde davvero logo e riga del genere (fork).
+ *    - Curva opacità: smoothstep S(s) = s² · (3 - 2s), pendenza zero a entrambi
+ *      gli estremi.
+ *    - Curva scurimento: D(s) = 4s³ - 3s⁴ — stessi estremi della vecchia s², ma
+ *      con pendenza zero anche a fadeStop: niente "scalino" orizzontale dove la
+ *      rampa incontra il fondo pieno (il difetto che upstream correggeva
+ *      togliendo il plateau, a costo di coprire molto meno).
  *    - Blend sigma: smoothstep S(t) da sigmaLow a sigmaHigh (diffusione progressiva)
  *    - Tinta accento: lerp cromatico controllato (default 20%) verso accentColor
- *      sulla stessa rampa u (tinta piena solo al fondo)
+ *      sulla rampa s (tinta piena da fadeStop in giù)
  *    - Dithering ordinato Bayer 4x4 deterministico (±1 LSB su RGBA): rompe il
  *      banding del gradiente scuro senza cambiare il valor medio locale.
  *      Deterministico per (x, y) — mai Math.random (ETag/snapshot stabili).
@@ -43,6 +47,48 @@ export interface BlurParams {
   accentColor?: string
   /** Frazione di miscelazione tinta accento al fondo (default 0.20 = 20%, calibrata per non sovrastare l'artwork). */
   tintStrength?: number
+}
+
+export interface BandGeometry {
+  /** Altezza della fascia in pixel (clampata come nel render). */
+  readonly gh: number
+  /** Prima riga della fascia vera e propria. */
+  readonly gradTop: number
+  /** Prima riga dell'overlay, `gradTop` meno il bleed di cucitura. */
+  readonly extTop: number
+  /** Altezza dell'overlay, bleed incluso. */
+  readonly extH: number
+  /** Frazione dell'overlay occupata dalla rampa di opacità. */
+  readonly fadeStop: number
+  /** Prima riga del poster in cui la fascia è completamente opaca. */
+  readonly opaqueFrom: number
+}
+
+/**
+ * Geometria della fascia, unica fonte di verità: `applyBlur` la usa per
+ * comporre, chi misura la fascia (band fit, zone di testo) per sapere dove
+ * cade la rampa. Due copie della stessa aritmetica finirebbero per divergere.
+ */
+export function bandGeometry(blurHeight: number, blurFade: number, canvasH: number = STD_H): BandGeometry {
+  const gh = Math.min(Math.max(Math.round(canvasH * blurHeight / 100), 100), canvasH)
+  const gradTop = canvasH - gh
+  // Bleed padding (16px) sopra gradTop per eliminare artefatti di cucitura.
+  const pad = Math.min(16, gradTop)
+  const extTop = gradTop - pad
+  const extH = canvasH - extTop
+  const fadeStop = Math.min(Math.max(blurFade, 0), 100) / 100
+  const opaqueFrom = extTop + (extH <= 1 ? 0 : Math.ceil(fadeStop * (extH - 1)))
+  return { gh, gradTop, extTop, extH, fadeStop, opaqueFrom }
+}
+
+/** Opacità della fascia sulla rampa s ∈ [0,1]: smoothstep. */
+export function bandOpacity(s: number): number {
+  return s * s * (3 - 2 * s)
+}
+
+/** Frazione di scurimento sulla rampa s ∈ [0,1]: 4s³ - 3s⁴ (pendenza zero agli estremi). */
+export function bandDimming(s: number): number {
+  return s * s * s * (4 - 3 * s)
 }
 
 export interface BlurOverlay {
@@ -85,22 +131,8 @@ export async function applyBlur(params: BlurParams): Promise<BlurOverlay | null>
   const canvasW = params.canvasW ?? STD_W
   const canvasH = params.canvasH ?? STD_H
 
-  const gh = Math.min(Math.max(Math.round(canvasH * blurHeight / 100), 100), canvasH)
-  const gradTop = canvasH - gh
-
-  // Bleed padding (16px) sopra gradTop per eliminare artefatti di cucitura (seam edge clamping)
-  const pad = Math.min(16, gradTop)
-  const extTop = gradTop - pad
-  const extH = canvasH - extTop
-
-  const fadedPct = Math.min(Math.max(blurFade, 0), 100)
+  const { extTop, extH, fadeStop } = bandGeometry(blurHeight, blurFade, canvasH)
   const darkAlpha = Math.min(Math.max(blurDarkness / 100, 0), 1)
-  // Ease-out continuo (anti-"scalino"): γ da blurFade — 80 (default) → 1.5,
-  // 100 → 1.0 (rampa lineare su tutta la fascia), 0 → banda piena legacy.
-  // u(t) = 1-(1-t)^γ tocca 1 solo a t=1: alpha, shade e tinta condividono
-  // un'unica rampa senza clip né plateau (il vecchio min(t/fadeStop,1)
-  // appiattiva il 20% inferiore e piega lo shade a metà fascia).
-  const gamma = fadedPct <= 0 ? 0 : 1 + (1 - fadedPct / 100) * 2.5
 
   // Sigmi dual-stage: low-sigma all'inizio zona, high-sigma al fondo
   const clampedIntensity = Math.min(Math.max(blurIntensity, 1), 100)
@@ -141,18 +173,17 @@ export async function applyBlur(params: BlurParams): Promise<BlurOverlay | null>
 
   for (let y = 0; y < extH; y++) {
     const t = extH <= 1 ? 1 : y / (extH - 1)
-    const u = gamma <= 0 ? 1 : 1 - Math.pow(1 - t, gamma)
-    const alphaBase = u * 255
-
-    // Scurimento sulla stessa rampa u (atterraggio morbido a t=1 per γ>1)
-    const shade = 1 - darkAlpha * u
+    // Rampa del fork: copertura piena a fadeStop, poi fondo pieno.
+    const s = fadeStop <= 0 ? 1 : Math.min(t / fadeStop, 1)
+    const alphaBase = bandOpacity(s) * 255
+    const shade = 1 - darkAlpha * bandDimming(s)
 
     // Interpolazione raggio progressivo con curva smoothstep in t (non lineare secca)
     const wHigh = t * t * (3 - 2 * t)
     const wLow = 1 - wHigh
 
     // Miscelazione tinta progressiva verso il fondo
-    const tintMix = tintStrength * u
+    const tintMix = tintStrength * s
     const invTint = 1 - tintMix
 
     const rowOffset = y * canvasW

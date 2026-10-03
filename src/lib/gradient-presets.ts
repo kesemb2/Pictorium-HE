@@ -28,7 +28,10 @@ type PosterKind = { iso_639_1?: string | null } | null | undefined
 export const GRADIENT_PRESET_COLOR: GradientPresetValues = {
   gradientHeight: 35,
   blurIntensity: 20,
-  blurFade: 10,
+  // Fork: il fade è "dove la fascia diventa piena" (vedi blur.ts). Upstream
+  // tarava 10 sulla sua curva ease-out (γ=3.25, ~90% a metà fascia); 55 è
+  // lo stesso profilo con la rampa del fork.
+  blurFade: 55,
   blurDarkness: 0,
   tintStrength: 100,
   blurEnabled: true,

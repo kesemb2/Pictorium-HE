@@ -107,10 +107,7 @@ describe("posterLogoZoneLuminance con la fascia", () => {
       blurEnabled: true,
       blurHeight: 50,
       blurIntensity: 8,
-      // Fade 0 = fascia piena: con la rampa ease-out di upstream un fade basso
-      // scurisce la parte alta della fascia molto meno di prima, e qui serve
-      // una fascia che copra davvero la zona del logo.
-      blurFade: 0,
+      blurFade: 20,
       blurDarkness,
     })
   }

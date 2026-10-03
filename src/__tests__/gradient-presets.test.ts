@@ -36,7 +36,8 @@ describe("gradient presets (slider shortcuts, no new server param)", () => {
     expect(GRADIENT_PRESET_COLOR).toEqual({
       gradientHeight: 35,
       blurIntensity: 20,
-      blurFade: 10,
+      // Fork: 55 sulla rampa del fork = il 10 di upstream sulla sua curva γ.
+      blurFade: 55,
       blurDarkness: 0,
       tintStrength: 100,
       blurEnabled: true,
