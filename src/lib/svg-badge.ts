@@ -1,6 +1,6 @@
 import { textColorForBg } from "./accent-color"
 import { FONT_FILES } from "./fonts"
-import { buildTitleTextSvg, textShadowBox, type TextStyle, estimateTextWidth, fontFamilyFor, genreBadgeSafePad, genreBadgeSvgDims, genrePillMaxW, buildGenreBarSvg, buildGenrePillSvg, buildGenreTextSvg, buildGenreBorderedSvg, buildGenreGlassSvg, buildRankingBarSvg, buildRankingDefaultSvg, buildRankingPillSvg, buildRankingGlassSvg, buildRankingBorderedSvg, buildExtraBarSvg, buildExtraDefaultSvg, buildExtraPillSvg, buildExtraGlassSvg, buildExtraBorderedSvg, buildQualityBadgeSvg, escSvg, satinPillStops } from "./badge-svg-shared"
+import { buildTitleTextSvg, textShadowBox, type TextStyle, estimateTextWidth, fontFamilyFor, genreBadgeSafePad, genreBadgeSvgDims, genrePillMaxW, buildGenreBarSvg, buildGenrePillSvg, buildGenreTextSvg, buildGenreBorderedSvg, buildGenreGlassSvg, buildRankingBarSvg, buildRankingDefaultSvg, buildRankingPillSvg, buildRankingGlassSvg, buildRankingBorderedSvg, buildExtraBarSvg, buildExtraDefaultSvg, buildExtraPillSvg, buildExtraGlassSvg, buildExtraBorderedSvg, buildQualityBadgeSvg, escSvg, satinPillStops, containsHebrew, rtlSafe, type RibbonWords } from "./badge-svg-shared"
 import type { GenreParts } from "./badge-svg-shared"
 import type { BadgeStyle, RankingBadgeStyle, ExtraBadgeStyle } from "./badge-styles"
 // Renderer di upstream, solo per i tipi di badge che il fork non ha costruito
@@ -197,9 +197,9 @@ export async function renderGenreBadge(
 // Testo sotto il numero del nastro Netflix. Per gli anime è l'etichetta fissa
 // "anime" (stessa del passato); per film/serie è l'etichetta del rank (es.
 // "Oggi", "Today") — stesso sistema del badge anime esteso a tutti i rank.
-function netflixSubLabel(isAnime: boolean | undefined, label: string | undefined): string {
+function netflixSubLabel(isAnime: boolean | undefined, label: string | undefined, animeWord = "anime"): string {
   if (label !== undefined && label !== "") return label
-  return isAnime ? "anime" : ""
+  return isAnime ? animeWord : ""
 }
 
 /**
@@ -210,15 +210,19 @@ export function netflixRibbonFontSize(pw: number): number {
   return Math.round(Math.max(27 * pw / 380, 16))
 }
 
-export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boolean, side: "left" | "right" = "left", isAnime?: boolean, label?: string) {
+export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boolean, side: "left" | "right" = "left", isAnime?: boolean, label?: string, words?: RibbonWords) {
   // Leggermente ridotto (-11%): fs base 24, w proporzionale 2.65
   const fs = Math.round(Math.max(24 * pw / 380, 16))
   const w = Math.round(fs * 2.65)
   // Sottotitolo presente (anime o film/serie con etichetta): nastro allungato
   // verso il basso (h × 1.65) per dare pieno respiro alla scritta sopra la V.
-  const subLabel = netflixSubLabel(isAnime, label)
+  const subLabel = netflixSubLabel(isAnime, label, words?.anime)
   const hasSub = subLabel.length > 0
   const h = Math.round(w * (hasSub ? 1.65 : 1.35))
+  // "TOP" nella lingua del poster: in ebraico niente spaziatura tra lettere
+  // (spezzerebbe le legature) e Rubik al posto di Inter.
+  const topWord = words?.top || "TOP"
+  const topSpacing = containsHebrew(topWord) ? "0" : "1"
   const slant = Math.round(w * 0.12)
   const topFs = Math.round(w * 0.25)
   const isDoubleDigit = rank >= 10
@@ -287,7 +291,7 @@ export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boo
     </defs>
     <path d="${pathD}" fill="url(#nrg)" stroke="${ribbonStroke}" stroke-width="1" filter="url(#shadow3D)"/>
     <line x1="${highlightX1}" y1="1" x2="${highlightX2}" y2="1" stroke="rgba(255,255,255,0.4)" stroke-width="1.2"/>
-    <text x="${textX}" y="${topY}" fill="${textColor}" font-family="Inter" font-weight="800" font-size="${topFs}" text-anchor="middle" dominant-baseline="central" letter-spacing="1" filter="url(#textShadow)">TOP</text>
+    <text x="${textX}" y="${topY}" fill="${textColor}" font-family="${fontFamilyFor(topWord)}" font-weight="800" font-size="${topFs}" text-anchor="middle" dominant-baseline="central" letter-spacing="${topSpacing}" filter="url(#textShadow)">${escSvg(rtlSafe(topWord))}</text>
     <text x="${textX}" y="${rankY}" fill="${textColor}" font-family="Inter" font-weight="900" font-size="${rankFs}" text-anchor="middle" dominant-baseline="central" letter-spacing="${rankLetterSpacing}" filter="url(#textShadow)">${rank}</text>
     ${subEl}
   </svg>`
@@ -305,9 +309,11 @@ export async function buildRankingBadgeSVG(
   isAnime?: boolean,
   /** Scala % applicata al font solo per lo stile barra (gli altri scalano via bitmap nel service). */
   scale = 100,
+  /** Parole fisse del badge nella lingua del poster (vedi RibbonWords). */
+  words?: RibbonWords,
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
   const s = badgeStyle || "default"
-  const periodText = label || "Oggi"
+  const periodText = label || words?.today || "Oggi"
   const fullText = `#${rank} ${periodText}`
   const maxBadgeW = pw - 20
   let finalFs = 23 * pw / 380
@@ -334,11 +340,11 @@ export async function buildRankingBadgeSVG(
   if (s === "netflix-color") {
     // Stile nuovo di upstream: lo disegna il suo renderer, nastro senza
     // dicitura come tutti i nastri di upstream.
-    result = buildHouseRankingSvg({ rank, label: "", pw, topLight: !!topLight, style: s, accentColor, side, isAnime })
+    result = buildHouseRankingSvg({ rank, label: "", pw, topLight: !!topLight, style: s, accentColor, side, isAnime, words })
   } else if (isNetflix) {
     // Il nastro mostra l'etichetta sotto il numero: per gli anime è "anime",
     // per film/serie è il periodo del rank (es. "Oggi") — stesso sistema.
-    result = buildNetflixRankBadgeSVG(rank, pw, !!topLight, side, isAnime, periodText)
+    result = buildNetflixRankBadgeSVG(rank, pw, !!topLight, side, isAnime, periodText, words)
   } else if (s === "bar") {
     result = buildRankingBarSvg(fullText, pw, fs, fg, bg)
   } else if (s === "pill") {
@@ -359,8 +365,9 @@ export async function renderRankingBadge(
   rank: number, pw: number, label?: string,
   topLight?: boolean, badgeStyle?: RankingBadgeStyle, accentColor?: string, side?: "left" | "right", isAnime?: boolean,
   scale = 100,
+  words?: RibbonWords,
 ): Promise<{ png: Buffer; w: number; h: number }> {
-  const r = await buildRankingBadgeSVG(rank, pw, label, topLight, badgeStyle, accentColor, side, isAnime, scale)
+  const r = await buildRankingBadgeSVG(rank, pw, label, topLight, badgeStyle, accentColor, side, isAnime, scale, words)
   if (r) return r
   throw new Error(`SVG ranking badge failed: rank=${rank}`)
 }

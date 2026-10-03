@@ -153,7 +153,7 @@ function resolveBucket(bucket: SashBucket, params: BadgeParams, t: T): BadgeResu
       // Sotto i premi e sopra il sottogenere: è una notizia della settimana.
       if (params.tmdbTrending) return { type: "extra", label: t(params.mediaType === "movie" ? "badge.trending" : "badge.trendingSeries") }
       if (params.subGenre) return { type: "extra", label: params.subGenre }
-      if (params.isKDrama) return { type: "extra", label: "K-Drama" }
+      if (params.isKDrama) return { type: "extra", label: t("badge.kdrama") }
       if (params.director) return { type: "extra", label: params.director }
       if (params.studio) return { type: "extra", label: params.studio }
       if (params.miniseries) return { type: "extra", label: params.miniseries }
@@ -271,7 +271,7 @@ export function getAllBadgeOptions(params: {
   if (params.tmdbTrending) options.add(keyed(params.mediaType === "movie" ? "badge.trending" : "badge.trendingSeries"))
   if (params.highlyRated) options.add(keyed("badge.highlyRated"))
   if (params.subGenre) options.add(params.subGenre)
-  if (params.isKDrama) options.add("K-Drama")
+  if (params.isKDrama) options.add(keyed("badge.kdrama"))
   if (params.director) options.add(params.director)
   if (params.studio) options.add(params.studio)
   if (params.mediaType === "tv") {

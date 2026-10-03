@@ -14,6 +14,29 @@ function isItalianLang(lang: string | null | undefined): boolean {
   return (lang || "").slice(0, 2).toLowerCase() === "it"
 }
 
+/**
+ * Fork: etichette ebraiche. TMDB he-IL rende i composti TV in ebraico ("מדע
+ * בדיוני ופנטזיה") oppure li lascia in inglese, e lascia in inglese i generi
+ * solo-TV (Kids, News…): in entrambi i casi sul poster deve finire l'ebraico.
+ */
+const HEBREW_GENRES: Readonly<Record<string, string>> = {
+  "sci-fi & fantasy": "מדע בדיוני",
+  "מדע בדיוני ופנטזיה": "מדע בדיוני",
+  "action & adventure": "אקשן",
+  "אקשן והרפתקאות": "אקשן",
+  "war & politics": "מלחמה",
+  "מלחמה ופוליטיקה": "מלחמה",
+  kids: "ילדים",
+  news: "חדשות",
+  reality: "ריאליטי",
+  soap: "אופרת סבון",
+  talk: "טוק שואו",
+}
+
+function isHebrewLang(lang: string | null | undefined): boolean {
+  return (lang || "").slice(0, 2).toLowerCase() === "he"
+}
+
 export function normalizeGenreName(
   raw: string | null | undefined,
   lang?: string | null,
@@ -22,6 +45,7 @@ export function normalizeGenreName(
   const trimmed = raw.trim()
   if (!trimmed) return ""
   const key = trimmed.toLowerCase()
+  if (isHebrewLang(lang) && HEBREW_GENRES[key]) return HEBREW_GENRES[key]
   const it = isItalianLang(lang)
   if (key === "sci-fi & fantasy") return it ? "Fantascienza" : "Sci-Fi"
   if (key === "action & adventure") return it ? "Azione" : "Action"

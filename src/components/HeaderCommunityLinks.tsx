@@ -54,7 +54,7 @@ export function DesktopCommunityLinks() {
   const { t } = useT()
 
   return (
-    <div className="hidden md:flex absolute top-4 left-4 z-20">
+    <div className="hidden md:flex absolute top-4 start-4 z-20">
       <div className="flex flex-col items-stretch">
       <div className="flex items-center gap-1.5 p-1.5 rounded-2xl bg-black/60 backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/50 relative z-50">
         {/* GitHub Button */}
@@ -62,8 +62,8 @@ export function DesktopCommunityLinks() {
           href="https://github.com/Eful97/Pictorium"
           target="_blank"
           rel="noopener noreferrer"
-          aria-label="GitHub Repository"
-          title="GitHub Repository"
+          aria-label={t("ui.githubRepo")}
+          title={t("ui.githubRepo")}
           className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-white/[0.08] active:scale-90 transition-all duration-150 flex items-center justify-center cursor-pointer"
         >
           <GithubIcon className="w-4 h-4" />
@@ -74,8 +74,8 @@ export function DesktopCommunityLinks() {
           href="https://discord.gg/sYfWyXYVUp"
           target="_blank"
           rel="noopener noreferrer"
-          aria-label="Discord Community"
-          title="Discord Community"
+          aria-label={t("ui.discordCommunity")}
+          title={t("ui.discordCommunity")}
           className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-white/[0.08] active:scale-90 transition-all duration-150 flex items-center justify-center cursor-pointer"
         >
           <DiscordIcon className="w-4 h-4" />
@@ -105,14 +105,14 @@ export function DesktopCommunityLinks() {
           href="https://ko-fi.com/eful97"
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={`Support VPS on Ko-fi (${goal.current}/${goal.target}€)`}
-          title={`VPS Goal: ${goal.current}€ / ${goal.target}€ questo mese. Fai una donazione su Ko-fi!`}
+          aria-label={t("ui.kofiAria", { current: goal.current, target: goal.target })}
+          title={t("ui.kofiTitle", { current: goal.current, target: goal.target })}
           className="group flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs font-medium text-zinc-300 hover:text-white hover:bg-white/[0.08] active:scale-[0.97] transition-all duration-150 cursor-pointer"
         >
           <KofiIcon className="w-4 h-4 shrink-0 transition-transform duration-150 group-hover:scale-110" />
-          <div className="flex flex-col gap-1 text-left">
+          <div className="flex flex-col gap-1 text-start">
             <div className="flex items-center justify-between text-[10px] text-zinc-400 group-hover:text-zinc-200 leading-none gap-2">
-              <span className="font-semibold tracking-tight">VPS Goal</span>
+              <span className="font-semibold tracking-tight">{t("ui.kofiGoal")}</span>
               <span className="text-zinc-300 font-bold">{goal.current}/{goal.target}€</span>
             </div>
             <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
@@ -151,7 +151,7 @@ export function MobileCommunityLinks() {
         href="https://github.com/Eful97/Pictorium"
         target="_blank"
         rel="noopener noreferrer"
-        aria-label="GitHub Repository"
+        aria-label={t("ui.githubRepo")}
         className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/[0.05] border border-white/10 text-xs text-zinc-300 active:scale-95 transition-all duration-150"
       >
         <GithubIcon className="w-3.5 h-3.5" />
@@ -163,7 +163,7 @@ export function MobileCommunityLinks() {
         href="https://discord.gg/sYfWyXYVUp"
         target="_blank"
         rel="noopener noreferrer"
-        aria-label="Discord Community"
+        aria-label={t("ui.discordCommunity")}
         className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/[0.05] border border-white/10 text-xs text-zinc-300 active:scale-95 transition-all duration-150"
       >
         <DiscordIcon className="w-3.5 h-3.5" />
@@ -193,11 +193,11 @@ export function MobileCommunityLinks() {
         href="https://ko-fi.com/eful97"
         target="_blank"
         rel="noopener noreferrer"
-        aria-label={`Support VPS on Ko-fi (${goal.current}/${goal.target}€)`}
+        aria-label={t("ui.kofiAria", { current: goal.current, target: goal.target })}
         className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-white/[0.05] border border-white/10 text-xs text-zinc-300 active:scale-95 transition-all duration-150"
       >
         <KofiIcon className="w-3.5 h-3.5 shrink-0" />
-        <span className="text-[11px] font-medium text-zinc-300">VPS: {goal.current}/{goal.target}€</span>
+        <span className="text-[11px] font-medium text-zinc-300">{t("ui.kofiGoal")}: {goal.current}/{goal.target}€</span>
         <div className="w-10 h-1 bg-white/10 rounded-full overflow-hidden">
           <div
             className="h-full bg-gradient-to-r from-accent-orange to-amber-400 transition-all duration-500 rounded-full"

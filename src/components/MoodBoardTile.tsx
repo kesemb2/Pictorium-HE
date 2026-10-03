@@ -120,12 +120,12 @@ export const MoodBoardTile = React.memo(function MoodBoardTile({
         )}
 
         {/* Badge formato + DUAL (entrambi i profili salvati) */}
-        <span className="absolute top-2 left-12 z-10 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-black/70 text-zinc-300 border border-white/10 pointer-events-none">
+        <span className="absolute top-2 start-12 z-10 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-black/70 text-zinc-300 border border-white/10 pointer-events-none">
           {isLandscape ? "16:9" : "2:3"}
         </span>
         {m.posterPath && m.backdropPath && (
-          <span className="absolute top-8 left-12 z-10 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-accent-orange/90 text-white border border-white/10 pointer-events-none" title="DUAL">
-            DUAL
+          <span className="absolute top-8 start-12 z-10 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-accent-orange/90 text-white border border-white/10 pointer-events-none" title="DUAL">
+            {t("ui.dualTag")}
           </span>
         )}
 
@@ -158,7 +158,7 @@ export const MoodBoardTile = React.memo(function MoodBoardTile({
             background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.15) 50%, transparent 100%)",
           }}
         >
-          <div className="absolute bottom-0 left-0 right-0 p-3 pb-3.5 animate-overlay-in">
+          <div className="absolute bottom-0 start-0 end-0 p-3 pb-3.5 animate-overlay-in">
             <p className="text-sm font-semibold text-white truncate drop-shadow-lg">{m.title}</p>
             <div className="flex items-center gap-2 mt-1">
               {year && <span className="text-xs text-zinc-300 font-medium">{year}</span>}
@@ -178,7 +178,7 @@ export const MoodBoardTile = React.memo(function MoodBoardTile({
               handlers.quickView(m, tileRectOf(e))
             }}
             aria-label={t("ui.quickView")}
-            className="absolute top-2 right-2 w-10 h-10 rounded-full bg-black/75 border border-white/10 flex items-center justify-center text-white/80 hover:bg-black/85 hover:text-white transition-all duration-200 opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 active:scale-90 cursor-pointer shadow-lg z-10 touch-manipulation"
+            className="absolute top-2 end-2 w-10 h-10 rounded-full bg-black/75 border border-white/10 flex items-center justify-center text-white/80 hover:bg-black/85 hover:text-white transition-all duration-200 opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 active:scale-90 cursor-pointer shadow-lg z-10 touch-manipulation"
           >
             <Maximize2 className="w-4 h-4" />
           </button>
@@ -190,7 +190,7 @@ export const MoodBoardTile = React.memo(function MoodBoardTile({
             type="button"
             onClick={(e) => { e.stopPropagation(); handlers.quickView(m, tileRectOf(e)) }}
             aria-label={t("ui.collections")}
-            className="absolute bottom-2 right-2 flex items-center gap-1 px-2.5 py-2 rounded-lg bg-black/75 border border-white/10 text-zinc-300 hover:text-white hover:bg-black/85 transition-all duration-200 active:scale-90 cursor-pointer z-10 touch-manipulation"
+            className="absolute bottom-2 end-2 flex items-center gap-1 px-2.5 py-2 rounded-lg bg-black/75 border border-white/10 text-zinc-300 hover:text-white hover:bg-black/85 transition-all duration-200 active:scale-90 cursor-pointer z-10 touch-manipulation"
           >
             <Folder className="w-3 h-3" />
             {collectionCount > 0 && (
@@ -206,7 +206,7 @@ export const MoodBoardTile = React.memo(function MoodBoardTile({
             aria-label={t("ui.delete")}
             onClick={(e) => { e.stopPropagation(); handlers.remove(m) }}
             onKeyDown={(e) => e.stopPropagation()}
-            className="absolute top-2 left-2 w-10 h-10 rounded-lg bg-red-900/70 flex items-center justify-center text-xs text-red-300 hover:bg-red-800 hover:text-red-200 active:scale-90 transition-all duration-150 opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer shadow-lg shadow-black/30 touch-manipulation"
+            className="absolute top-2 start-2 w-10 h-10 rounded-lg bg-red-900/70 flex items-center justify-center text-xs text-red-300 hover:bg-red-800 hover:text-red-200 active:scale-90 transition-all duration-150 opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer shadow-lg shadow-black/30 touch-manipulation"
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -252,7 +252,7 @@ export const MoodBoardTile = React.memo(function MoodBoardTile({
             title={isLandscape ? t("ui.setAsPortrait") : t("ui.setAsLandscape")}
             onClick={(e) => { e.stopPropagation(); handlers.toggleShape(m) }}
             onKeyDown={(e) => e.stopPropagation()}
-            className="absolute bottom-2 left-2 w-10 h-10 rounded-lg bg-black/75 border border-white/10 flex items-center justify-center text-zinc-300 hover:text-white hover:bg-black/85 active:scale-90 transition-all duration-150 opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer shadow-lg shadow-black/30 z-10 touch-manipulation"
+            className="absolute bottom-2 start-2 w-10 h-10 rounded-lg bg-black/75 border border-white/10 flex items-center justify-center text-zinc-300 hover:text-white hover:bg-black/85 active:scale-90 transition-all duration-150 opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer shadow-lg shadow-black/30 z-10 touch-manipulation"
           >
             {isLandscape ? <RectangleVertical className="w-4 h-4" /> : <RectangleHorizontal className="w-4 h-4" />}
           </button>
@@ -261,7 +261,7 @@ export const MoodBoardTile = React.memo(function MoodBoardTile({
         {/* Select mode checkbox */}
         {selectMode && (
           <div
-            className={`absolute top-2 right-2 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all duration-200 ${
+            className={`absolute top-2 end-2 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all duration-200 ${
               isSelected
                 ? "bg-red-500 border-red-500 shadow-lg shadow-red-500/30 scale-110"
                 : "border-white/40 bg-black/30"

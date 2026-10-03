@@ -168,7 +168,7 @@ export function PosterLightbox({
           autoFocus
           onClick={handleClose}
           aria-label={t("ui.cancel")}
-          className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center text-white/70 hover:bg-black/70 hover:text-white transition-all duration-200 active:scale-90 z-10"
+          className="absolute top-3 end-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center text-white/70 hover:bg-black/70 hover:text-white transition-all duration-200 active:scale-90 z-10"
         >
           <X className="w-4 h-4" />
         </button>
@@ -215,7 +215,7 @@ export function PosterLightbox({
           )}
 
           {/* Title + metadata sovrapposti al poster */}
-          <div className="absolute bottom-0 left-0 right-0 p-4 pointer-events-none">
+          <div className="absolute bottom-0 start-0 end-0 p-4 pointer-events-none">
             <p className="text-base font-bold text-white drop-shadow-lg leading-tight">{mapping.title}</p>
             <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mt-1.5">
               {year && <span className="text-xs font-medium text-zinc-200 drop-shadow">{year}</span>}
@@ -238,7 +238,7 @@ export function PosterLightbox({
 
           {/* Poster icon badge */}
           {displaySrc && (
-            <div className="absolute top-3 left-3 w-7 h-7 rounded-lg bg-black/40 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+            <div className="absolute top-3 start-3 w-7 h-7 rounded-lg bg-black/40 backdrop-blur-sm flex items-center justify-center pointer-events-none">
               <Maximize2 className="w-3.5 h-3.5 text-white/60" />
             </div>
           )}

@@ -92,5 +92,5 @@ export function directorBadgeLabel(
   const canonical = matchDirectorName(name) ?? name
   const wantsHebrew = (opts?.locale || "").slice(0, 2).toLowerCase() === "he"
   const shown = wantsHebrew ? (DIRECTOR_HE[canonical] || opts?.nameHe || canonical) : canonical
-  return t ? t("badge.director", { name: shown }) : `Di ${shown}`
+  return t ? t("badge.director", { name: shown }) : shown
 }

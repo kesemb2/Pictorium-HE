@@ -211,7 +211,7 @@ export function EpisodeGroupControls() {
           <button
             type="button"
             onClick={() => ed.setEpisodeGroupId(null)}
-            className={`w-full text-left px-2.5 py-2 rounded-lg text-[11px] border transition-all flex items-center justify-between cursor-pointer ${
+            className={`w-full text-start px-2.5 py-2 rounded-lg text-[11px] border transition-all flex items-center justify-between cursor-pointer ${
               !ed.episodeGroupId
                 ? "bg-accent-orange/15 text-white border-accent-orange/40 font-semibold"
                 : "bg-surface2/40 text-zinc-300 border-surface2 hover:bg-surface2 hover:text-white"
@@ -227,7 +227,7 @@ export function EpisodeGroupControls() {
           <button
             type="button"
             onClick={() => ed.setEpisodeGroupId("standard")}
-            className={`w-full text-left px-2.5 py-2 rounded-lg text-[11px] border transition-all flex items-center justify-between cursor-pointer ${
+            className={`w-full text-start px-2.5 py-2 rounded-lg text-[11px] border transition-all flex items-center justify-between cursor-pointer ${
               ed.episodeGroupId === "standard"
                 ? "bg-accent-orange/15 text-white border-accent-orange/40 font-semibold"
                 : "bg-surface2/40 text-zinc-300 border-surface2 hover:bg-surface2 hover:text-white"
@@ -245,7 +245,7 @@ export function EpisodeGroupControls() {
               type="button"
               disabled
               title={t("ui.tvdbKeyRequired")}
-              className="w-full text-left px-2.5 py-2 rounded-lg text-[11px] border bg-surface2/20 text-zinc-500 border-white/5 opacity-50 cursor-not-allowed flex items-center justify-between"
+              className="w-full text-start px-2.5 py-2 rounded-lg text-[11px] border bg-surface2/20 text-zinc-500 border-white/5 opacity-50 cursor-not-allowed flex items-center justify-between"
             >
               <div className="flex flex-col">
                 <span>🗄️ TheTVDB</span>
@@ -256,7 +256,7 @@ export function EpisodeGroupControls() {
             <button
               type="button"
               disabled
-              className="w-full text-left px-2.5 py-2 rounded-lg text-[11px] border bg-surface2/40 text-zinc-400 border-surface2 flex items-center justify-between cursor-wait"
+              className="w-full text-start px-2.5 py-2 rounded-lg text-[11px] border bg-surface2/40 text-zinc-400 border-surface2 flex items-center justify-between cursor-wait"
             >
               <div className="flex flex-col">
                 <span>🗄️ TheTVDB</span>
@@ -265,7 +265,7 @@ export function EpisodeGroupControls() {
               <span className="w-3.5 h-3.5 border-2 border-zinc-500 border-t-transparent rounded-full animate-spin shrink-0" />
             </button>
           ) : tvdbSeasonTypes.length === 0 ? (
-            <div className="w-full text-left px-2.5 py-2 rounded-lg text-[11px] border bg-surface2/20 text-zinc-400 border-white/5">
+            <div className="w-full text-start px-2.5 py-2 rounded-lg text-[11px] border bg-surface2/20 text-zinc-400 border-white/5">
               <div className="flex flex-col">
                 <span>{t("ui.tvdbNoTypes")}</span>
                 <span className="text-[10px] text-zinc-500">{tvdbError ? t("ui.statusError", { msg: tvdbError }) : t("ui.tvdbNoTypesDesc")}</span>
@@ -287,7 +287,7 @@ export function EpisodeGroupControls() {
                   type="button"
                   key={st.type}
                   onClick={() => ed.setEpisodeGroupId(sentinel)}
-                  className={`w-full text-left px-2.5 py-2 rounded-lg text-[11px] border transition-all flex items-center justify-between cursor-pointer ${
+                  className={`w-full text-start px-2.5 py-2 rounded-lg text-[11px] border transition-all flex items-center justify-between cursor-pointer ${
                     isSelected ? "bg-accent-orange/15 text-white border-accent-orange/40 font-semibold" : "bg-surface2/40 text-zinc-300 border-surface2 hover:bg-surface2 hover:text-white"
                   }`}
                 >
@@ -304,7 +304,7 @@ export function EpisodeGroupControls() {
           <button
             type="button"
             onClick={() => ed.setEpisodeGroupId("anizip")}
-            className={`w-full text-left px-2.5 py-2 rounded-lg text-[11px] border transition-all flex items-center justify-between cursor-pointer ${
+            className={`w-full text-start px-2.5 py-2 rounded-lg text-[11px] border transition-all flex items-center justify-between cursor-pointer ${
               ed.episodeGroupId === "anizip"
                 ? "bg-accent-orange/15 text-white border-accent-orange/40 font-semibold"
                 : "bg-surface2/40 text-zinc-300 border-surface2 hover:bg-surface2 hover:text-white"
@@ -324,7 +324,7 @@ export function EpisodeGroupControls() {
                 type="button"
                 key={g.id}
                 onClick={() => ed.setEpisodeGroupId(g.id)}
-                className={`w-full text-left px-2.5 py-2 rounded-lg text-[11px] border transition-all flex items-center justify-between cursor-pointer ${
+                className={`w-full text-start px-2.5 py-2 rounded-lg text-[11px] border transition-all flex items-center justify-between cursor-pointer ${
                   isSelected
                     ? "bg-accent-orange/15 text-white border-accent-orange/40 font-semibold"
                     : "bg-surface2/40 text-zinc-300 border-surface2 hover:bg-surface2 hover:text-white"

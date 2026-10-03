@@ -55,10 +55,10 @@ export function ChangelogModal({ isOpen, onClose }: Props) {
 
       <div
         data-testid="changelog-list"
-        className="max-h-[60vh] overflow-y-auto space-y-5 pr-1 -mr-1"
+        className="max-h-[60vh] overflow-y-auto space-y-5 pe-1 -me-1"
       >
         {hasAuto && (
-          <section aria-label={t("ui.changelogRecent") || "Recent updates"} data-testid="changelog-recent">
+          <section aria-label={t("ui.changelogRecent")} data-testid="changelog-recent">
             <ul className="mt-1.5 space-y-1.5">
               {RECENT_CHANGES.map((item) => (
                 <li key={item.sha} className="flex items-start gap-2 text-xs text-zinc-300 leading-relaxed">

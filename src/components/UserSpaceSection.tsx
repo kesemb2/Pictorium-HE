@@ -7,6 +7,7 @@ import { Check, Copy, Fingerprint, Plus } from "lucide-react"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { copyText } from "@/lib/clipboard"
 import { isMultiUserServer } from "@/lib/guest-guard"
+import { translateServerError } from "@/lib/server-error"
 import {
   currentPathUuid,
   fetchWithUserAuthRetry,
@@ -149,7 +150,7 @@ function UserIdentityCard({ uuid }: { uuid: string }) {
       }
       if (!res.ok) {
         const err = await res.json().catch(() => null)
-        toast.error((err as { error?: string } | null)?.error || t("ui.userKeysSaveError"))
+        toast.error(translateServerError((err as { error?: string } | null)?.error, t, "ui.userKeysSaveError"))
         return
       }
       setCurrent("")
@@ -218,7 +219,7 @@ function UserIdentityCard({ uuid }: { uuid: string }) {
       {showPw && unlocked && ready && (
         <>
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-muted uppercase tracking-wide">password</span>
+            <span className="text-[10px] text-muted uppercase tracking-wide">{t("ui.passwordLabel")}</span>
             <span className={`text-[10px] font-medium ${hasPassword ? "text-emerald-400" : "text-zinc-500"}`}>
               {hasPassword ? t("ui.userKeysSet") : t("ui.userKeysUnset")}
             </span>
@@ -355,7 +356,7 @@ export function UserSpacesList() {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => null)
-        toast.error((err as { error?: string } | null)?.error || t("ui.userKeysSaveError"))
+        toast.error(translateServerError((err as { error?: string } | null)?.error, t, "ui.userKeysSaveError"))
         return
       }
       const data = (await res.json()) as { uuid: string; secret: string }

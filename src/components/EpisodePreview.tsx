@@ -163,7 +163,7 @@ export function EpisodePreview() {
       )}
 
       {!loading && !error && data && data.seasons.length > 0 && (
-        <div className="space-y-2 max-h-[420px] overflow-y-auto scrollbar-none pr-1">
+        <div className="space-y-2 max-h-[420px] overflow-y-auto scrollbar-none pe-1">
           {data.seasons.map((season) => {
             const isExpanded = expanded.has(season.season)
             return (
@@ -171,10 +171,10 @@ export function EpisodePreview() {
                 <button
                   type="button"
                   onClick={() => toggle(season.season)}
-                  className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-white/[0.04] transition-colors cursor-pointer"
+                  className="w-full flex items-center justify-between px-3 py-2.5 text-start hover:bg-white/[0.04] transition-colors cursor-pointer"
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-zinc-400 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />}
+                    {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-zinc-400 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0 rtl:-scale-x-100" />}
                     <div className="flex flex-col min-w-0">
                       <span className="text-[12px] font-semibold text-zinc-100 truncate">
                         {season.season === 0 ? "Specials" : season.name} <span className="font-normal text-zinc-400">· S{season.season}</span>
@@ -182,7 +182,7 @@ export function EpisodePreview() {
                       {season.overview && <span className="text-[10px] text-zinc-500 truncate max-w-[220px]">{season.overview}</span>}
                     </div>
                   </div>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface2/60 text-zinc-300 border border-white/10 shrink-0 ml-2">
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface2/60 text-zinc-300 border border-white/10 shrink-0 ms-2">
                     {season.episodes.length} ep
                   </span>
                 </button>
@@ -201,7 +201,7 @@ export function EpisodePreview() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-[11px] font-medium text-zinc-100 truncate">
-                            <span className="font-mono text-zinc-400 mr-1">S{ep.season}:E{ep.episode}</span>
+                            <span className="font-mono text-zinc-400 me-1">S{ep.season}:E{ep.episode}</span>
                             {ep.name}
                           </p>
                           {ep.overview && <p className="text-[10px] text-zinc-400 line-clamp-2 leading-tight mt-0.5">{ep.overview}</p>}
@@ -231,7 +231,11 @@ export function EpisodePreview() {
       )}
 
       <p className="text-[10px] text-zinc-500 leading-relaxed">
-        È la stessa lista che Stremio riceverà su <span className="font-mono text-zinc-400">/meta/series/{selected?.id}.json</span>. Cambia l&apos;ordinamento sopra e verifica qui prima di salvare.
+        {(() => {
+          const path = `/meta/series/${selected?.id}.json`
+          const [before, after] = t("ui.epPreviewNote").split("{path}")
+          return <>{before}<span className="font-mono text-zinc-400" dir="ltr">{path}</span>{after}</>
+        })()}
       </p>
     </div>
   )

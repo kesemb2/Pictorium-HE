@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import type { TMDBImage, PosterShape } from "@/lib/types"
 import { userFetch } from "@/lib/http"
 import { currentPathUuid } from "@/lib/user-token"
+import { t } from "@/lib/i18n"
 
 interface PosterFitMetrics {
   cleanliness: number
@@ -156,12 +157,12 @@ export function usePosterFit(input: UsePosterFitInput): UsePosterFitResult {
         if (!res.ok) {
           if (res.status === 401) {
             if (currentPathUuid()) {
-              setError("Best-fit non disponibile: sblocca il tuo profilo per abilitare l'analisi automatica.")
+              setError(t("ui.bestFitLockedSpace"))
             } else {
-              setError("Best-fit protetto: sblocca con il token admin (oppure imposta PICTORIUM_PUBLIC_INSTANCE=1 se istanza senza token).")
+              setError(t("ui.bestFitLockedAdmin"))
             }
           } else {
-            setError(`Analisi best-fit fallita (HTTP ${res.status})`)
+            setError(t("ui.bestFitHttpError", { status: res.status }))
           }
           setBestFitPath(null)
           setResults([])
@@ -185,7 +186,7 @@ export function usePosterFit(input: UsePosterFitInput): UsePosterFitResult {
         setBestFitPath(data.bestPosterPath)
       } catch (err) {
         if ((err as Error)?.name === "AbortError" || controller.signal.aborted) return
-        setError("Errore di rete durante l'analisi best-fit")
+        setError(t("ui.bestFitNetworkError"))
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false)

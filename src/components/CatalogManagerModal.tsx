@@ -325,7 +325,7 @@ export function CatalogManagerModal({ isOpen, onClose }: CatalogManagerModalProp
   return (
     <div
       ref={popoverRef}
-      className="absolute right-0 top-full mt-2 w-[600px] max-w-[calc(100vw-1.5rem)] z-50 bg-surface/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[82vh] animate-scale-in"
+      className="absolute end-0 top-full mt-2 w-[600px] max-w-[calc(100vw-1.5rem)] z-50 bg-surface/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[82vh] animate-scale-in"
       onClick={(e) => e.stopPropagation()}
     >
       {/* Header */}
@@ -399,7 +399,7 @@ export function CatalogManagerModal({ isOpen, onClose }: CatalogManagerModalProp
               <button
                 type="button"
                 onClick={() => setSelectedIds(new Set())}
-                className="ml-1 text-[10px] underline hover:text-white"
+                className="ms-1 text-[10px] underline hover:text-white"
               >
                 {t("ui.deselect")}
               </button>
@@ -591,7 +591,7 @@ export function CatalogManagerModal({ isOpen, onClose }: CatalogManagerModalProp
                     </span>
                     {item.isCustom && (
                       <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/20">
-                        Custom
+                        {t("ui.customTag")}
                       </span>
                     )}
                   </div>

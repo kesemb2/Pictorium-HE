@@ -96,11 +96,11 @@ interface CacheStatusData {
 
 function StatusBadge({ ok }: { ok: boolean | null }) {
   if (ok === null) {
-    return <span className="inline-block w-2.5 h-2.5 rounded-full bg-zinc-500 shadow-[0_0_6px_rgba(113,113,122,0.5)] mr-2 shrink-0" />
+    return <span className="inline-block w-2.5 h-2.5 rounded-full bg-zinc-500 shadow-[0_0_6px_rgba(113,113,122,0.5)] me-2 shrink-0" />
   }
   return ok
-    ? <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)] mr-2 shrink-0" />
-    : <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)] mr-2 shrink-0" />
+    ? <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)] me-2 shrink-0" />
+    : <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)] me-2 shrink-0" />
 }
 
 function StatusRow({ label, ok, extra }: { label: string; ok: boolean | null; extra?: React.ReactNode }) {
@@ -110,7 +110,7 @@ function StatusRow({ label, ok, extra }: { label: string; ok: boolean | null; ex
         <StatusBadge ok={ok} />
         <span className="truncate">{label}</span>
       </span>
-      {extra && <span className="text-xs text-zinc-400 font-mono tabular-nums text-right">{extra}</span>}
+      {extra && <span className="text-xs text-zinc-400 font-mono tabular-nums text-end">{extra}</span>}
     </div>
   )
 }
@@ -239,7 +239,7 @@ export default function StatusPage() {
             </p>
             {uuid && (
               <p className="text-[11px] text-zinc-400 mt-1 font-mono">
-                <span className="text-zinc-500">Spazio:</span> {uuid.slice(0, 8)}…
+                <span className="text-zinc-500">{t("ui.spaceLabel")}</span> {uuid.slice(0, 8)}…
               </p>
             )}
           </div>
@@ -258,8 +258,8 @@ export default function StatusPage() {
           {lastRefresh && (
             <p className="text-[11px] text-zinc-500">
               {t("ui.statusUpdated", { time: lastRefresh.toLocaleTimeString(getLang()) })}
-              <span className="ml-1.5 px-1.5 py-px rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
-                LIVE
+              <span className="ms-1.5 px-1.5 py-px rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+                {t("ui.live")}
               </span>
             </p>
           )}
@@ -271,7 +271,7 @@ export default function StatusPage() {
             className="flex items-center gap-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
           >
             <span aria-hidden="true" className={`relative w-8 h-[18px] rounded-full transition-colors ${autoRefresh ? "bg-accent-orange" : "bg-zinc-700"}`}>
-              <span className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow transition-all ${autoRefresh ? "left-[16px]" : "left-[2px]"}`} />
+              <span className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow transition-all ${autoRefresh ? "start-[16px]" : "start-[2px]"}`} />
             </span>
             {t("ui.statusAutoRefresh")}
           </button>

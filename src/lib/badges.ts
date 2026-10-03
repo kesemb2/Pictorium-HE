@@ -86,5 +86,8 @@ export const GENRE_FALLBACK: Record<string, string> = {
   'Sci-Fi & Fantasy': '#3498DB', 'Action & Adventure': '#D4A574', 'War & Politics': '#6B4226', 'حركة ومغامرة': '#D4A574', 'خيال علمي وفانتازيا': '#3498DB', 'حرب وسياسة': '#6B4226', 'Aksiyon & Macera': '#D4A574', 'Bilim Kurgu & Fantazi': '#3498DB',
   'Pembe Dizi': '#5D6D7E', 'Gerçeklik': '#7F8C8D', 'Haber': '#7F8C8D', 'TV film': '#5D6D7E', 'TV Film': '#5D6D7E', 'TV-film': '#5D6D7E', 'TV Movie': '#5D6D7E',
   'Kids': '#2ECC71', 'News': '#7F8C8D', 'Reality': '#7F8C8D', 'Soap': '#5D6D7E', 'Talk': '#7F8C8D',
+  // Fork: composti TV e generi solo-TV in ebraico.
+  'מדע בדיוני ופנטזיה': '#3498DB', 'אקשן והרפתקאות': '#D4A574', 'מלחמה ופוליטיקה': '#6B4226',
+  'ילדים': '#2ECC71', 'חדשות': '#7F8C8D', 'ריאליטי': '#7F8C8D', 'אופרת סבון': '#5D6D7E', 'טוק שואו': '#7F8C8D',
   'فيلم تلفازي': '#5D6D7E', 'أطفال': '#2ECC71', 'أخبار': '#7F8C8D', 'واقع': '#7F8C8D', 'حوار': '#7F8C8D', 'أوبرا صابونية': '#5D6D7E',
 }

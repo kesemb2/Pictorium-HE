@@ -182,8 +182,14 @@ const KIND_LABELS: Record<UserKeyKind, string> = {
   tmdb: "TMDB",
   mdblist: "MDBList",
   tvdb: "TVDB",
-  simkl: "Simkl Client ID",
-  fanart: "Fanart.tv Project Key",
+  simkl: "Simkl",
+  fanart: "Fanart.tv",
+}
+
+/** Etichetta del campo: per Simkl e Fanart.tv il nome del tipo di chiave (tradotto). */
+const KIND_FIELD_KEYS: Partial<Record<UserKeyKind, string>> = {
+  simkl: "ui.simklClientId",
+  fanart: "ui.fanartProjectKey",
 }
 
 /**
@@ -560,7 +566,7 @@ export function UserKeysSection() {
         return (
           <KeyRow
             key={kind}
-            label={KIND_LABELS[kind] || kind}
+            label={KIND_FIELD_KEYS[kind] ? t(KIND_FIELD_KEYS[kind]!) : (KIND_LABELS[kind] || kind)}
             badge={
               status ? (
                 <span className={`text-[10px] font-medium ${ok && !isDisabledRow ? "text-emerald-400" : broken ? "text-amber-400" : isDisabledRow ? "text-zinc-400" : "text-zinc-500"}`}>

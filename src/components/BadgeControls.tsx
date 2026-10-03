@@ -70,7 +70,7 @@ export function BadgeControls() {
 
           {/* Sub-controlli Genere / Anno / Voto */}
           {ed.globalBadges && (
-            <div className="pl-3 py-1 space-y-2 border-l-2 border-surface2 ml-1 animate-fade-in">
+            <div className="ps-3 py-1 space-y-2 border-s-2 border-surface2 ms-1 animate-fade-in">
               <div className="flex items-center justify-between">
                 <span className="text-muted">{t("ui.badgeGenre")}</span>
                 <Toggle value={ed.badgeGenre} onChange={(v) => ed.setBadgeGenre(v)} label={t("ui.badgeGenre")} />
@@ -117,7 +117,7 @@ export function BadgeControls() {
                         <span className="text-[10px] text-muted leading-tight">
                           {t("ui.ratingSourcesHint")}
                         </span>
-                        <div className="flex items-center gap-1.5 text-[10px] shrink-0 ml-2">
+                        <div className="flex items-center gap-1.5 text-[10px] shrink-0 ms-2">
                           <button
                             type="button"
                             onClick={() => ed.setRatingSources(UI_RATING_SOURCES.map((s) => s.id))}
@@ -135,7 +135,7 @@ export function BadgeControls() {
                           </button>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-1.5 max-h-52 overflow-y-auto pr-0.5">
+                      <div className="grid grid-cols-2 gap-1.5 max-h-52 overflow-y-auto pe-0.5">
                         {UI_RATING_SOURCES.map((s, idx) => {
                           const current = ed.ratingSources ?? ["imdb", "tmdb"]
                           const isSelected = current.includes(s.id)
@@ -162,7 +162,7 @@ export function BadgeControls() {
                                 <RatingSourceIcon id={s.id} className="w-3.5 h-3.5 shrink-0" />
                                 <span className="truncate">{t(s.labelKey)}</span>
                               </span>
-                              <span className={`text-[9px] font-mono ml-1 shrink-0 ${isSelected ? "text-accent-orange/70" : "text-zinc-600"}`}>
+                              <span className={`text-[9px] font-mono ms-1 shrink-0 ${isSelected ? "text-accent-orange/70" : "text-zinc-600"}`}>
                                 {idx + 1}
                               </span>
                             </button>
@@ -206,7 +206,7 @@ export function BadgeControls() {
           </div>
 
           {ed.badgeQuality && (
-            <div className="pl-3 py-1 space-y-2.5 border-l-2 border-surface2 ml-1 animate-fade-in">
+            <div className="ps-3 py-1 space-y-2.5 border-s-2 border-surface2 ms-1 animate-fade-in">
               <div>
                 <label className="text-[11px] text-muted font-medium block mb-1">{t("ui.qualityBadgeStyle")}</label>
                 <BadgeStyleSelector
@@ -264,7 +264,7 @@ export function BadgeControls() {
 
           {ed.networkLogo && (
             <div className="flex items-center justify-between gap-3" title={t("ui.networkLogoPosition")}>
-              <span className="text-zinc-400 font-medium text-[11px] pl-5">
+              <span className="text-zinc-400 font-medium text-[11px] ps-5">
                 {t("ui.networkLogoPosition")}
               </span>
               <div className="flex gap-1 flex-1 max-w-[190px]">
@@ -344,7 +344,7 @@ export function BadgeControls() {
               onBlur={() => { const v = editText.trim(); ed.setCustomBadge(v || null); setEditingValue(null) }}
               onKeyDown={(e) => { if (e.key === "Enter") { (e.target as HTMLInputElement).blur() } }}
               maxLength={40}
-              className="editor-input w-44 max-w-[55%] min-w-0 text-right px-2 py-1 font-medium"
+              className="editor-input w-44 max-w-[55%] min-w-0 text-end px-2 py-1 font-medium"
               placeholder={t("ui.customBadgePlaceholder")}
             />
           ) : (
@@ -356,7 +356,7 @@ export function BadgeControls() {
                 else if (v === "__auto__") ed.setCustomBadge(null)
                 else ed.setCustomBadge(v)
               }}
-              className="editor-input w-44 max-w-[55%] min-w-0 text-right px-2 py-1 cursor-pointer truncate font-medium"
+              className="editor-input w-44 max-w-[55%] min-w-0 text-end px-2 py-1 cursor-pointer truncate font-medium"
             >
               <option value="__auto__">{t("ui.auto")}</option>
               {(() => {
@@ -495,7 +495,7 @@ export function BadgeControls() {
                 className="text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors px-1.5 py-0.5 rounded bg-surface2/50 border border-surface2 hover:bg-surface2 flex items-center gap-1"
                 title={t("ui.resetAutoColor")}
               >
-                <RotateCcw className="w-3 h-3" />Reset
+                <RotateCcw className="w-3 h-3" />{t("ui.reset")}
               </button>
             ) : (
               <span className="text-[10px] text-zinc-500 italic">

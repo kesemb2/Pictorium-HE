@@ -7,7 +7,12 @@
  * Questo modulo è l'unica sorgente di verità per il mapping.
  */
 
-export const DEFAULT_REGION = "IT" as const
+/**
+ * Regione di default del fork: Israele. Un poster o un catalogo richiesto
+ * senza `lang`/`region` (e senza default salvati) esce quindi in ebraico,
+ * non in italiano come nell'upstream.
+ */
+export const DEFAULT_REGION = "IL" as const
 
 export interface RegionDef {
   /** Codice JustWatch / ISO (usato anche come chiave canonica). */
@@ -126,4 +131,19 @@ export function defaultRegionForLang(lang: string | null | undefined, currentReg
   }
   const found = REGIONS.find((r) => r.lang2 === l)
   return found?.code ?? null
+}
+
+/**
+ * Nome del paese nella lingua dell'interfaccia (`Intl.DisplayNames`), così
+ * ogni lingua mostra i paesi nella propria lingua senza un dizionario per
+ * regione. Fallback: l'etichetta storica (italiano) se l'ambiente non ha Intl.
+ */
+export function regionLabel(region: Pick<RegionDef, "code" | "label">, uiLang: string): string {
+  try {
+    const name = new Intl.DisplayNames([uiLang || "en"], { type: "region" }).of(region.code)
+    if (name && name !== region.code) return name
+  } catch {
+    // Intl assente o lingua non supportata: etichetta storica.
+  }
+  return region.label
 }

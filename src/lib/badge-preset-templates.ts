@@ -35,7 +35,8 @@ export interface BadgePresetTemplate {
 }
 
 function top(style: HouseBadge["style"]): HouseBadge {
-  return { style, label: "Oggi", scale: 100, polarity: "auto" }
+  // Senza etichetta: il render usa "oggi" nella lingua del poster.
+  return { style, scale: 100, polarity: "auto" }
 }
 
 function genre(style: HouseBadge["style"]): HouseBadge {

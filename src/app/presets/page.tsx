@@ -27,7 +27,7 @@ export default function PresetsPage() {
 
   useEffect(() => {
     try {
-      const saved = window.localStorage.getItem("pictorium-lang")
+      const saved = window.localStorage.getItem("preferred_lang")
       if (saved && saved !== getLang()) {
         setLang(saved)
         setLangTick((n) => n + 1)
@@ -114,8 +114,8 @@ export default function PresetsPage() {
             aria-label={t("ui.presetsTarget")}
           >
             <option value="">{t("ui.presetsAllTargets")}</option>
-            <option value="top">top</option>
-            <option value="genre">genre</option>
+            <option value="top">{t("ui.presetsTargetTop")}</option>
+            <option value="genre">{t("ui.presetsTargetGenre")}</option>
           </select>
           <input
             value={q}

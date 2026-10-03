@@ -168,9 +168,9 @@ export function MyPostersView() {
       )
       const failed = results.filter((r) => r.status === "rejected").length
       if (failed > 0) {
-        import("sonner").then(({ toast }) => toast.error(`Errore su ${failed} poster`))
+        import("sonner").then(({ toast }) => toast.error(t("ui.bulkOrderFailed", { count: failed })))
       } else {
-        import("sonner").then(({ toast }) => toast.success(`Ordinamento aggiornato per ${toUpdate.length} serie`))
+        import("sonner").then(({ toast }) => toast.success(t("ui.bulkOrderDone", { count: toUpdate.length })))
         setSelected(new Set())
         setSelectMode(false)
         await loadMappings()
@@ -298,7 +298,7 @@ export function MyPostersView() {
       {/* Header libreria (da prototipo Open Design): kicker + titolo + conteggio + CTA */}
       <section className="max-w-7xl mx-auto px-4 mb-6">
         <div className="flex flex-col md:flex-row md:items-end gap-4">
-          <div className="text-center md:text-left">
+          <div className="text-center md:text-start">
             <span className="hero-kicker mb-3">
               <span className="dot" aria-hidden="true" />
               {t("ui.myPostersKicker")}
@@ -318,7 +318,7 @@ export function MyPostersView() {
         {/* Ricerca e Filtri Tipo */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1">
           <div role="search" className="search-shell flex items-center h-10 rounded-xl transition-all duration-300 group w-full sm:w-64">
-            <span className="shrink-0 pl-3 text-zinc-500 group-focus-within:text-zinc-300 transition-colors">
+            <span className="shrink-0 ps-3 text-zinc-500 group-focus-within:text-zinc-300 transition-colors">
               <Search size={14} />
             </span>
             <input
@@ -330,7 +330,7 @@ export function MyPostersView() {
               className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted focus:placeholder:text-muted px-2 h-full transition-colors duration-200"
             />
             {filter.length === 0 && (
-              <kbd className="hidden md:inline-flex items-center px-1.5 py-0.5 mr-1.5 text-[10px] font-mono font-medium text-zinc-500 bg-white/[0.06] border border-white/10 rounded-md pointer-events-none select-none">
+              <kbd className="hidden md:inline-flex items-center px-1.5 py-0.5 me-1.5 text-[10px] font-mono font-medium text-zinc-500 bg-white/[0.06] border border-white/10 rounded-md pointer-events-none select-none">
                 /
               </kbd>
             )}
@@ -339,7 +339,7 @@ export function MyPostersView() {
                 type="button"
                 aria-label={t("ui.filterPlaceholder")}
                 onClick={() => setFilter("")}
-                className="shrink-0 w-6 h-6 mr-1.5 flex items-center justify-center bg-zinc-700/60 text-zinc-300 rounded-full hover:bg-zinc-600 active:scale-90 transition-all duration-200"
+                className="shrink-0 w-6 h-6 me-1.5 flex items-center justify-center bg-zinc-700/60 text-zinc-300 rounded-full hover:bg-zinc-600 active:scale-90 transition-all duration-200"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -443,11 +443,11 @@ export function MyPostersView() {
               <ChevronDown className="w-3 h-3 text-zinc-400" />
             </button>
             {(sortOpen || sortClosing) && (
-              <div className={`absolute right-0 top-full mt-1.5 surface-card border-border/80 rounded-xl p-1.5 z-50 min-w-40 shadow-xl shadow-black/80 ${sortClosing ? "animate-fade-scale-out" : "animate-fade-scale-in"}`}>
+              <div className={`absolute end-0 top-full mt-1.5 surface-card border-border/80 rounded-xl p-1.5 z-50 min-w-40 shadow-xl shadow-black/80 ${sortClosing ? "animate-fade-scale-out" : "animate-fade-scale-in"}`}>
                 <button
                   type="button"
                   onClick={() => { setSortBy("updated"); closeSortDropdown() }}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left transition-all duration-150 ${
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-start transition-all duration-150 ${
                     sortBy === "updated" ? "bg-accent-orange/15 text-accent-orange font-semibold" : "text-zinc-300 hover:bg-surface2"
                   }`}
                 >
@@ -457,7 +457,7 @@ export function MyPostersView() {
                 <button
                   type="button"
                   onClick={() => { setSortBy("alpha"); closeSortDropdown() }}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left transition-all duration-150 ${
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-start transition-all duration-150 ${
                     sortBy === "alpha" ? "bg-accent-orange/15 text-accent-orange font-semibold" : "text-zinc-300 hover:bg-surface2"
                   }`}
                 >
@@ -538,7 +538,7 @@ export function MyPostersView() {
                 className="text-xs px-2.5 py-1 rounded-lg bg-surface2/60 text-zinc-200 hover:bg-surface2 border border-white/10 disabled:opacity-50"
                 title={t("ui.setStandard")}
               >
-                Standard
+                {t("ui.standardShort")}
               </button>
               <button
                 type="button"

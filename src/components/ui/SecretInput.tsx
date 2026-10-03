@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Eye, EyeOff, Check, X, Loader2, ShieldCheck } from "lucide-react"
+import { t } from "@/lib/i18n"
 
 export function SecretInput({
   label,
@@ -55,6 +56,7 @@ export function SecretInput({
       </label>
       <div className="flex gap-1">
         <input
+          dir="ltr"
           type={show ? "text" : "password"}
           value={value}
           onChange={(e) => {
@@ -70,8 +72,8 @@ export function SecretInput({
           type="button"
           onClick={() => setShow((s) => !s)}
           className="px-2 bg-surface2 rounded-lg text-xs hover:bg-zinc-700 active:scale-90 transition-all duration-150 text-zinc-300"
-          aria-label={show ? "Hide password" : "Show password"}
-          title={show ? "Nascondi chiave" : "Mostra chiave"}
+          aria-label={show ? t("ui.hideKey") : t("ui.showKey")}
+          title={show ? t("ui.hideKey") : t("ui.showKey")}
         >
           {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
         </button>
@@ -87,8 +89,8 @@ export function SecretInput({
                   ? "bg-red-500/20 text-red-400 border-red-500/40"
                   : "bg-surface2 border-surface2/60 text-zinc-300 hover:text-white hover:bg-zinc-700 active:scale-90"
             }`}
-            title="Verifica validità chiave"
-            aria-label="Verifica validità chiave"
+            title={t("ui.verifyKeyValidity")}
+            aria-label={t("ui.verifyKeyValidity")}
           >
             {validating ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin text-accent-orange" />

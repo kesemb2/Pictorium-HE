@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react"
 import { Lock, ArrowRight, Delete, ShieldAlert } from "lucide-react"
 import { useT } from "@/lib/contexts/TranslationContext"
+import { translateServerError } from "@/lib/server-error"
 
 interface PinLockModalProps {
   onSuccess: () => void
@@ -38,7 +39,7 @@ export function PinLockModal({ onSuccess }: PinLockModalProps) {
         onSuccess()
       } else {
         const data = await res.json().catch(() => ({}))
-        setError(data.error || t("ui.pinLockWrong"))
+        setError(translateServerError(data.error, t, "ui.pinLockWrong"))
         setShake(true)
         setTimeout(() => setShake(false), 500)
         setPin("")
@@ -139,7 +140,7 @@ export function PinLockModal({ onSuccess }: PinLockModalProps) {
             aria-label={t("ui.pinLockUnlock")}
             className="h-12 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 border border-amber-500/30 flex items-center justify-center text-amber-400 hover:text-amber-300 disabled:opacity-30 disabled:pointer-events-none transition-all"
           >
-            <ArrowRight className="w-5 h-5" />
+            <ArrowRight className="w-5 h-5 rtl:-scale-x-100" />
           </button>
         </div>
 

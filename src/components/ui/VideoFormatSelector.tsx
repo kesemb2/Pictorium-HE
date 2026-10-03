@@ -39,19 +39,19 @@ export function VideoFormatSelector({
     <div className="space-y-1.5 w-full">
       <div className="flex items-center justify-between px-0.5 text-[10px]">
         <span className="text-muted leading-tight">
-          {selectedFormats.length}/{VIDEO_FORMAT_OPTIONS.length} {t("ui.activeCount") || "attivi"}
+          {selectedFormats.length}/{VIDEO_FORMAT_OPTIONS.length} {t("ui.activeCount")}
         </span>
-        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+        <div className="flex items-center gap-1.5 shrink-0 ms-2">
           {onReset && isCustomized && (
             <>
               <button
                 type="button"
                 onClick={onReset}
-                title={t("ui.resetAuto") || "Ripristina rilevamento automatico"}
+                title={t("ui.resetAuto")}
                 className="text-amber-400/90 hover:text-amber-300 font-medium flex items-center gap-1 transition-colors"
               >
                 <RotateCcw className="w-2.5 h-2.5" />
-                <span>Auto</span>
+                <span>{t("ui.auto")}</span>
               </button>
               <span className="text-zinc-600">·</span>
             </>
@@ -61,7 +61,7 @@ export function VideoFormatSelector({
             onClick={selectAll}
             className="text-accent-orange hover:underline font-semibold transition-colors"
           >
-            {t("ui.formatsAll") || "Tutti"}
+            {t("ui.formatsAll")}
           </button>
           <span className="text-zinc-600">·</span>
           <button
@@ -69,7 +69,7 @@ export function VideoFormatSelector({
             onClick={selectNone}
             className="text-muted hover:text-zinc-200 transition-colors"
           >
-            {t("ui.formatsNone") || "Nessuno"}
+            {t("ui.formatsNone")}
           </button>
         </div>
       </div>

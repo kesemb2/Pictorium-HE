@@ -448,7 +448,7 @@ export default function EditView() {
     <div className={selected ? "w-full max-w-lg relative z-[100] isolate" : "max-w-lg mx-auto relative z-[100] isolate mb-8"}>
       <SearchBar tmdbKey={tmdbKey} hasServerKey={serverHasTmdbKey} value={query} onChange={setQuery} onSearch={(q) => { setQuery(q); router.push("search"); doSearch(q) }} large onFocus={() => setSearchFocused(true)} onBlur={() => { blurTimerRef.current = setTimeout(() => setSearchFocused(false), 200) }} />
       {searchFocused && recentSearches.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-surface border border-border rounded-xl p-2 shadow-2xl shadow-black/50 z-50 animate-fade-scale-in">
+        <div className="absolute top-full start-0 end-0 mt-1 bg-surface border border-border rounded-xl p-2 shadow-2xl shadow-black/50 z-50 animate-fade-scale-in">
           <div className="flex items-center justify-between px-2 py-1.5 border-b border-white/[0.06] mb-1">
             <p className="text-xs text-muted font-semibold">{t("ui.recentSearches")}</p>
             <button
@@ -465,7 +465,7 @@ export default function EditView() {
             </button>
           </div>
           {recentSearches.map((s) => (
-            <button type="button" key={s} onMouseDown={(e) => e.preventDefault()} onClick={() => { setQuery(s); router.push("search"); doSearch(s); setSearchFocused(false) }} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-accent-orange/10 text-sm text-zinc-300 hover:text-accent transition-all duration-150 text-left">
+            <button type="button" key={s} onMouseDown={(e) => e.preventDefault()} onClick={() => { setQuery(s); router.push("search"); doSearch(s); setSearchFocused(false) }} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-accent-orange/10 text-sm text-zinc-300 hover:text-accent transition-all duration-150 text-start">
               <Clock className="w-4 h-4 text-zinc-500 shrink-0" />
               <span className="flex-1 truncate">{s}</span>
               <span onMouseDown={(e) => { e.preventDefault(); e.stopPropagation() }} onClick={(e) => { e.stopPropagation(); removeRecentSearch(s) }} aria-label={t("ui.remove")} className="text-danger hover:text-red-300 transition-all duration-150 text-sm px-2 shrink-0"><X className="w-3.5 h-3.5" /></span>
@@ -548,7 +548,7 @@ export default function EditView() {
     // Sempre visibile: ospita anche badge superiore e sfocatura, che valgono
     // pure senza logo film (la sezione logo resta condizionata dentro).
     { key: "transform", label: t("ui.transform") },
-    ...(selected?.media_type === "tv" ? [{ key: "stagioni", label: t("ui.seasons") || "Stagioni" }] : []),
+    ...(selected?.media_type === "tv" ? [{ key: "stagioni", label: t("ui.seasons") }] : []),
   ], [t, selected?.media_type])
 
   useEffect(() => {
@@ -586,7 +586,7 @@ export default function EditView() {
                 onClick={() => { setSelected(null); setPreviewPoster(null); setSelectedLogo(null); setPreviewId(null) }}
                 className="flex items-center gap-1 px-3 py-2 rounded-xl bg-surface border border-white/10 text-xs font-semibold text-zinc-300 hover:text-white active:scale-95 transition-all shrink-0 cursor-pointer"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="w-4 h-4 rtl:-scale-x-100" />
                 <span>{t("ui.back")}</span>
               </button>
               <div className="flex-1 min-w-0 text-center px-1">
@@ -641,13 +641,13 @@ export default function EditView() {
                 className="absolute top-1 bottom-1 rounded-xl bg-accent-orange shadow-md shadow-accent-orange/25 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none"
                 style={{
                   width: "calc((100% - 8px) / 3)",
-                  left: "4px",
+                  insetInlineStart: "4px",
                   transform:
                     mobileSection === "poster"
                       ? "translateX(0%)"
                       : mobileSection === "preview"
-                        ? "translateX(100%)"
-                        : "translateX(200%)",
+                        ? "translateX(calc(100% * var(--dir-sign, 1)))"
+                        : "translateX(calc(200% * var(--dir-sign, 1)))",
                 }}
               />
               <button
@@ -659,7 +659,7 @@ export default function EditView() {
                     : "text-zinc-400 hover:text-zinc-200"
                 }`}
               >
-                <span>{isLandscape ? (t("ui.backdrops") || "Sfondi") : t("ui.poster")}</span>
+                <span>{isLandscape ? (t("ui.backdrops")) : t("ui.poster")}</span>
                 <span className="text-[10px] opacity-75 font-mono">({isLandscape ? ed.backdrops.length : posters.length})</span>
               </button>
               <button
@@ -691,7 +691,7 @@ export default function EditView() {
 
             {/* LEFT: Poster (verticale) o Sfondi (orizzontale) */}
             <div className={mobileSection === "poster" ? "block w-full" : "hidden lg:block h-full min-w-0"}>
-              <EditorPanel className="animate-fade-scale-in-panel-left h-full" aria-label={`${selected?.title || ""} — Poster selection`} title={isLandscape ? t("ui.backdropAvailable") : t("ui.posterAvailable")} headerRight={<span className="text-[10px] font-mono text-muted px-1.5 py-0.5 rounded-md bg-white/[0.05] border border-white/10 tabular-nums">{isLandscape ? ed.backdrops.length : posters.length}</span>}>
+              <EditorPanel className="animate-fade-scale-in-panel-left h-full" aria-label={t("ui.posterSelectionAria", { title: selected?.title || "" })} title={isLandscape ? t("ui.backdropAvailable") : t("ui.posterAvailable")} headerRight={<span className="text-[10px] font-mono text-muted px-1.5 py-0.5 rounded-md bg-white/[0.05] border border-white/10 tabular-nums">{isLandscape ? ed.backdrops.length : posters.length}</span>}>
                 {loadingImages ? (
                   <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-8 rounded-lg skeleton-shimmer" />)}</div>
                 ) : isLandscape ? (
@@ -710,7 +710,7 @@ export default function EditView() {
 
             {/* CENTER: Preview */}
             <div className={mobileSection === "preview" ? "block w-full" : "hidden lg:block h-full min-w-0"}>
-              <EditorPanel className="animate-fade-scale-in h-full" title={<><span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 align-middle shadow-[0_0_6px_rgba(52,211,153,0.7)]" aria-hidden="true" />{stremioPreview ? "Stremio" : t("ui.previewLive")}</>} headerRight={
+              <EditorPanel className="animate-fade-scale-in h-full" title={<><span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 me-1.5 align-middle shadow-[0_0_6px_rgba(52,211,153,0.7)]" aria-hidden="true" />{stremioPreview ? "Stremio" : t("ui.previewLive")}</>} headerRight={
                 <div className="flex gap-1" role="group" aria-label={t("ui.posterShape")}>
                   <button
                     type="button"
@@ -873,8 +873,8 @@ export default function EditView() {
                           onClick={() => setMobileSection("preview")}
                           className="mt-1.5 text-[11px] font-semibold text-accent-orange hover:underline flex items-center gap-1 cursor-pointer"
                         >
-                          <span>{t("ui.previewSection") || "Anteprima"}</span>
-                          <ChevronLeft className="w-3 h-3 rotate-180" />
+                          <span>{t("ui.previewSection")}</span>
+                          <ChevronLeft className="w-3 h-3 rotate-180 rtl:rotate-0" />
                         </button>
                       </div>
                     </div>

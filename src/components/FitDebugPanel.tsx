@@ -25,7 +25,7 @@ export function FitDebugPanel({ results, bestResult, shortPath, scoreClass, t }:
         </div>
       )}
 
-      <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+      <div className="space-y-1.5 max-h-64 overflow-y-auto pe-1">
         {results.slice(0, 10).map((result, index) => (
           <div key={result.posterPath} className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1.5">
             <div className="flex items-center justify-between gap-2">

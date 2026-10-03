@@ -76,19 +76,19 @@ export function ProxyModal({ isOpen, onClose }: Props) {
           <label className="block text-xs font-semibold text-zinc-300">
             {t("ui.proxyPasteLabel")}
           </label>
-          <div className="relative">
+          <div className="relative" dir="ltr">
             <input
               type="text"
               value={targetUrl}
               onChange={(e) => setTargetUrl(e.target.value)}
               placeholder="https://cyberflix.koyeb.app/manifest.json"
-              className="w-full h-10 px-3 pr-8 rounded-xl bg-black/40 border border-white/10 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-accent-orange/60"
+              className="w-full h-10 px-3 pe-8 rounded-xl bg-black/40 border border-white/10 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-accent-orange/60"
             />
-            <Link2 className="w-4 h-4 text-zinc-500 absolute right-3 top-3 pointer-events-none" />
+            <Link2 className="w-4 h-4 text-zinc-500 absolute end-3 top-3 pointer-events-none" />
           </div>
 
           <div className="flex items-center gap-1.5 flex-wrap pt-1">
-            <span className="text-[11px] text-zinc-500 mr-1">{t("ui.proxyPresets")}</span>
+            <span className="text-[11px] text-zinc-500 me-1">{t("ui.proxyPresets")}</span>
             {POPULAR_PRESETS.map((preset) => (
               <button
                 key={preset.name}

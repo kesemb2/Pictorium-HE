@@ -1,6 +1,6 @@
 import type { TMDBImage, SearchResult } from "./types"
 
-import { REGIONS } from "./regions"
+import { REGIONS, regionLabel } from "./regions"
 
 export const IMG_BASE = process.env.NEXT_PUBLIC_TMDB_IMG_URL || "https://image.tmdb.org/t/p"
 
@@ -108,7 +108,9 @@ export const PICKER_LANGS = REGIONS.map((r) => ({
   key: r.code,
   code: r.lang2,
   flag: r.flag,
-  name: `${r.label} · ${r.languageName}`,
+  // Ogni paese nella propria lingua: la scelta avviene prima di sapere
+  // in che lingua mostrare l'interfaccia.
+  name: `${regionLabel(r, r.lang2)} · ${r.languageName}`,
   sub: r.lang2.toUpperCase(),
 }))
 

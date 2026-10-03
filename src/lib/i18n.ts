@@ -19,7 +19,15 @@ export type Lang = keyof typeof dicts
 
 const dicts: Record<string, Record<string, string>> = { en, it, pl, fr, de, es, ja, ko, pt, he, cs, ro, ar, tr, nl, sv }
 
-let _currentLang: string = "it"
+// Fork ebraico: l'ebraico è la lingua di partenza (server e primo paint).
+let _currentLang: string = "he"
+
+const RTL_LANGS = new Set(["he", "ar"])
+
+/** Direzione del testo per una lingua UI. */
+export function dirFor(lang: string): "rtl" | "ltr" {
+  return RTL_LANGS.has(lang.toLowerCase()) ? "rtl" : "ltr"
+}
 
 export const BADGE_KEY_PREFIX = "__"
 
@@ -57,6 +65,7 @@ export function setLang(lang: string) {
   _currentLang = lang
   if (typeof document !== "undefined") {
     document.documentElement.lang = lang
+    document.documentElement.dir = dirFor(lang)
   }
 }
 

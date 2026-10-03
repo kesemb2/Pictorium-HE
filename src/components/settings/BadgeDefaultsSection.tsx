@@ -115,7 +115,7 @@ export function BadgeDefaultsSection({ active }: { active: boolean }) {
 
           {/* Sub-controlli Genere / Anno / Voto */}
           {ed.defaultGlobalBadges && (
-            <div className="pl-3 py-1 space-y-2 border-l-2 border-surface2 ml-1 animate-fade-in">
+            <div className="ps-3 py-1 space-y-2 border-s-2 border-surface2 ms-1 animate-fade-in">
               <div className="flex items-center justify-between">
                 <span className="text-muted">{t("ui.badgeGenre")}</span>
                 <Toggle
@@ -184,7 +184,7 @@ export function BadgeDefaultsSection({ active }: { active: boolean }) {
                         <span className="text-[10px] text-muted leading-tight">
                           {t("ui.ratingSourcesHint")}
                         </span>
-                        <div className="flex items-center gap-1.5 text-[10px] shrink-0 ml-2">
+                        <div className="flex items-center gap-1.5 text-[10px] shrink-0 ms-2">
                           <button
                             type="button"
                             onClick={() => {
@@ -208,7 +208,7 @@ export function BadgeDefaultsSection({ active }: { active: boolean }) {
                           </button>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-1.5 max-h-52 overflow-y-auto pr-0.5">
+                      <div className="grid grid-cols-2 gap-1.5 max-h-52 overflow-y-auto pe-0.5">
                         {UI_RATING_SOURCES.map((s) => {
                           const current = ed.defaultRatingSources ?? ["imdb", "tmdb"]
                           const isSelected = current.includes(s.id)
@@ -238,7 +238,7 @@ export function BadgeDefaultsSection({ active }: { active: boolean }) {
                                 <span className="truncate">{t(s.labelKey)}</span>
                               </span>
                               <span
-                                className={`w-2 h-2 rounded-full shrink-0 ml-1 transition-colors ${
+                                className={`w-2 h-2 rounded-full shrink-0 ms-1 transition-colors ${
                                   isSelected ? "bg-accent-orange shadow-sm shadow-accent-orange/50" : "bg-zinc-700"
                                 }`}
                               />
@@ -395,10 +395,11 @@ export function BadgeDefaultsSection({ active }: { active: boolean }) {
           </div>
 
           {ed.defaultCustomRatings && (
-          <div className="pl-3 py-1 space-y-2 border-l-2 border-surface2 ml-1 animate-fade-in">
+          <div className="ps-3 py-1 space-y-2 border-s-2 border-surface2 ms-1 animate-fade-in">
             <div>
               <label className="text-[11px] text-muted block mb-1">{t("ui.customRatingEndpoint")}</label>
               <input
+                dir="ltr"
                 type="url"
                 value={ed.defaultCustomRatingEndpoint ?? ""}
                 onChange={(e) => ed.setDefaultCustomRatingEndpoint(e.target.value)}
@@ -427,7 +428,7 @@ export function BadgeDefaultsSection({ active }: { active: boolean }) {
                       {crTestResult.ratings?.map((r) => (
                         <div key={r.id} className="flex items-center justify-between text-zinc-200">
                           <span className="truncate">{r.name}</span>
-                          <span className="font-mono ml-2 shrink-0">{formatRating(r.value, r.format as "decimal" | "percent")}</span>
+                          <span className="font-mono ms-2 shrink-0">{formatRating(r.value, r.format as "decimal" | "percent")}</span>
                         </div>
                       ))}
                     </div>
@@ -459,7 +460,7 @@ export function BadgeDefaultsSection({ active }: { active: boolean }) {
 
           {ed.defaultNetworkLogo && (
             <div className="flex items-center justify-between gap-3" title={t("ui.networkLogoPosition")}>
-              <span className="text-zinc-400 font-medium text-[11px] pl-5">
+              <span className="text-zinc-400 font-medium text-[11px] ps-5">
                 {t("ui.networkLogoPosition")}
               </span>
               <div className="flex gap-1 flex-1 max-w-[190px]">
@@ -495,7 +496,7 @@ export function BadgeDefaultsSection({ active }: { active: boolean }) {
             />
           </div>
 
-          <div className="flex items-center justify-between pl-3 ml-1 border-l-2 border-surface2">
+          <div className="flex items-center justify-between ps-3 ms-1 border-s-2 border-surface2">
             <span className="text-zinc-300 font-medium flex items-center gap-1.5">
               <Cloud className="w-3.5 h-3.5 text-cyan-400" />
               {t("ui.blurSection")} · {t("ui.posterShapeLandscape")}

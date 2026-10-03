@@ -8,6 +8,7 @@ import { normalizeCatalogIdKeys, normalizeCatalogIdList } from "@/lib/catalog-de
 import { getServerDefaults, getServerDefaultsForUser } from "@/lib/server-defaults"
 import { getScopedUserId } from "@/lib/user-auth"
 import { getRegionDef, normalizeRegion, parseRegion } from "@/lib/regions"
+import { hubModeSuffix, localizeCatalogName, localizeGenreOptions, manifestDescription, typeSuffix } from "@/lib/stremio-labels"
 
 const MOVIE_GENRES = [
   "Tutti", "Azione", "Avventura", "Animazione", "Commedia", "Crime",
@@ -85,7 +86,14 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
     userConfig.catalogOrder = normalizeCatalogIdList(userConfig.catalogOrder)
     userConfig.catalogRenames = normalizeCatalogIdKeys(userConfig.catalogRenames)
   }
-  let catalogs: Array<{ id: string; name: string; type: "movie" | "series"; customBaseId?: string }> = [...PICTORIUM_CATALOGS]
+  // Regione manifest: config-token > default del namespace > default d'istanza.
+  // I cataloghi Top 20 JustWatch mostrano bandiera/nome del paese attivo (le
+  // rinomine utente vincono) e i testi seguono la lingua della regione.
+  // (namespaceDefaults già risolto sopra: nessuna seconda lettura.)
+  const manifestRegion = getRegionDef(parseRegion(userConfig?.region) ?? normalizeRegion(namespaceDefaults.region))
+  const manifestLang = manifestRegion.lang2
+  let catalogs: Array<{ id: string; name: string; type: "movie" | "series"; customBaseId?: string }> =
+    PICTORIUM_CATALOGS.map((c) => ({ ...c, name: localizeCatalogName(c.name, manifestLang) }))
   if (userConfig?.disabledCatalogIds && userConfig.disabledCatalogIds.length > 0) {
     const disabledSet = new Set(userConfig.disabledCatalogIds)
     catalogs = catalogs.filter(c => !disabledSet.has(c.id))
@@ -96,13 +104,13 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
         if (cc.type === "mixed") {
           catalogs.push({
             id: `pictorium-custom-movie-${cc.id}`,
-            name: `${cc.name} — Film`,
+            name: `${cc.name} — ${typeSuffix("movie", manifestLang)}`,
             type: "movie",
             customBaseId: cc.id,
           })
           catalogs.push({
             id: `pictorium-custom-series-${cc.id}`,
-            name: `${cc.name} — Serie TV`,
+            name: `${cc.name} — ${typeSuffix("series", manifestLang)}`,
             type: "series",
             customBaseId: cc.id,
           })
@@ -118,10 +126,6 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
     }
   }
 
-  // Regione manifest: config-token > default del namespace > IT. I cataloghi Top 20
-  // JustWatch mostrano bandiera/nome del paese attivo (le rinomine utente vincono).
-  // (namespaceDefaults già risolto sopra: nessuna seconda lettura.)
-  const manifestRegion = getRegionDef(parseRegion(userConfig?.region) ?? normalizeRegion(namespaceDefaults.region))
 
   // Applica rinomine personalizzate dei cataloghi + nomi regione per i Top 20 JW
   catalogs = catalogs.map((cat) => {
@@ -159,7 +163,7 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
 
   const contentCatalogs = catalogs.map((c) => {
     const isHomeHidden = homeDisabledSet.has(c.id) || (c.customBaseId ? homeDisabledSet.has(c.customBaseId) : false)
-    const genreOptions = getCatalogGenreOptions(c.type, c.id)
+    const genreOptions = localizeGenreOptions(getCatalogGenreOptions(c.type, c.id), manifestLang)
     return {
       id: c.id,
       name: c.name,
@@ -173,13 +177,13 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
   const searchCatalogs = [
     {
       id: "pictorium-search-movies",
-      name: "🔍 Pictorium — Cerca Film",
+      name: localizeCatalogName("🔍 Pictorium — Cerca Film", manifestLang),
       type: "movie" as const,
       extra: [{ name: "search", isRequired: true }, { name: "skip", isRequired: false }],
     },
     {
       id: "pictorium-search-series",
-      name: "🔍 Pictorium — Cerca Serie TV",
+      name: localizeCatalogName("🔍 Pictorium — Cerca Serie TV", manifestLang),
       type: "series" as const,
       extra: [{ name: "search", isRequired: true }, { name: "skip", isRequired: false }],
     },
@@ -187,7 +191,7 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
 
   const peopleSearchCatalogs = PICTORIUM_PEOPLE_SEARCH_CATALOGS.map((c) => ({
     id: c.id,
-    name: c.name,
+    name: localizeCatalogName(c.name, manifestLang),
     type: c.type,
     extra: [{ name: "search", isRequired: true }, { name: "skip", isRequired: false }] as const,
   }))
@@ -216,16 +220,16 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
 
   let manifestName = safeConfig ? `Pictorium (${safeConfig})` : "Pictorium"
   if (hubMode === "search") {
-    manifestName += " (Ricerca)"
+    manifestName += hubModeSuffix("search", manifestLang)
   } else if (hubMode === "catalogs") {
-    manifestName += " (Cataloghi)"
+    manifestName += hubModeSuffix("catalogs", manifestLang)
   }
 
   return Response.json({
     id: addonId,
     version: APP_VERSION,
     name: manifestName,
-    description: "Custom poster manager for Stremio — loghi, badge trend, premi e rating",
+    description: manifestDescription(manifestLang),
     resources: [
       "catalog",
       {

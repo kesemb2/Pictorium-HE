@@ -1,4 +1,4 @@
-import type { RegionDef } from "./regions"
+import { regionLabel, type RegionDef } from "./regions"
 
 export const CATALOG_ID_PREFIX = "pictorium-"
 
@@ -119,6 +119,14 @@ export const POSTERIUM_PEOPLE_SEARCH_CATALOGS = PICTORIUM_PEOPLE_SEARCH_CATALOGS
  * (client): la classifica segue la regione, il nome deve seguirla.
  */
 export function regionJwName(id: string, type: "movie" | "series", region: RegionDef): string | null {
+  // Fork: in ebraico per la regione IL (paese e tipo nella lingua della regione).
+  if (region.lang2 === "he") {
+    const kind = type === "movie" ? "סרטים" : "סדרות"
+    const country = regionLabel(region, "he")
+    if (id.startsWith("pictorium-jw-new-")) return `${region.flag} יציאות אחרונות ב${country} — ${kind}`
+    if (!id.startsWith("pictorium-jw-")) return null
+    return `${region.flag} טופ 20 ${country} — ${kind}`
+  }
   if (id.startsWith("pictorium-jw-new-")) {
     return `${region.flag} Ultime Uscite ${region.label} — ${type === "movie" ? "Film" : "Serie TV"}`
   }

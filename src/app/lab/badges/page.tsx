@@ -261,7 +261,7 @@ export default function BadgeLabPage() {
 
   useEffect(() => {
     try {
-      const saved = window.localStorage.getItem("pictorium-lang")
+      const saved = window.localStorage.getItem("preferred_lang")
       if (saved && saved !== getLang()) {
         setLang(saved)
         setLangTick((n) => n + 1)
@@ -590,7 +590,7 @@ export default function BadgeLabPage() {
   const shadow = design.shadow
 
   return (
-    <div className="min-h-screen bg-background text-zinc-100">
+    <div dir="ltr" className="min-h-screen bg-background text-zinc-100">
       <div className="max-w-6xl mx-auto px-4 py-8">
         <Link
           href={uuid ? `/u/${encodeURIComponent(uuid)}/configure` : "/"}
@@ -762,7 +762,7 @@ export default function BadgeLabPage() {
                         value={house.label ?? ""}
                         maxLength={30}
                         onChange={(v) => setHouse((h) => ({ ...h, label: v }))}
-                        placeholder="Oggi"
+                        placeholder={t("badge.today")}
                       />
                       <TextRow
                         label={t("ui.labRankLive")}
@@ -918,8 +918,8 @@ export default function BadgeLabPage() {
                     <Color label={t("ui.color")} value={bg.color ?? "#000000"} onChange={(v) => patch({ background: { ...bg, color: v } })} />
                   ) : (
                     <>
-                      <Color label="from" value={bg.gradient?.from ?? "#111111"} onChange={(v) => patch({ background: { ...bg, gradient: { from: v, to: bg.gradient?.to ?? "#222222", direction: bg.gradient?.direction ?? "vertical" } } })} />
-                      <Color label="to" value={bg.gradient?.to ?? "#222222"} onChange={(v) => patch({ background: { ...bg, gradient: { from: bg.gradient?.from ?? "#111111", to: v, direction: bg.gradient?.direction ?? "vertical" } } })} />
+                      <Color label={t("ui.labGradientFrom")} value={bg.gradient?.from ?? "#111111"} onChange={(v) => patch({ background: { ...bg, gradient: { from: v, to: bg.gradient?.to ?? "#222222", direction: bg.gradient?.direction ?? "vertical" } } })} />
+                      <Color label={t("ui.labGradientTo")} value={bg.gradient?.to ?? "#222222"} onChange={(v) => patch({ background: { ...bg, gradient: { from: bg.gradient?.from ?? "#111111", to: v, direction: bg.gradient?.direction ?? "vertical" } } })} />
                       <Seg
                         options={["horizontal", "vertical", "diagonal"] as const}
                         value={bg.gradient?.direction ?? "vertical"}
@@ -950,9 +950,9 @@ export default function BadgeLabPage() {
                   </div>
                   {shadow?.enabled && (
                     <>
-                      <Num label="blur" min={0} max={40} value={shadow.blur} onChange={(v) => patch({ shadow: { ...shadow, blur: v } })} />
-                      <Num label="offsetX" min={-50} max={50} value={shadow.offsetX} onChange={(v) => patch({ shadow: { ...shadow, offsetX: v } })} />
-                      <Num label="offsetY" min={-50} max={50} value={shadow.offsetY} onChange={(v) => patch({ shadow: { ...shadow, offsetY: v } })} />
+                      <Num label={t("ui.labShadowBlur")} min={0} max={40} value={shadow.blur} onChange={(v) => patch({ shadow: { ...shadow, blur: v } })} />
+                      <Num label={t("ui.labOffsetX")} min={-50} max={50} value={shadow.offsetX} onChange={(v) => patch({ shadow: { ...shadow, offsetX: v } })} />
+                      <Num label={t("ui.labOffsetY")} min={-50} max={50} value={shadow.offsetY} onChange={(v) => patch({ shadow: { ...shadow, offsetY: v } })} />
                       <Num label={t("ui.opacity")} min={0} max={100} value={shadow.opacity} onChange={(v) => patch({ shadow: { ...shadow, opacity: v } })} />
                     </>
                   )}
@@ -992,10 +992,10 @@ export default function BadgeLabPage() {
                     />
                   </div>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-zinc-400 font-medium">UPPERCASE</span>
-                    <Toggle value={design.text.uppercase} onChange={(v) => patchText({ uppercase: v })} label="UPPERCASE" />
+                    <span className="text-[11px] text-zinc-400 font-medium">{t("ui.labUppercase")}</span>
+                    <Toggle value={design.text.uppercase} onChange={(v) => patchText({ uppercase: v })} label={t("ui.labUppercase")} />
                   </div>
-                  <Num label="letterSpacing" min={-2} max={10} step={0.5} value={design.text.letterSpacing} onChange={(v) => patchText({ letterSpacing: v })} />
+                  <Num label={t("ui.labLetterSpacing")} min={-2} max={10} step={0.5} value={design.text.letterSpacing} onChange={(v) => patchText({ letterSpacing: v })} />
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] text-zinc-400 font-medium">align</span>
                     <Seg

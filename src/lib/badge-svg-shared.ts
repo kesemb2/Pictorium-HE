@@ -36,6 +36,16 @@ function needsRubik(text: string): boolean {
   return HEBREW_RE.test(text) || ARABIC_RE.test(text)
 }
 
+/**
+ * Parole fisse dei badge di classifica, già nella lingua del poster. Senza,
+ * i renderer ricadono sulle storiche ("TOP", "Oggi", "anime").
+ */
+export interface RibbonWords {
+  readonly top?: string
+  readonly today?: string
+  readonly anime?: string
+}
+
 /** True se il testo contiene almeno un carattere ebraico. */
 export function containsHebrew(text: string): boolean {
   return HEBREW_RE.test(text)
