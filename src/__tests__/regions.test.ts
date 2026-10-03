@@ -56,12 +56,13 @@ describe("regions", () => {
     expect(parseRegion(null)).toBeNull()
     expect(parseRegion(undefined)).toBeNull()
     expect(normalizeRegion("atlantis")).toBe(DEFAULT_REGION)
-    expect(normalizeRegion(undefined)).toBe("IT")
+    // Fork ebraico: senza regione si va su Israele.
+    expect(normalizeRegion(undefined)).toBe("IL")
   })
 
   it("maps region to Flix slug and TMDB/JW language", () => {
     expect(regionToFlixSlug("US")).toBe("united-states")
-    expect(regionToFlixSlug("atlantis")).toBe("italy")
+    expect(regionToFlixSlug("atlantis")).toBe("israel")
     expect(regionToFlixSlug("MX")).toBe("mexico")
     expect(getRegionDef("FR").lang).toBe("fr-FR")
     expect(getRegionDef("JP").lang).toBe("ja-JP")
@@ -121,7 +122,9 @@ describe("regions", () => {
   it("PICKER_LANGS lists exactly the 22 nationalities", () => {
     expect(PICKER_LANGS).toHaveLength(22)
     expect(new Set(PICKER_LANGS.map((l) => l.key)).size).toBe(22)
-    expect(PICKER_LANGS.map((l) => l.key)).toEqual(REGIONS.map((r) => r.code))
+    // Fork ebraico: Israele in cima, poi l'ordine di REGIONS.
+    expect(PICKER_LANGS[0]!.key).toBe("IL")
+    expect(PICKER_LANGS.map((l) => l.key)).toEqual(["IL", ...REGIONS.map((r) => r.code).filter((c) => c !== "IL")])
     for (const l of PICKER_LANGS) {
       expect(l.flag).toBeTruthy()
       expect(l.name).toContain("·")

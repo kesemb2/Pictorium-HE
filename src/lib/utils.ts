@@ -104,7 +104,8 @@ export const STREAMING_PLATFORMS = [
  * (it/pl/en/fr/de/es/he/ar/tr/nl/sv hanno un dizionario completo — ja/ko/pt/cs/ro
  * ripiegano sull'inglese in `i18n.lookup` per le chiavi che non traducono).
  */
-export const PICKER_LANGS = REGIONS.map((r) => ({
+// Fork ebraico: Israele/עברית in cima, poi l'ordine storico.
+export const PICKER_LANGS = [...REGIONS].sort((a, b) => Number(b.code === "IL") - Number(a.code === "IL")).map((r) => ({
   key: r.code,
   code: r.lang2,
   flag: r.flag,

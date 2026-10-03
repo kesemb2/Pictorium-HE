@@ -11,7 +11,11 @@ function useDocumentLocale(): { lang: string; dir: "rtl" | "ltr" } {
   useEffect(() => {
     const root = document.documentElement
     const read = () => {
-      setLocale({ lang: getLang(), dir: root.dir === "ltr" ? "ltr" : "rtl" })
+      // Documento sostituito (document.open/write): niente re-render, React
+      // rimonterebbe l'app dentro il nuovo <body>.
+      if (!root.isConnected) return
+      const next = { lang: getLang(), dir: root.dir === "ltr" ? ("ltr" as const) : ("rtl" as const) }
+      setLocale((prev) => (prev.lang === next.lang && prev.dir === next.dir ? prev : next))
     }
     read()
     const obs = new MutationObserver(read)

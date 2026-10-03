@@ -243,7 +243,7 @@ function loadPresetIntoEditor(item: BadgePreset): {
 }
 
 export default function BadgeLabPage() {
-  const [, setLangTick] = useState(0)
+  const [langTick, setLangTick] = useState(0)
   const [uuid, setUuid] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>("shape")
   const [design, setDesign] = useState<BadgeDesign>(DEFAULT_DESIGN)
@@ -309,6 +309,19 @@ export default function BadgeLabPage() {
     void refreshMine()
   }, [uuid])
 
+  // Contesto e parole del nastro nella lingua della UI (genere e "oggi"
+  // localizzati come sul poster vero).
+  const labContext = useMemo(
+    () => ({ ...MOCK_CONTEXT, genre: t("ui.demoGenreDrama") }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- t globale, cambia con langTick
+    [langTick],
+  )
+  const ribbonWords = useMemo(
+    () => ({ top: t("badge.top"), today: t("badge.today"), anime: t("badge.anime") }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- t globale, cambia con langTick
+    [langTick],
+  )
+
   const preview = useMemo(() => {
     // Scena mock del poster generico: artwork scuro/chiaro dal toggle,
     // nessun accent (stessa sentinella "#555555" del server senza accent).
@@ -317,20 +330,21 @@ export default function BadgeLabPage() {
       bottomLight: previewBg === "light",
       accentColor: "#555555" as const,
       side: "left" as const,
+      words: ribbonWords,
     }
     try {
       if (variant === "house") {
-        const r = buildHousePresetSvg({ variant, target: meta.target, house }, MOCK_CONTEXT, 380, scene)
+        const r = buildHousePresetSvg({ variant, target: meta.target, house }, labContext, 380, scene)
         if (!r) return { svg: null, w: 0, h: 0, error: "empty badge" }
         return { svg: r.svg, w: r.w, h: r.h, error: null as string | null }
       }
-      const text = resolveBadgeText(design.text.template || "", MOCK_CONTEXT)
+      const text = resolveBadgeText(design.text.template || "", labContext)
       const { svg, w, h } = buildCustomBadgeSvg(design, text)
       return { svg, w, h, error: null as string | null }
     } catch (e) {
       return { svg: null, w: 0, h: 0, error: e instanceof Error ? e.message : "render error" }
     }
-  }, [variant, house, design, meta.target, previewBg])
+  }, [variant, house, design, meta.target, previewBg, labContext, ribbonWords])
 
   const templateThumbs = useMemo(() => {
     const out = new Map<string, { svg: string; w: number; h: number }>()
@@ -338,9 +352,9 @@ export default function BadgeLabPage() {
       try {
         const r = buildHousePresetSvg(
           { variant: "house", target: tpl.target, house: tpl.house },
-          MOCK_CONTEXT,
+          labContext,
           380,
-          { topLight: false, bottomLight: false, accentColor: "#555555", side: "left" },
+          { topLight: false, bottomLight: false, accentColor: "#555555", side: "left", words: ribbonWords },
         )
         out.set(tpl.key, r ?? { svg: "", w: 0, h: 0 })
       } catch {
@@ -348,7 +362,7 @@ export default function BadgeLabPage() {
       }
     }
     return out
-  }, [])
+  }, [labContext, ribbonWords])
 
   // Mock copertina 380x570 in scala: il badge è posizionato come sullo
   // slot poster reale (nastro all'angolo, centrale in alto al centro,

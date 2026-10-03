@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { getRegionDef, REGIONS } from "@/lib/regions"
+import { getRegionDef, regionLabel, REGIONS } from "@/lib/regions"
 import { getWarmupCatalogs, normalizeCatalogId, normalizeCatalogIdKeys, normalizeCatalogIdList, PICTORIUM_CATALOGS, regionJwName, WARMUP_CATALOG_IDS } from "@/lib/catalog-definitions"
 
 describe("catalog definitions", () => {
@@ -57,9 +57,11 @@ describe("catalog definitions", () => {
         const movie = regionJwName("pictorium-jw-movies", "movie", region)
         const series = regionJwName("pictorium-jw-series", "series", region)
         expect(movie).toContain(region.flag)
-        expect(movie).toContain(region.label)
+        // IL esce in ebraico: il nome del paese è localizzato, non la label italiana.
+        const label = region.lang2 === "he" ? regionLabel(region, "he") : region.label
+        expect(movie).toContain(label)
         expect(series).toContain(region.flag)
-        expect(series).toContain(region.label)
+        expect(series).toContain(label)
         // Mai la bandiera di un'altra regione
         for (const other of REGIONS) {
           if (other.code === region.code) continue

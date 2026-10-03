@@ -978,5 +978,21 @@
   "ui.sourceTmdbCollection": "TMDb collection",
   "ui.sourceTmdbList": "TMDb list",
   "ui.presetsTargetTop": "Top",
-  "ui.presetsTargetGenre": "Genre"
+  "ui.presetsTargetGenre": "Genre",
+  "ui.labTplZoneTop": "Top slot",
+  "ui.labTplZoneGenre": "Genre slot",
+  "ui.labTplTopNetflix": "Netflix ribbon",
+  "ui.labTplTopNetflixColor": "Netflix ribbon, colour",
+  "ui.labTplTopPlacard": "Placard",
+  "ui.labTplTopPill": "Pill",
+  "ui.labTplTopVetro": "Glass",
+  "ui.labTplTopBordo": "Outline",
+  "ui.labTplTopColored": "Colour ribbon",
+  "ui.labTplGenreShadow": "Shadow",
+  "ui.labTplGenreMinimal": "Minimal",
+  "ui.labTplGenrePill": "Pill",
+  "ui.labTplGenreBar": "Bar",
+  "ui.labTplGenreColored": "Colour",
+  "ui.labTplGenreBordo": "Outline",
+  "ui.labTplGenreVetro": "Glass"
 }

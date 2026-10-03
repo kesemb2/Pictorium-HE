@@ -978,5 +978,21 @@
   "ui.sourceTmdbCollection": "TMDb Saga",
   "ui.sourceTmdbList": "TMDb Lista",
   "ui.presetsTargetTop": "Top",
-  "ui.presetsTargetGenre": "Genere"
+  "ui.presetsTargetGenre": "Genere",
+  "ui.labTplZoneTop": "Slot in alto",
+  "ui.labTplZoneGenre": "Slot genere",
+  "ui.labTplTopNetflix": "Nastro Netflix",
+  "ui.labTplTopNetflixColor": "Nastro Netflix a colori",
+  "ui.labTplTopPlacard": "Targa",
+  "ui.labTplTopPill": "Pillola",
+  "ui.labTplTopVetro": "Vetro",
+  "ui.labTplTopBordo": "Bordo",
+  "ui.labTplTopColored": "Nastro colorato",
+  "ui.labTplGenreShadow": "Ombra",
+  "ui.labTplGenreMinimal": "Minimal",
+  "ui.labTplGenrePill": "Pillola",
+  "ui.labTplGenreBar": "Barra",
+  "ui.labTplGenreColored": "Colorato",
+  "ui.labTplGenreBordo": "Bordo",
+  "ui.labTplGenreVetro": "Vetro"
 }

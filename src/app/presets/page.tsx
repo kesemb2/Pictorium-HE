@@ -92,7 +92,7 @@ export default function PresetsPage() {
           href={uuid ? `/u/${encodeURIComponent(uuid)}/configure` : "/"}
           className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-accent transition-colors mb-6"
         >
-          ← Pictorium
+          <span aria-hidden="true" className="inline-block rtl:-scale-x-100">←</span> Pictorium
         </Link>
         <h1 className="text-2xl font-bold mb-1">{t("ui.presetsTitle")}</h1>
         <p className="text-sm text-zinc-500 mb-6">{t("ui.presetsSubtitle")}</p>

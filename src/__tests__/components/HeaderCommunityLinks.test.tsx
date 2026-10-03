@@ -37,7 +37,7 @@ describe("HeaderCommunityLinks", () => {
     expect(screen.getByText("GitHub")).toBeInTheDocument()
     expect(screen.getByText("Discord")).toBeInTheDocument()
     await waitFor(() => {
-      expect(screen.getByText("VPS: 3/6€")).toBeInTheDocument()
+      expect(screen.getByText("VPS Goal: 3/6€")).toBeInTheDocument()
     })
   })
 })

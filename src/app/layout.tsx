@@ -30,9 +30,6 @@ const rubik = localFont({
   preload: false,
 });
 
-// Prima del paint: lingua e direzione salvate, così le lingue LTR non
-// lampeggiano da destra a sinistra (il default del fork è ebraico/RTL).
-const LOCALE_SCRIPT = `try{var l=(localStorage.getItem("preferred_lang")||"").toLowerCase();if(/^[a-z]{2}$/.test(l)){document.documentElement.lang=l;document.documentElement.dir=(l==="he"||l==="ar")?"rtl":"ltr"}}catch(e){}`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://pictorium.app"),
@@ -70,7 +67,6 @@ export default function RootLayout({
   return (
     <html lang="he" dir="rtl" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} ${rubik.variable} h-full antialiased`}>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: LOCALE_SCRIPT }} />
         <link rel="preconnect" href="https://image.tmdb.org" />
         <link rel="preconnect" href="https://api.themoviedb.org" />
       </head>

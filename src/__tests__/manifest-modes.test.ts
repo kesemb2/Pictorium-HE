@@ -22,7 +22,7 @@ describe("buildManifestResponse with hubMode options", () => {
     const json = await res.json()
 
     expect(json.id).toBe("org.pictorium.catalogs")
-    expect(json.name).toContain("(Cataloghi)")
+    expect(json.name).toContain("(קטלוגים)")
     const catalogIds = json.catalogs.map((c: { id: string }) => c.id)
     expect(catalogIds).not.toContain("pictorium-search-movies")
     expect(catalogIds).not.toContain("pictorium-search-series")
@@ -35,7 +35,7 @@ describe("buildManifestResponse with hubMode options", () => {
     const json = await res.json()
 
     expect(json.id).toBe("org.pictorium.search")
-    expect(json.name).toContain("(Ricerca)")
+    expect(json.name).toContain("(חיפוש)")
     const catalogIds = json.catalogs.map((c: { id: string }) => c.id)
     expect(catalogIds).toContain("pictorium-search-movies")
     expect(catalogIds).toContain("pictorium-search-series")
