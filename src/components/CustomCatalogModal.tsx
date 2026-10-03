@@ -271,7 +271,7 @@ export function CustomCatalogModal({ isOpen, onClose }: CustomCatalogModalProps)
   return (
     <div
       ref={popoverRef}
-      className="absolute right-0 top-full mt-2 w-[360px] max-w-[calc(100vw-2rem)] z-50 bg-surface/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden animate-scale-in"
+      className="absolute end-0 top-full mt-2 w-[360px] max-w-[calc(100vw-2rem)] z-50 bg-surface/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden animate-scale-in"
       onClick={(e) => e.stopPropagation()}
     >
       {/* Header */}
@@ -338,8 +338,8 @@ export function CustomCatalogModal({ isOpen, onClose }: CustomCatalogModalProps)
           <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
             <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-zinc-400">Letterboxd</span>
             <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-zinc-400">Trakt</span>
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-zinc-400">TMDb Saga</span>
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-zinc-400">TMDb Lista</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-zinc-400">{t("ui.sourceTmdbCollection")}</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-zinc-400">{t("ui.sourceTmdbList")}</span>
             <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-zinc-400">MDBList</span>
             <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-zinc-400">IMDb CSV</span>
             <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-zinc-400">TVDB</span>
@@ -368,6 +368,7 @@ export function CustomCatalogModal({ isOpen, onClose }: CustomCatalogModalProps)
               {t("ui.customSourceUrlLabel")}
             </label>
             <input
+              dir="ltr"
               type="text"
               placeholder="https://www.imdb.com/list/ls..."
               value={sourceUrl}

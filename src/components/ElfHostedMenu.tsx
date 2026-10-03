@@ -80,7 +80,7 @@ function MenuLink({ href, children }: { href: string; children: ReactNode }) {
       className="group flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl text-xs text-zinc-300 hover:text-white hover:bg-white/[0.08] active:scale-[0.98] transition-all duration-150"
     >
       <span className="leading-snug">{children}</span>
-      <ArrowUpRight className="w-3.5 h-3.5 shrink-0 text-zinc-500 group-hover:text-amber-300 transition-colors" aria-hidden="true" />
+      <ArrowUpRight className="w-3.5 h-3.5 shrink-0 rtl:-scale-x-100 text-zinc-500 group-hover:text-amber-300 transition-colors" aria-hidden="true" />
     </a>
   )
 }
@@ -110,7 +110,7 @@ export function ElfHostedMenuPanel({ onMinimize }: { onMinimize: () => void }) {
           onClick={onMinimize}
           aria-label={t("ui.hostedByMinimize")}
           title={t("ui.hostedByMinimize")}
-          className="ml-auto p-1 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.08] active:scale-90 transition-all cursor-pointer shrink-0"
+          className="ms-auto p-1 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.08] active:scale-90 transition-all cursor-pointer shrink-0"
         >
           <Minus className="w-3.5 h-3.5" />
         </button>

@@ -115,7 +115,7 @@ export function SearchView() {
           error={s.error}
         />
         {showRecent && (
-          <div className="absolute top-full left-0 right-0 mt-2 glass-panel rounded-2xl p-2 z-50 animate-fade-scale-in">
+          <div className="absolute top-full start-0 end-0 mt-2 glass-panel rounded-2xl p-2 z-50 animate-fade-scale-in">
             <div className="flex items-center justify-between px-2 py-1.5 border-b border-white/[0.06] mb-1">
               <p className="text-xs text-muted font-semibold">{t("ui.recentSearches")}</p>
               <button
@@ -141,7 +141,7 @@ export function SearchView() {
                   s.doSearch(term)
                   setSearchFocused(false)
                 }}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-accent-orange/10 text-sm text-zinc-300 hover:text-accent transition-all duration-150 text-left"
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-accent-orange/10 text-sm text-zinc-300 hover:text-accent transition-all duration-150 text-start"
               >
                 <Clock className="w-4 h-4 text-zinc-500 shrink-0" />
                 <span className="flex-1 truncate">{term}</span>
@@ -226,7 +226,7 @@ export function SearchView() {
                 onMouseEnter={() => prefetchTitle(r)}
                 onFocus={() => prefetchTitle(r)}
                 aria-label={`${title} (${year})`}
-                className="surface-card group relative rounded-xl overflow-hidden transition-all duration-300 ease-out w-full border border-white/10 shadow-2xl hover:-translate-y-[3px] hover:scale-[1.015] hover:shadow-[0_22px_48px_rgba(0,0,0,0.48),0_0_22px_rgba(232,93,42,0.10)] hover:border-white/20 active:scale-[0.98] cursor-pointer animate-stagger-in text-left flex flex-col"
+                className="surface-card group relative rounded-xl overflow-hidden transition-all duration-300 ease-out w-full border border-white/10 shadow-2xl hover:-translate-y-[3px] hover:scale-[1.015] hover:shadow-[0_22px_48px_rgba(0,0,0,0.48),0_0_22px_rgba(232,93,42,0.10)] hover:border-white/20 active:scale-[0.98] cursor-pointer animate-stagger-in text-start flex flex-col"
                 style={{ animationDelay: `${Math.min(idx * 30, 300)}ms` }}
               >
                 {/* NuvioDesktop-style depth edge */}
@@ -256,7 +256,7 @@ export function SearchView() {
                     {/* Badge se già personalizzato/salvato */}
                     {mapping && (
                       <div
-                        className="absolute top-2 right-2 z-10 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-accent-orange text-white text-[10px] font-bold shadow-lg shadow-accent-orange/40 pointer-events-none"
+                        className="absolute top-2 end-2 z-10 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-accent-orange text-white text-[10px] font-bold shadow-lg shadow-accent-orange/40 pointer-events-none"
                         title={t("ui.customPosterSet")}
                       >
                         <Check className="w-3 h-3 stroke-[2.5]" />
@@ -270,7 +270,7 @@ export function SearchView() {
 
                     {/* Card info strip sottostante (sempre leggibile, anche touch):
                         voto incluso qui — l'overlay hover sopra resta per desktop. */}
-                    <div className="p-2.5 text-left bg-surface/50 border-t border-white/[0.04]">
+                    <div className="p-2.5 text-start bg-surface/50 border-t border-white/[0.04]">
                       <p className="text-xs font-semibold text-zinc-100 truncate group-hover:text-accent-orange transition-colors duration-200">
                         {title}
                       </p>
@@ -329,7 +329,7 @@ export function SearchView() {
           type="button"
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
           aria-label={t("ui.backToTop")}
-          className="fixed bottom-6 right-6 z-40 w-11 h-11 rounded-full bg-surface/90 backdrop-blur-md border border-white/10 text-zinc-300 hover:text-white hover:border-accent-orange/40 shadow-xl flex items-center justify-center active:scale-95 transition-all"
+          className="fixed bottom-6 end-6 z-40 w-11 h-11 rounded-full bg-surface/90 backdrop-blur-md border border-white/10 text-zinc-300 hover:text-white hover:border-accent-orange/40 shadow-xl flex items-center justify-center active:scale-95 transition-all"
         >
           <ChevronUp className="w-5 h-5" />
         </button>

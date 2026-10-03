@@ -1,6 +1,6 @@
 import type { TMDBImage, SearchResult } from "./types"
 
-import { REGIONS } from "./regions"
+import { REGIONS, regionLabel } from "./regions"
 
 export const IMG_BASE = process.env.NEXT_PUBLIC_TMDB_IMG_URL || "https://image.tmdb.org/t/p"
 
@@ -104,11 +104,14 @@ export const STREAMING_PLATFORMS = [
  * (it/pl/en/fr/de/es/he/ar/tr/nl/sv hanno un dizionario completo — ja/ko/pt/cs/ro
  * ripiegano sull'inglese in `i18n.lookup` per le chiavi che non traducono).
  */
-export const PICKER_LANGS = REGIONS.map((r) => ({
+// Fork ebraico: Israele/עברית in cima, poi l'ordine storico.
+export const PICKER_LANGS = [...REGIONS].sort((a, b) => Number(b.code === "IL") - Number(a.code === "IL")).map((r) => ({
   key: r.code,
   code: r.lang2,
   flag: r.flag,
-  name: `${r.label} · ${r.languageName}`,
+  // Ogni paese nella propria lingua: la scelta avviene prima di sapere
+  // in che lingua mostrare l'interfaccia.
+  name: `${regionLabel(r, r.lang2)} · ${r.languageName}`,
   sub: r.lang2.toUpperCase(),
 }))
 

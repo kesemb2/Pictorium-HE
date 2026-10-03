@@ -44,6 +44,7 @@ function PatternRow({ value, tag, copyLabel }: { value: string; tag: string; cop
     <div>
       <div className="flex items-center gap-1.5 p-1 bg-black/40 border border-white/10 rounded-xl">
         <input
+          dir="ltr"
           type="text"
           readOnly
           value={value}
@@ -306,9 +307,9 @@ export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, po
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-zinc-300 text-[11px] font-semibold">
                   <Sparkles className="w-3.5 h-3.5 text-accent-orange" />
-                  <span>{t("ui.aiomLinkTitle") || "Link per AIO e custom URL:"}</span>
+                  <span>{t("ui.aiomLinkTitle")}</span>
                 </div>
-                <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-mono">Template URL</span>
+                <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-mono">{t("ui.templateUrlTag")}</span>
               </div>
 
               <p className="text-[10px] text-zinc-400 leading-tight">
@@ -337,7 +338,7 @@ export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, po
               <PatternRow
                 value={(patternKind === "tmdb" ? posterUrlPattern : patternKind === "imdb" ? posterUrlPatternImdb : posterUrlPatternAuto) || posterUrlPattern || posterUrlPatternImdb || posterUrlPatternAuto || ""}
                 tag={patternKind === "tmdb" ? t("ui.patternTagTmdb") : patternKind === "imdb" ? t("ui.patternTagImdb") : t("ui.patternTagAuto")}
-                copyLabel={t("ui.aiomLinkTitle") || "AIOMetadata URL"}
+                copyLabel={t("ui.aiomLinkTitle")}
               />
             </div>
           )}
@@ -346,12 +347,12 @@ export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, po
             <div className="pt-3 border-t border-white/10 space-y-1.5">
               <div className="flex items-center gap-1.5 text-zinc-300 text-[11px] font-semibold">
                 <ImageIcon className="w-3.5 h-3.5 text-accent-orange" />
-                <span>{t("ui.logoLinkTitle") || "Logo URL"}</span>
+                <span>{t("ui.logoLinkTitle")}</span>
               </div>
               <p className="text-[10px] text-zinc-400 leading-tight">
                 {t("ui.logoLinkDesc")}
               </p>
-              <PatternRow value={logoUrlPattern} tag="Template URL" copyLabel={t("ui.logoLinkTitle") || "Logo URL"} />
+              <PatternRow value={logoUrlPattern} tag={t("ui.templateUrlTag")} copyLabel={t("ui.logoLinkTitle")} />
             </div>
           )}
 
@@ -361,13 +362,13 @@ export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, po
               href="https://github.com/Eful97/Pictorium"
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="Star Pictorium on GitHub"
+              aria-label={t("ui.starAria")}
               className="group flex items-center gap-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors"
             >
-              <span>Ti piace Pictorium?</span>
+              <span>{t("ui.starPrompt")}</span>
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-400/10 border border-amber-400/20 text-amber-400 font-semibold group-hover:bg-amber-400/20 transition-all">
                 <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                <span>Lascia una stella su GitHub</span>
+                <span>{t("ui.starCta")}</span>
               </span>
             </a>
           </div>

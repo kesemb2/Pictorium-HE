@@ -73,7 +73,7 @@ export function getAwardBadgeLabel(awards: string[], t?: (key: string, params?: 
 export function getNominationBadgeLabel(nominations: string[], t?: (key: string, params?: Record<string, string | number>) => string): string | null {
   const priority = ["Oscar", "Cannes", "Venezia", "BAFTA", "Emmy", "Golden Globe", "David"]
   for (const a of priority) {
-    if (nominations.includes(a)) return t ? t("badge.nominee", { name: t(`award.${a.toLowerCase().replace(/ /g, "_")}`) }) : `Candidato ${a}`
+    if (nominations.includes(a)) return t ? t("badge.nominee", { name: t(`award.${a.toLowerCase().replace(/ /g, "_")}`) }) : `${a} nominee`
   }
   return null
 }

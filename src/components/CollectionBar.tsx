@@ -45,8 +45,12 @@ export function CollectionBar({
     const el = scrollRef.current
     if (!el) return
     const update = () => {
-      setCanScrollLeft(el.scrollLeft > 4)
-      setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4)
+      // In RTL scrollLeft va da 0 a -max: pos è sempre la distanza dal bordo
+      // sinistro fisico, così i fade restano sul lato giusto.
+      const max = el.scrollWidth - el.clientWidth
+      const pos = getComputedStyle(el).direction === "rtl" ? max + el.scrollLeft : el.scrollLeft
+      setCanScrollLeft(pos > 4)
+      setCanScrollRight(pos < max - 4)
     }
     update()
     el.addEventListener("scroll", update, { passive: true })

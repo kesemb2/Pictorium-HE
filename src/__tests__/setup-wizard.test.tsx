@@ -19,9 +19,9 @@ describe("SetupWizard", () => {
     renderWizard()
     // 13 voci lingua (una per nazionalita) + tasto back assente al passo 1
     expect(screen.getByText("Italia · Italiano")).toBeInTheDocument()
-    expect(screen.getByText("USA · English")).toBeInTheDocument()
-    expect(screen.getByText("Messico · Español (México)")).toBeInTheDocument()
-    expect(screen.getByText("Giappone · 日本語")).toBeInTheDocument()
+    expect(screen.getByText("United States · English")).toBeInTheDocument()
+    expect(screen.getByText("México · Español (México)")).toBeInTheDocument()
+    expect(screen.getByText("日本 · 日本語")).toBeInTheDocument()
     expect(screen.queryByText("ui.back")).not.toBeInTheDocument()
   })
 
@@ -29,12 +29,12 @@ describe("SetupWizard", () => {
     const user = userEvent.setup()
     const { onPickLang, onPickRegion, onDone } = renderWizard()
 
-    await user.click(screen.getByText("USA · English"))
+    await user.click(screen.getByText("United States · English"))
     expect(onPickLang).toHaveBeenCalledWith("en")
     // Passo regione: titolo tradotto (mock) + voci paese, senza doppioni lingua
     expect(screen.getByText("ui.setupRegionTitle")).toBeInTheDocument()
     expect(screen.getByText("Italia")).toBeInTheDocument()
-    expect(screen.queryByText("USA · English")).not.toBeInTheDocument()
+    expect(screen.queryByText("United States · English")).not.toBeInTheDocument()
 
     await user.click(screen.getByText("Giappone"))
     expect(onPickRegion).toHaveBeenCalledWith("JP")
@@ -48,7 +48,7 @@ describe("SetupWizard", () => {
     const user = userEvent.setup()
     const { onPickLang, onPickRegion, onDone } = renderWizard()
 
-    await user.click(screen.getByText("Francia · Français"))
+    await user.click(screen.getByText("France · Français"))
     expect(onPickLang).toHaveBeenCalledWith("fr")
     await user.click(screen.getByText("Indietro"))
     expect(screen.getByText("Italia · Italiano")).toBeInTheDocument()
@@ -60,7 +60,7 @@ describe("SetupWizard", () => {
     const user = userEvent.setup()
     const { onDone } = renderWizard()
 
-    await user.click(screen.getByText("USA · English"))
+    await user.click(screen.getByText("United States · English"))
     await user.click(screen.getByText("Italia"))
     expect(screen.getByText("Proteggi il tuo pannello")).toBeInTheDocument()
 
@@ -78,7 +78,7 @@ describe("SetupWizard", () => {
       <LangPicker onPickLang={onPickLang} onPickRegion={onPickRegion} onDone={onDone} skipPin={true} />
     )
 
-    await user.click(screen.getByText("USA · English"))
+    await user.click(screen.getByText("United States · English"))
     expect(onPickLang).toHaveBeenCalledWith("en")
 
     await user.click(screen.getByText("Giappone"))

@@ -20,7 +20,7 @@ export function MenuItem({
       type="button"
       aria-label={ariaLabel}
       onClick={onClick}
-      className={`w-full text-left text-xs px-3 py-2 rounded-lg active:scale-[0.98] transition-all duration-150 ${
+      className={`w-full text-start text-xs px-3 py-2 rounded-lg active:scale-[0.98] transition-all duration-150 ${
         danger
           ? "hover:bg-red-900/50"
           : "hover:bg-zinc-700"

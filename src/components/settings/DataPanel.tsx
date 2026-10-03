@@ -9,6 +9,7 @@ import { MenuItem } from "@/components/ui"
 import { adminAuthHeaders, hasAdminToken } from "@/lib/admin-token"
 import { AdminUnlockCard } from "@/components/AdminUnlockCard"
 import { Activity, ChevronDown, Database, Download, ExternalLink, Flame, KeyRound, Lock, Trash2, Upload, Wand2 } from "lucide-react"
+import { translateServerError } from "@/lib/server-error"
 
 /** Scheda Dati & Cache (backup, diagnostica, token admin, PIN). Estratta da SettingsPanel con il suo stato locale. */
 export function DataPanel({ active, exportData, importData, setSettingsOpen, multiUserOn }: {
@@ -218,7 +219,7 @@ export function DataPanel({ active, exportData, importData, setSettingsOpen, mul
             className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-medium bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 active:scale-[0.98] transition-all border border-amber-500/20 cursor-pointer"
           >
             <Flame className="w-3.5 h-3.5" />
-            Warmup
+            {t("ui.warmup")}
           </button>
           <button
             type="button"
@@ -392,7 +393,7 @@ export function DataPanel({ active, exportData, importData, setSettingsOpen, mul
                           refreshPin()
                         } else {
                           const err = await res.json().catch(() => ({}))
-                          toast.error(err.error || t("ui.pinSaveError"))
+                          toast.error(translateServerError(err.error, t, "ui.pinSaveError"))
                         }
                       } catch {
                         toast.error(t("ui.pinConnError"))
@@ -449,7 +450,7 @@ export function DataPanel({ active, exportData, importData, setSettingsOpen, mul
                           refreshPin()
                         } else {
                           const err = await res.json().catch(() => ({}))
-                          toast.error(err.error || t("ui.pinLockWrong"))
+                          toast.error(translateServerError(err.error, t, "ui.pinLockWrong"))
                         }
                       } catch {
                         toast.error(t("ui.pinConnError"))

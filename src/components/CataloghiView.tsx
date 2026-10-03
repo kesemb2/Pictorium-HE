@@ -252,7 +252,7 @@ function CustomCatalogEntry({
               : "bg-purple-500/15 text-purple-400 border border-purple-500/20"
           }`}>
             {isMixed ? <Shuffle className="w-3 h-3" /> : isMovie ? <Film className="w-3 h-3" /> : <Tv className="w-3 h-3" />}
-            {isMixed ? "Misto" : isMovie ? "Film" : "Serie TV"}
+            {isMixed ? t("ui.typeMixed") : isMovie ? t("ui.typeMovie") : t("ui.typeSeries")}
           </span>
           <h3 className="text-base font-bold text-white line-clamp-1">{cat.name}</h3>
           {total !== null && total > items.length && (
@@ -267,8 +267,8 @@ function CustomCatalogEntry({
             onClick={() => toggleCatalogHome(cat.id)}
             title={
               isHomeVisible
-                ? "Visibile nella Home di Stremio (clicca per nascondere dalla Home)"
-                : "Nascosto dalla Home di Stremio (visibile solo in Esplora — clicca per mostrare nella Home)"
+                ? t("ui.homeVisible")
+                : t("ui.homeHidden")
             }
             className={`p-1.5 rounded-lg border transition-colors ${
               isHomeVisible
@@ -303,7 +303,7 @@ function CustomCatalogEntry({
 
       {loading ? (
         <div className="h-28 flex items-center justify-center rounded-xl bg-black/20 border border-white/5 text-xs text-muted">
-          <div className="w-4 h-4 border-2 border-accent-orange/30 border-t-accent-orange rounded-full animate-spin mr-2" />
+          <div className="w-4 h-4 border-2 border-accent-orange/30 border-t-accent-orange rounded-full animate-spin me-2" />
           {t("ui.customLoadingTitles")}
         </div>
       ) : loadError ? (
@@ -752,7 +752,7 @@ export function CataloghiView() {
                       </div>
                     )}
                     {isSaved && (
-                      <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-emerald-500/90 text-white text-[10px] font-semibold flex items-center gap-1 shadow-lg backdrop-blur-sm z-10">
+                      <div className="absolute top-2 end-2 px-2 py-0.5 rounded-md bg-emerald-500/90 text-white text-[10px] font-semibold flex items-center gap-1 shadow-lg backdrop-blur-sm z-10">
                         <Check className="w-3 h-3 stroke-[3]" />
                         <span>{t("ui.savedShort")}</span>
                       </div>

@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Toaster } from "sonner";
-import { Check, Info, AlertTriangle, AlertCircle } from "lucide-react";
+import localFont from "next/font/local";
+import { DocumentChrome } from "@/components/DocumentChrome";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,10 +14,27 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Ebraico della UI: lo stesso Rubik dei poster, dal bundle (niente rete).
+// Limitato ai blocchi ebraici e senza fallback Arial, così sta primo nello
+// stack solo per l'ebraico: il latino continua a cadere su Geist.
+const rubik = localFont({
+  variable: "--font-rubik",
+  src: [
+    { path: "../assets/fonts/Rubik-Regular.ttf", weight: "400", style: "normal" },
+    { path: "../assets/fonts/Rubik-Bold.ttf", weight: "700", style: "normal" },
+    { path: "../assets/fonts/Rubik-Black.ttf", weight: "900", style: "normal" },
+  ],
+  declarations: [{ prop: "unicode-range", value: "U+0590-05FF, U+200C-200F, U+20AA, U+FB1D-FB4F" }],
+  adjustFontFallback: false,
+  display: "swap",
+  preload: false,
+});
+
+
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://pictorium.app"),
-  title: "Pictorium — Generatore di poster per Stremio",
-  description: "Generatore dinamico di poster cinematografici per Stremio: locandine pulite, loghi vettoriali, rating e badge trend composti in tempo reale.",
+  title: "Pictorium — מחולל פוסטרים ל-Stremio",
+  description: "מחולל פוסטרים דינמי ל-Stremio: פוסטרים נקיים, לוגואים וקטוריים, דירוגים ותגיות טרנד שמורכבים בזמן אמת.",
   manifest: "/site.webmanifest",
   icons: {
     icon: [
@@ -31,7 +48,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "Pictorium",
-    description: "Generatore di poster cinematografici per Stremio",
+    description: "מחולל פוסטרים ל-Stremio",
     images: ["/pictorium.png"],
     type: "website",
   },
@@ -48,29 +65,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="it" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html lang="he" dir="rtl" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} ${rubik.variable} h-full antialiased`}>
       <head>
         <link rel="preconnect" href="https://image.tmdb.org" />
         <link rel="preconnect" href="https://api.themoviedb.org" />
       </head>
       <body className="min-h-full" suppressHydrationWarning>
-        <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[200] focus:bg-accent-orange focus:text-white focus:px-4 focus:py-2 focus:rounded-xl">
-          Skip to main content
-        </a>
+        <DocumentChrome />
         <main id="main-content">{children}</main>
-        <Toaster
-          position="bottom-right"
-          duration={3000}
-          closeButton={false}
-          richColors={false}
-          theme="dark"
-          icons={{
-            success: <Check className="w-3.5 h-3.5 stroke-[2.5]" />,
-            info: <Info className="w-3.5 h-3.5 stroke-[2.5]" />,
-            warning: <AlertTriangle className="w-3.5 h-3.5 stroke-[2.5]" />,
-            error: <AlertCircle className="w-3.5 h-3.5 stroke-[2.5]" />,
-          }}
-        />
       </body>
     </html>
   );

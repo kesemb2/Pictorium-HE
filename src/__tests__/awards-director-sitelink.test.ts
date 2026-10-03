@@ -128,7 +128,8 @@ describe("fetchAllWikidata director sitelink fallback", () => {
     expect(directorBadgeLabel(second.director, tIt)).toBe("Di Christopher Nolan")
     expect(directorBadgeLabel(second.director, tEn)).toBe("By Christopher Nolan")
     expect(directorBadgeLabel(null, tEn)).toBeNull()
-    expect(directorBadgeLabel("Christopher Nolan")).toBe("Di Christopher Nolan")
+    // Senza t: solo il nome (niente prefisso italiano di ripiego).
+    expect(directorBadgeLabel("Christopher Nolan")).toBe("Christopher Nolan")
     // Idempotenza: non raddoppia prefissi già presenti
     expect(directorBadgeLabel("Di Christopher Nolan", tIt)).toBe("Di Christopher Nolan")
     expect(directorBadgeLabel("By Christopher Nolan", tEn)).toBe("By Christopher Nolan")

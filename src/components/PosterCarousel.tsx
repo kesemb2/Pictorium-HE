@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react"
 import { usePSelector } from "@/lib/context"
 import { currentPathUuid } from "@/lib/user-token"
 import { useT } from "@/lib/contexts/TranslationContext"
+import { localizeDemoParams } from "@/lib/demo-posters"
 import { toSearchResult } from "@/lib/types"
 import { titleOf } from "@/lib/utils"
 import { useSecurePosterUrl } from "@/lib/useSecurePosterUrl"
@@ -28,32 +29,33 @@ interface CarouselEntry {
   type: "movie" | "tv"
   title: string
   params: string
-  desc: string
+  /** Didascalia già tradotta (le voci statiche la ricavano da `ui.carousel<id>`). */
+  desc?: string
 }
 
 const EXAMPLES: CarouselEntry[] = [
   // --- Film ---
-  { id: 278, type: "movie", title: "The Shawshank Redemption", params: "?genreName=Dramma&voteAverage=9.3&bs=vetro&gradHeight=25&blur=30&bf=50&bd=40&tl=0&logoFit=0", desc: "Badge vetro con effetto liquid glass, tema scuro morbido" },
-  { id: 155, type: "movie", title: "The Dark Knight", params: "?genreName=Azione&voteAverage=8.5&bs=bordo&gradHeight=20&blur=20&bf=55&bd=35&tl=1&logoFit=0", desc: "Badge bordato elegante, tema chiaro con sfocatura leggera" },
-  { id: 27205, type: "movie", title: "Inception", params: "?genreName=Thriller&voteAverage=8.8&bs=bar&tl=0&ac=%23f39c12&gradHeight=30&blur=35&bf=50&bd=45&logoFit=0", desc: "Badge a barra con colore accentato arancione, tema scuro" },
-  { id: 157336, type: "movie", title: "Interstellar", params: "?genreName=Fantascienza&voteAverage=8.7&bs=vetro&be=0&tl=1&gradHeight=15&blur=0&logoFit=0", desc: "Badge vetro senza sfocatura, asciutto e luminoso" },
-  { id: 299534, type: "movie", title: "Avengers: Endgame", params: "?genreName=Azione&voteAverage=8.4&bs=shadow&gradHeight=40&blur=50&bf=70&bd=50&tl=0&logoFit=0", desc: "Sfocatura intensa con gradiente scuro molto pronunciato" },
-  { id: 238, type: "movie", title: "The Godfather", params: "?genreName=Crime&voteAverage=9.2&bs=bordo&gradHeight=10&tl=0&logoFit=0", desc: "Badge bordato, tema scuro, pulito senza blur extra" },
-  { id: 11, type: "movie", title: "Star Wars", params: "?genreName=Fantascienza&voteAverage=8.5&bs=colored&tl=1&gradHeight=25&blur=25&bf=45&bd=30&logoFit=0", desc: "Badge colorato genere Fantascienza con sfocatura media" },
-  { id: 680, type: "movie", title: "Pulp Fiction", params: "?genreName=Crime&voteAverage=8.9&bs=pill&tl=0&ac=%23e74c3c&gradHeight=15&blur=15&bf=40&bd=25&logoFit=0", desc: "Badge pill con accento rosso, tema scuro minimal" },
-  { id: 597, type: "movie", title: "Titanic", params: "?genreName=Dramma&voteAverage=8.4&bs=shadow&gradHeight=20&blur=30&bf=60&bd=40&tl=1&logoFit=0", desc: "Badge ombra con dramma e gradiente morbido" },
-  { id: 122, type: "movie", title: "The Return of the King", params: "?genreName=Avventura&voteAverage=8.5&bs=pill&gradHeight=30&blur=40&bf=65&bd=45&tl=0&ac=%23d4a017&logoFit=0", desc: "Badge pill tema scuro con accento dorato" },
+  { id: 278, type: "movie", title: "The Shawshank Redemption", params: "?genreName=Dramma&voteAverage=9.3&bs=vetro&gradHeight=25&blur=30&bf=50&bd=40&tl=0&logoFit=0" },
+  { id: 155, type: "movie", title: "The Dark Knight", params: "?genreName=Azione&voteAverage=8.5&bs=bordo&gradHeight=20&blur=20&bf=55&bd=35&tl=1&logoFit=0" },
+  { id: 27205, type: "movie", title: "Inception", params: "?genreName=Thriller&voteAverage=8.8&bs=bar&tl=0&ac=%23f39c12&gradHeight=30&blur=35&bf=50&bd=45&logoFit=0" },
+  { id: 157336, type: "movie", title: "Interstellar", params: "?genreName=Fantascienza&voteAverage=8.7&bs=vetro&be=0&tl=1&gradHeight=15&blur=0&logoFit=0" },
+  { id: 299534, type: "movie", title: "Avengers: Endgame", params: "?genreName=Azione&voteAverage=8.4&bs=shadow&gradHeight=40&blur=50&bf=70&bd=50&tl=0&logoFit=0" },
+  { id: 238, type: "movie", title: "The Godfather", params: "?genreName=Crime&voteAverage=9.2&bs=bordo&gradHeight=10&tl=0&logoFit=0" },
+  { id: 11, type: "movie", title: "Star Wars", params: "?genreName=Fantascienza&voteAverage=8.5&bs=colored&tl=1&gradHeight=25&blur=25&bf=45&bd=30&logoFit=0" },
+  { id: 680, type: "movie", title: "Pulp Fiction", params: "?genreName=Crime&voteAverage=8.9&bs=pill&tl=0&ac=%23e74c3c&gradHeight=15&blur=15&bf=40&bd=25&logoFit=0" },
+  { id: 597, type: "movie", title: "Titanic", params: "?genreName=Dramma&voteAverage=8.4&bs=shadow&gradHeight=20&blur=30&bf=60&bd=40&tl=1&logoFit=0" },
+  { id: 122, type: "movie", title: "The Return of the King", params: "?genreName=Avventura&voteAverage=8.5&bs=pill&gradHeight=30&blur=40&bf=65&bd=45&tl=0&ac=%23d4a017&logoFit=0" },
   // --- Serie TV ---
-  { id: 1396, type: "tv", title: "Breaking Bad", params: "?genreName=Crime&voteAverage=9.5&rs=bordo&rank=1&label=Serie%20tv&ranking=&tl=1&gradHeight=20&blur=25&bf=50&bd=30&logoFit=0", desc: "Ranking badge bordato con genere Crime in primo piano" },
-  { id: 66732, type: "tv", title: "Stranger Things", params: "?genreName=Fantascienza&voteAverage=8.6&bs=colored&tl=1&gradHeight=20&blur=20&bf=45&bd=25&logoFit=0", desc: "Badge colorato genere Fantascienza con leggera sfocatura" },
-  { id: 1668, type: "tv", title: "Friends", params: "?genreName=Commedia&voteAverage=8.3&bs=bordo&tl=1&gradHeight=10&be=0&logoFit=0", desc: "Badge bordato pulito, senza sfocatura, tema chiaro" },
-  { id: 1399, type: "tv", title: "Game of Thrones", params: "?genreName=Dramma&voteAverage=8.4&bs=bar&tl=0&ac=%233498db&gradHeight=35&blur=45&bf=70&bd=50&logoFit=0", desc: "Badge a barra con accento blu e sfocatura forte" },
-  { id: 456, type: "tv", title: "The Simpsons", params: "?genreName=Commedia&voteAverage=8.0&bs=vetro&tl=1&gradHeight=10&blur=10&bf=30&bd=15&logoFit=0", desc: "Badge vetro su tema chiaro, leggero e vivace" },
-  { id: 76479, type: "tv", title: "The Boys", params: "?genreName=Azione&voteAverage=8.4&bs=shadow&tl=0&gradHeight=25&blur=30&bf=55&bd=40&logoFit=0", desc: "Badge ombra tema scuro, gradiente marcato" },
-  { id: 82883, type: "tv", title: "The Mandalorian", params: "?genreName=Fantascienza&voteAverage=8.2&bs=bordo&tl=0&gradHeight=20&blur=20&bf=45&bd=30&logoFit=0", desc: "Badge bordato tema scuro genere Fantascienza" },
-  { id: 60574, type: "tv", title: "Peaky Blinders", params: "?genreName=Crime&voteAverage=8.5&bs=pill&tl=0&gradHeight=15&blur=15&bf=40&bd=25&logoFit=0", desc: "Badge pill tema scuro, essenziale" },
-  { id: 71912, type: "tv", title: "The Witcher", params: "?genreName=Azione&voteAverage=8.2&bs=colored&tl=1&gradHeight=30&blur=35&bf=60&bd=40&ac=%239b59b6&logoFit=0", desc: "Badge colorato con accento viola e sfocatura media" },
-  { id: 44217, type: "tv", title: "Dark", params: "?genreName=Thriller&voteAverage=8.0&rs=netflix&rank=4&label=Serie%20tv&ranking=&tl=0&gradHeight=25&blur=30&bf=50&bd=40&logoFit=0", desc: "Ranking badge stile Netflix Top 10, tema scuro e misterioso" },
+  { id: 1396, type: "tv", title: "Breaking Bad", params: "?genreName=Crime&voteAverage=9.5&rs=bordo&rank=1&label=Serie%20tv&ranking=&tl=1&gradHeight=20&blur=25&bf=50&bd=30&logoFit=0" },
+  { id: 66732, type: "tv", title: "Stranger Things", params: "?genreName=Fantascienza&voteAverage=8.6&bs=colored&tl=1&gradHeight=20&blur=20&bf=45&bd=25&logoFit=0" },
+  { id: 1668, type: "tv", title: "Friends", params: "?genreName=Commedia&voteAverage=8.3&bs=bordo&tl=1&gradHeight=10&be=0&logoFit=0" },
+  { id: 1399, type: "tv", title: "Game of Thrones", params: "?genreName=Dramma&voteAverage=8.4&bs=bar&tl=0&ac=%233498db&gradHeight=35&blur=45&bf=70&bd=50&logoFit=0" },
+  { id: 456, type: "tv", title: "The Simpsons", params: "?genreName=Commedia&voteAverage=8.0&bs=vetro&tl=1&gradHeight=10&blur=10&bf=30&bd=15&logoFit=0" },
+  { id: 76479, type: "tv", title: "The Boys", params: "?genreName=Azione&voteAverage=8.4&bs=shadow&tl=0&gradHeight=25&blur=30&bf=55&bd=40&logoFit=0" },
+  { id: 82883, type: "tv", title: "The Mandalorian", params: "?genreName=Fantascienza&voteAverage=8.2&bs=bordo&tl=0&gradHeight=20&blur=20&bf=45&bd=30&logoFit=0" },
+  { id: 60574, type: "tv", title: "Peaky Blinders", params: "?genreName=Crime&voteAverage=8.5&bs=pill&tl=0&gradHeight=15&blur=15&bf=40&bd=25&logoFit=0" },
+  { id: 71912, type: "tv", title: "The Witcher", params: "?genreName=Azione&voteAverage=8.2&bs=colored&tl=1&gradHeight=30&blur=35&bf=60&bd=40&ac=%239b59b6&logoFit=0" },
+  { id: 44217, type: "tv", title: "Dark", params: "?genreName=Thriller&voteAverage=8.0&rs=netflix&rank=4&label=Serie%20tv&ranking=&tl=0&gradHeight=25&blur=30&bf=50&bd=40&logoFit=0" },
 ]
 
 const CARD_W_DESKTOP = 240
@@ -74,7 +76,7 @@ function SecureCarouselImg({ url, alt, className }: { url: string; alt: string; 
 export function PosterCarousel() {
   const navigateToPoster = usePSelector((v) => v.navigateToPoster)
   const trending = usePSelector((v) => v.trending)
-  const { t } = useT()
+  const { t, lang } = useT()
   // Come HomeHero: ?u= per far risolvere al server le chiavi del profilo.
   // Costante per mount (il cambio path rimonta la route): fuori dai deps di items.
   const nsSuffix = useMemo(() => {
@@ -92,11 +94,16 @@ export function PosterCarousel() {
       id: i.id,
       type: i.media_type,
       title: titleOf(i),
-      params: rankParams(i.rank),
-      desc: i.media_type === "movie" ? `Top ${i.rank} ${t("ui.movie")}` : `Top ${i.rank} ${t("ui.tvSeries")}`,
+      params: localizeDemoParams(rankParams(i.rank), t, lang),
+      desc: t(i.media_type === "movie" ? "ui.carouselTopMovie" : "ui.carouselTopSeries", { rank: i.rank }),
     }))
-    return shuffle([...EXAMPLES, ...top]).slice(0, CAROUSEL_SIZE)
-  }, [trending, t])
+    const examples = EXAMPLES.map((e) => ({
+      ...e,
+      params: localizeDemoParams(e.params, t, lang),
+      desc: t(`ui.carousel${e.id}`),
+    }))
+    return shuffle([...examples, ...top]).slice(0, CAROUSEL_SIZE)
+  }, [trending, t, lang])
   // D4: il transform della pista è scritto DIRETTAMENTE sul DOM via ref.
   // Prima setOffset() a ogni frame (60fps) ri-renderizzava tutte le card del
   // carousel via React; ora solo activeIndex/showLeft/showRight restano state
@@ -286,8 +293,10 @@ export function PosterCarousel() {
         {t("ui.posterExamplesDesc")}
       </p>
 
+      {/* Striscia a marquee: geometria fisica (translateX), resta LTR. */}
       <div
         className="relative"
+        dir="ltr"
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
       >

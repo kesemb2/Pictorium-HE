@@ -530,7 +530,7 @@ describe("getAllBadgeOptions (nuovi badge)", () => {
       mediaType: "tv", voteAverage: 8, tvType: null, tvStatus: null,
     })
     expect(options).toContain("__badge.newSeason")
-    expect(options).toContain("K-Drama")
+    expect(options).toContain("__badge.kdrama")
   })
 
   it("includes justAdded literal and seriesEnded literal", () => {

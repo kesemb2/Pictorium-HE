@@ -71,7 +71,7 @@ describe("SliderRow reset button", () => {
         suffix="%"
       />,
     )
-    await user.click(screen.getByRole("button", { name: "Reset Scale" }))
+    await user.click(screen.getByRole("button", { name: /Scale$/ }))
     expect(onDoubleClick).toHaveBeenCalledTimes(1)
   })
 })

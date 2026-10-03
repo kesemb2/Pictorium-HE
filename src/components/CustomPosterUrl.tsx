@@ -67,12 +67,12 @@ export function CustomPosterUrl({ onAdd, onRemove, collapsible = false, defaultO
     try {
       const res = await userFetch(`/api/resolve-image?url=${encodeURIComponent(url)}`, { timeout: 25000 })
       const data = (await res.json()) as ResolvedImage & { error?: string }
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      if (!res.ok) throw new Error(t("ui.customPosterError"))
       setInput("")
       onAdd({ url: data.imageUrl, width: data.width ?? 0, height: data.height ?? 0 })
       toast.success(t("ui.customPosterAdded"))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("ui.customPosterError"))
+    } catch {
+      setError(t("ui.customPosterError"))
     } finally {
       setResolving(false)
     }
@@ -143,7 +143,7 @@ export function CustomPosterUrl({ onAdd, onRemove, collapsible = false, defaultO
             <button
               type="button"
               onClick={() => setIsOpen(false)}
-              aria-label={t("ui.cancel") || "Chiudi"}
+              aria-label={t("ui.cancel")}
               className="p-1 rounded-md text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
             >
               <X className="w-3.5 h-3.5" aria-hidden="true" />
@@ -153,6 +153,7 @@ export function CustomPosterUrl({ onAdd, onRemove, collapsible = false, defaultO
       </div>
       <div className="flex gap-1.5">
         <input
+          dir="ltr"
           type="url"
           value={input}
           onChange={(e) => { setInput(e.target.value); setError(null) }}

@@ -1390,8 +1390,10 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   const genreBadgeKey = hasGenreBadge
     ? badgeCacheKey("genre", genreName, voteAverage, CW, year, badgeStyle, accentColorGenre, bottomLight, badgeGenre, badgeYear, badgeRating, effGenreScale, showRatingStar, textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, metaTreatment.color, metaTreatment.shadowColor, metaTreatment.halo)
     : null
+  // Parole fisse dei badge di classifica nella lingua del poster.
+  const ribbonWords = { top: t("badge.top"), today: t("badge.today"), anime: t("badge.anime") }
   const rankBadgeKey = !showComingSoon && topBadge
-    ? badgeCacheKey("rank", topBadge.type === "extra" ? topBadge.label : `${(topBadge as { rank: number }).rank}:${topBadge!.label}`, CW, topLight, rankingBadgeStyle, accentColorRank, ribbonSide, isAnimeRank, effTopScale, rankingBadgeAccent ? "accent" : undefined)
+    ? badgeCacheKey("rank", topBadge.type === "extra" ? topBadge.label : `${(topBadge as { rank: number }).rank}:${topBadge!.label}`, CW, topLight, rankingBadgeStyle, accentColorRank, ribbonSide, isAnimeRank, effTopScale, rankingBadgeAccent ? "accent" : undefined, ribbonWords.top)
     : null
   const formatsKey = (videoFormats && videoFormats.length > 0) ? videoFormats.join(",") : "none"
   // Icone A/V e colonna dei voti stanno sull'artwork dell'angolo alto, come
@@ -1437,7 +1439,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     ? badgeCacheKey("preset-genre", presetForPoster.id, presetForPoster.revision, badgePw, voteAverage, year, genreName, finalRank, animeRankResult ?? "noanime-rank", imdbId ?? "noimdb", input.tmdbId ?? "notmdb", topLight ? "tl1" : "tl0", bottomLight ? "bl1" : "bl0", accentColorGenre ?? "noac", ribbonSide, isAnimeRank ? "anime" : "noanime")
     : null
   const topPresetKey = useTopPreset && presetForPoster
-    ? badgeCacheKey("preset-top", presetForPoster.id, presetForPoster.revision, topBadgePw, voteAverage, year, genreName, finalRank, animeRankResult ?? "noanime-rank", imdbId ?? "noimdb", input.tmdbId ?? "notmdb", topLight ? "tl1" : "tl0", bottomLight ? "bl1" : "bl0", accentColorRank ?? "noac", ribbonSide, isAnimeRank ? "anime" : "noanime")
+    ? badgeCacheKey("preset-top", presetForPoster.id, presetForPoster.revision, topBadgePw, voteAverage, year, genreName, finalRank, animeRankResult ?? "noanime-rank", imdbId ?? "noimdb", input.tmdbId ?? "notmdb", topLight ? "tl1" : "tl0", bottomLight ? "bl1" : "bl0", accentColorRank ?? "noac", ribbonSide, isAnimeRank ? "anime" : "noanime", ribbonWords.top)
     : null
 
   // Render standard esternalizzati per il fallback: se il preset risolve un
@@ -1466,7 +1468,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
               // Senza nastro il "colored" colora il badge default: nel renderer
               // del fork è lo stile "colored" stesso.
               const rankStyle = rankingBadgeAccent && !isRibbonRankingStyle(rankingBadgeStyle) ? "colored" : rankingBadgeStyle
-              return renderRankingBadge((topBadge as { rank: number }).rank, isRibbonRankingStyle(rankingBadgeStyle) ? badgePw : topBadgePw, topBadge!.label, topLight, rankStyle, accentColorRank, ribbonSide, isAnimeRank, rankingBadgeStyle === "bar" ? effTopScale : 100)
+              return renderRankingBadge((topBadge as { rank: number }).rank, isRibbonRankingStyle(rankingBadgeStyle) ? badgePw : topBadgePw, topBadge!.label, topLight, rankStyle, accentColorRank, ribbonSide, isAnimeRank, rankingBadgeStyle === "bar" ? effTopScale : 100, ribbonWords)
                 .then((r) => { const v = { ...r, isRank: true }; cacheSet(rankBadgeKey, v, ["badge"], BADGE_CACHE_TTL); return v })
             }))
       : Promise.resolve(null)
@@ -1498,11 +1500,11 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     if (!house || !isRankingBadgeStyle(house.style)) return null
     const rank = house.rankOverride ?? Number(presetVarCtx.rank)
     if (!Number.isFinite(rank) || rank <= 0) return null
-    const label = resolveBadgeText(house.label ?? "", presetVarCtx) || "Oggi"
+    const label = resolveBadgeText(house.label ?? "", presetVarCtx) || ribbonWords.today
     const tl = house.polarity === "auto" ? topLight : house.polarity === "light"
     const side = isRibbonRankingStyle(house.style) && house.side ? house.side : (ribbonSide === "right" ? "right" : "left")
     const pw = Math.max(1, ((isRibbonRankingStyle(house.style) ? badgePw : topBadgePw) * house.scale) / 100)
-    return renderRankingBadge(rank, pw, label, tl, house.style, house.accent ?? accentColorRank, side, isAnimeRank, 100)
+    return renderRankingBadge(rank, pw, label, tl, house.style, house.accent ?? accentColorRank, side, isAnimeRank, 100, ribbonWords)
   }
   const renderPresetGenre = async (): Promise<{ png: Buffer; w: number; h: number } | null> =>
     genrePresetKey && presetForPoster
@@ -1539,6 +1541,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
                             ? "right"
                             : "left",
                       isAnime: isAnimeRank,
+                      words: ribbonWords,
                     })
                   : buildCustomPresetBadgeSVG(presetForPoster, presetVarCtx, topBadgePw)
                 )

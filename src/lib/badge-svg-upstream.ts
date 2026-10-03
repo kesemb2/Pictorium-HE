@@ -17,6 +17,12 @@ import type { BadgeDesign, HouseBadge, PresetLike } from "./badge-preset"
 import type { BadgeStyle, RankingBadgeStyle } from "./badge-styles"
 import { isWarmGoldAccent, textColorForBg } from "./accent-color"
 import { resolveBadgeText, type BadgeVariableContext } from "./badge-variables"
+import type { RibbonWords } from "./badge-svg-shared"
+
+/** Fork: niente spaziatura tra lettere ebraiche (spezza le legature). */
+function containsHebrewWord(text: string | undefined): boolean {
+  return !!text && /[\u0590-\u05FF]/.test(text)
+}
 
 const TEXT_SAFE_PAD = 1.15
 const GENRE_TEXT_MAX_RATIO = 0.84
@@ -764,12 +770,12 @@ export function buildHouseGenreSvg(input: HouseGenreInput): { svg: string; w: nu
 // Testo sotto il numero del nastro Netflix. Per gli anime è l'etichetta fissa
 // "anime" (stessa del passato); per film/serie è l'etichetta del rank (es.
 // "Oggi", "Today") — stesso sistema del badge anime esteso a tutti i rank.
-function netflixSubLabel(isAnime: boolean | undefined, label: string | undefined): string {
+function netflixSubLabel(isAnime: boolean | undefined, label: string | undefined, animeWord?: string): string {
   if (label !== undefined) return label
-  return isAnime ? "anime" : ""
+  return isAnime ? (animeWord ?? "anime") : ""
 }
 
-export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boolean, side: "left" | "right" = "left", isAnime?: boolean, label?: string, accentColor?: string, opts?: { fontSize?: number; textColor?: string }) {
+export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boolean, side: "left" | "right" = "left", isAnime?: boolean, label?: string, accentColor?: string, opts?: { fontSize?: number; textColor?: string; words?: RibbonWords }) {
   // Default ribbon size: previous 27.6px base + 10%, with proportional geometry.
   // fontSize override assoluto (px su griglia 380, dai preset house).
   const fs = opts?.fontSize !== undefined
@@ -778,7 +784,7 @@ export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boo
   const w = Math.round(fs * 2.65)
   // Sottotitolo presente (anime o film/serie con etichetta): nastro allungato
   // verso il basso (h × 1.65) per dare pieno respiro alla scritta sopra la V.
-  const subLabel = netflixSubLabel(isAnime, label)
+  const subLabel = netflixSubLabel(isAnime, label, opts?.words?.anime)
   const hasSub = subLabel.length > 0
   // An explicit empty label hides the subtitle while preserving the full ribbon.
   const h = Math.round(w * (hasSub || label === "" ? 1.65 : 1.35))
@@ -858,7 +864,7 @@ export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boo
     </defs>
     <path d="${pathD}" fill="${fill}" stroke="${ribbonStroke}" stroke-width="1" filter="url(#shadow3D)"/>
     <line x1="${highlightX1}" y1="1" x2="${highlightX2}" y2="1" stroke="rgba(255,255,255,0.4)" stroke-width="1.2"/>
-    <text x="${textX}" y="${topY}" fill="${textColor}" font-family="Inter" font-weight="800" font-size="${topFs}" text-anchor="middle" dominant-baseline="central" letter-spacing="1"${textFilter ? ` ${textFilter}` : ""}>TOP</text>
+    <text x="${textX}" y="${topY}" fill="${textColor}" font-family="Inter" font-weight="800" font-size="${topFs}" text-anchor="middle" dominant-baseline="central" letter-spacing="${containsHebrewWord(opts?.words?.top) ? "0" : "1"}"${textFilter ? ` ${textFilter}` : ""}>${escSvg(opts?.words?.top || "TOP")}</text>
     <text x="${textX}" y="${rankY}" fill="${textColor}" font-family="Inter" font-weight="900" font-size="${rankFs}" text-anchor="middle" dominant-baseline="central" letter-spacing="${rankLetterSpacing}"${textFilter ? ` ${textFilter}` : ""}>${rank}</text>
     ${subEl}
   </svg>`
@@ -886,13 +892,15 @@ export interface HouseRankingInput {
    * default. Ininfluente sugli altri stili e col nastro attivo.
    */
   readonly accentFill?: boolean
+  /** Fork: parole fisse nella lingua del poster. */
+  readonly words?: RibbonWords
 }
 
 export function buildHouseRankingSvg(input: HouseRankingInput): { svg: string; w: number; h: number } {
   const { rank, pw, topLight, accentColor, side, isAnime } = input
   const s = input.style || "default"
   const detached = input.detached ?? false
-  const periodText = input.label || "Oggi"
+  const periodText = input.label || input.words?.today || "Oggi"
   const fullText = `#${rank} ${periodText}`
   const maxBadgeW = pw - 20
   // Base 30px: placca visibile in alto, lo slider `topBadgeScale` parte da 100.
@@ -922,6 +930,7 @@ export function buildHouseRankingSvg(input: HouseRankingInput): { svg: string; w
     return buildNetflixRankBadgeSVG(rank, pw, !!topLight, side, isAnime, input.label ?? periodText, ribbonAccent, {
       fontSize: input.fontSize,
       textColor: input.textColor,
+      words: input.words,
     })
   } else if (s === "pill") {
     return buildRankingPillSvg(fullText, fs, fg, bg, !!topLight)
@@ -943,6 +952,8 @@ export interface HousePresetScene {
   readonly accentColor: string | null
   readonly side?: "left" | "right"
   readonly isAnime?: boolean
+  /** Fork: parole fisse nella lingua del poster. */
+  readonly words?: RibbonWords
 }
 
 /**
@@ -1001,7 +1012,7 @@ export function buildHousePresetSvg(
   }
   const rank = house.rankOverride ?? Number(context.rank)
   if (!Number.isFinite(rank) || rank <= 0) return null
-  const label = resolveBadgeText(house.label ?? "", context) || "Oggi"
+  const label = resolveBadgeText(house.label ?? "", context) || scene.words?.today || "Oggi"
   const topLight = house.polarity === "auto" ? scene.topLight : house.polarity === "light"
   return buildHouseRankingSvg({
     rank,
@@ -1012,6 +1023,7 @@ export function buildHousePresetSvg(
     accentColor: accent,
     side: house.side ?? scene.side ?? "left",
     isAnime: scene.isAnime,
+    words: scene.words,
   })
 }
 

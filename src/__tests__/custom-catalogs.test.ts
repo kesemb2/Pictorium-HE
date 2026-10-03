@@ -179,11 +179,12 @@ describe("Custom Catalogs & MDBList Parsing", () => {
       const seriesCat = data.catalogs.find((c: { id: string }) => c.id === "pictorium-custom-series-mixed-watchlist")
 
       expect(movieCat).toBeDefined()
-      expect(movieCat?.name).toBe("I Miei Preferiti — Film")
+      // Regione di default IL: il suffisso del tipo è in ebraico.
+      expect(movieCat?.name).toBe("I Miei Preferiti — סרטים")
       expect(movieCat?.type).toBe("movie")
 
       expect(seriesCat).toBeDefined()
-      expect(seriesCat?.name).toBe("I Miei Preferiti — Serie TV")
+      expect(seriesCat?.name).toBe("I Miei Preferiti — סדרות")
       expect(seriesCat?.type).toBe("series")
     })
 
@@ -254,15 +255,15 @@ describe("Custom Catalogs & MDBList Parsing", () => {
       const netflixGenre = netflixMovie.extra.find((e: { name: string }) => e.name === "genre")
       expect(netflixGenre).toBeDefined()
       expect(netflixGenre.isRequired).toBe(true)
-      expect(netflixGenre.options).toContain("Tutti")
-      expect(netflixGenre.options).toContain("Azione")
+      expect(netflixGenre.options).toContain("הכול")
+      expect(netflixGenre.options).toContain("אקשן")
 
       expect(jwMovie).toBeDefined()
       const jwGenre = jwMovie.extra.find((e: { name: string }) => e.name === "genre")
       expect(jwGenre).toBeDefined()
       expect(jwGenre.isRequired).toBe(false)
-      expect(jwGenre.options).toContain("Tutti")
-      expect(jwGenre.options).toContain("Azione")
+      expect(jwGenre.options).toContain("הכול")
+      expect(jwGenre.options).toContain("אקשן")
     })
   })
 })

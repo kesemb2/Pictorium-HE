@@ -15,9 +15,15 @@
   --color-border-strong: rgba(255, 255, 255, 0.14);
   --color-danger: #f87171;
   --color-warning: #fbbf24;
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-rubik), var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
+
+/* Segno della direzione del testo: le traslazioni orizzontali dei controlli
+   (pallino dei toggle, pill dei segmenti) lo moltiplicano per specchiarsi in
+   RTL. Ereditato, quindi le isole dir="ltr" restano LTR. */
+[dir="ltr"] { --dir-sign: 1; }
+[dir="rtl"] { --dir-sign: -1; }
 
 /* Componenti RGB dell'accento (232, 93, 42 = #e85d2a) come token: tutti gli
    rgba(232,93,42,alpha) del foglio usano questo token, così cambiare accento
@@ -72,6 +78,8 @@ body {
 }
 
 input[type="range"] {
+  /* Il riempimento (--pct) va da sinistra: lo slider resta LTR anche in RTL. */
+  direction: ltr;
   -webkit-appearance: none;
   appearance: none;
   background: transparent;
@@ -350,7 +358,7 @@ input[type="range"]::-moz-range-thumb:active {
   box-shadow:
     0 0 10px rgba(232, 93, 42, 0.95),
     0 0 3px #ff9466;
-  margin-right: 9px;
+  margin-inline-end: 9px;
   vertical-align: middle;
   transform: translateY(-1px);
   flex-shrink: 0;
@@ -676,7 +684,7 @@ input[type="range"]::-moz-range-thumb:active {
 .toggle-thumb {
   position: absolute;
   top: 2px;
-  left: 2px;
+  inset-inline-start: 2px;
   width: 22px;
   height: 22px;
   border-radius: 9999px;
@@ -686,7 +694,7 @@ input[type="range"]::-moz-range-thumb:active {
 }
 
 .toggle-thumb-on {
-  transform: translateX(22px) scale(1.05);
+  transform: translateX(calc(22px * var(--dir-sign, 1))) scale(1.05);
 }
 
 .toggle-thumb-off {
@@ -1392,6 +1400,8 @@ select:focus-visible {
    la striscia scorre orizzontalmente dentro la card, niente overflow pagina. */
 .posters {
   position: relative;
+  /* Ventaglio di poster: geometria fisica (margin-left, slide), resta LTR. */
+  direction: ltr;
   height: 185px;
   display: flex;
   align-items: flex-end;
@@ -1927,7 +1937,7 @@ select:focus-visible {
 
 /* Tag "Demo" accanto al titolo del carosello */
 .demo-tag {
-  margin-left: 0.5rem;
+  margin-inline-start: 0.5rem;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;

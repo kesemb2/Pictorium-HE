@@ -61,7 +61,7 @@ export function SearchBar({
       } rounded-2xl transition-all duration-300 group ${error ? "ring-1 ring-red-500/50" : ""}`}
     >
       <span
-        className="shrink-0 pl-3.5 transition-colors text-zinc-500 group-focus-within:text-zinc-300"
+        className="shrink-0 ps-3.5 transition-colors text-zinc-500 group-focus-within:text-zinc-300"
         aria-hidden="true"
       >
         <Search className="w-4 h-4" />
@@ -94,12 +94,12 @@ export function SearchBar({
       />
 
       {!focused && text.length === 0 && (
-        <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 mr-3 text-[10px] font-mono font-medium text-zinc-500 bg-white/[0.06] border border-white/10 rounded-md pointer-events-none select-none">
+        <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 me-3 text-[10px] font-mono font-medium text-zinc-500 bg-white/[0.06] border border-white/10 rounded-md pointer-events-none select-none">
           ⌘K
         </kbd>
       )}
       {error && (
-        <span className="shrink-0 pr-1.5" aria-hidden="true">
+        <span className="shrink-0 pe-1.5" aria-hidden="true">
           <AlertCircle className="w-4 h-4 text-danger" />
         </span>
       )}
@@ -113,9 +113,9 @@ export function SearchBar({
             }
           }}
           disabled={!canSearch}
-          className="shrink-0 w-8 sm:w-10 h-8 sm:h-10 mr-1.5 flex items-center justify-center text-white rounded-full active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 transition-all duration-200 bg-accent-orange hover:shadow-lg hover:shadow-accent-orange/30 cursor-pointer"
+          className="shrink-0 w-8 sm:w-10 h-8 sm:h-10 me-1.5 flex items-center justify-center text-white rounded-full active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 transition-all duration-200 bg-accent-orange hover:shadow-lg hover:shadow-accent-orange/30 cursor-pointer"
         >
-          <ArrowRight className="w-4 h-4" />
+          <ArrowRight className="w-4 h-4 rtl:-scale-x-100" />
         </button>
       )}
     </div>

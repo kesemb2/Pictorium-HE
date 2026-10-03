@@ -54,7 +54,7 @@ export function PosterPreview({
   }
 
   return (
-    <div role="img" aria-label={`Preview of ${selected?.title || selected?.name || ""} poster with ${selectedLogo ? "logo" : "no logo"}`}
+    <div role="img" aria-label={t("ui.previewAria", { title: selected?.title || selected?.name || "", logo: selectedLogo ? t("ui.previewWithLogo") : t("ui.previewNoLogo") })}
          className={`preview-frame w-full rounded-[1.35rem] overflow-hidden relative ${previewPoster ? "preview-frame-active" : ""}`}>
       <div className={`relative select-none pointer-events-none bg-zinc-950/70 overflow-hidden rounded-[1.2rem] ${landscape ? "aspect-video" : "aspect-[2/3]"}`}>
         {previewUrl ? (
@@ -63,7 +63,7 @@ export function PosterPreview({
               <div className="preview-hairline-bar" style={{ transform: `scaleX(${loadProgress / 100})` }} />
             </div>
             <div className="preview-loading-pill" role="status" aria-live="polite" style={{ opacity: previewLoading ? 1 : 0 }}>
-              <span className="w-2.5 h-2.5 rounded-full border-2 border-accent-orange/40 border-t-accent-orange animate-spin inline-block mr-1.5" />
+              <span className="w-2.5 h-2.5 rounded-full border-2 border-accent-orange/40 border-t-accent-orange animate-spin inline-block me-1.5" />
               <span>{t("ui.previewUpdating")}</span>
             </div>
             {prevSrc && prevSrc !== imgSrc && (

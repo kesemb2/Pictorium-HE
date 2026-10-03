@@ -27,7 +27,7 @@ export default function PresetsPage() {
 
   useEffect(() => {
     try {
-      const saved = window.localStorage.getItem("pictorium-lang")
+      const saved = window.localStorage.getItem("preferred_lang")
       if (saved && saved !== getLang()) {
         setLang(saved)
         setLangTick((n) => n + 1)
@@ -92,7 +92,7 @@ export default function PresetsPage() {
           href={uuid ? `/u/${encodeURIComponent(uuid)}/configure` : "/"}
           className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-accent transition-colors mb-6"
         >
-          ← Pictorium
+          <span aria-hidden="true" className="inline-block rtl:-scale-x-100">←</span> Pictorium
         </Link>
         <h1 className="text-2xl font-bold mb-1">{t("ui.presetsTitle")}</h1>
         <p className="text-sm text-zinc-500 mb-6">{t("ui.presetsSubtitle")}</p>
@@ -114,8 +114,8 @@ export default function PresetsPage() {
             aria-label={t("ui.presetsTarget")}
           >
             <option value="">{t("ui.presetsAllTargets")}</option>
-            <option value="top">top</option>
-            <option value="genre">genre</option>
+            <option value="top">{t("ui.presetsTargetTop")}</option>
+            <option value="genre">{t("ui.presetsTargetGenre")}</option>
           </select>
           <input
             value={q}

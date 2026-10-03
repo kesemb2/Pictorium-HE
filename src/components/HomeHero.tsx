@@ -4,6 +4,7 @@ import { useMemo, useRef, type MouseEvent, type KeyboardEvent, type ReactNode } 
 import { usePSelector } from "@/lib/context"
 import { currentPathUuid } from "@/lib/user-token"
 import { useT } from "@/lib/contexts/TranslationContext"
+import { localizeDemoParams } from "@/lib/demo-posters"
 import { toSearchResult, type SearchResult } from "@/lib/types"
 import { useSecurePosterUrl } from "@/lib/useSecurePosterUrl"
 import { Layers, Sparkles, Globe } from "lucide-react"
@@ -78,7 +79,7 @@ export function HomeHero({ search }: { search?: ReactNode }) {
   const trending = usePSelector((v) => v.trending)
   const titleOf = usePSelector((v) => v.titleOf)
   const navigateToPoster = usePSelector((v) => v.navigateToPoster)
-  const { t } = useT()
+  const { t, lang } = useT()
   const podiumRef = useRef<HTMLDivElement>(null)
   const innerRef = useRef<HTMLDivElement>(null)
   const leftRef = useRef<HTMLDivElement>(null)
@@ -101,7 +102,10 @@ export function HomeHero({ search }: { search?: ReactNode }) {
     if (movies.length < 2 || tv.length < 1) {
       // URL pulite: la chiave viaggia solo via header x-api-key (hook
       // useSecurePosterUrl) — mai incollata in query string.
-      return FALLBACK_PODIUM.map((p) => ({ ...p, url: `${p.url()}${nsSuffix}` }))
+      return FALLBACK_PODIUM.map((p) => {
+        const [path, query] = p.url().split("?")
+        return { ...p, url: `${path}${localizeDemoParams(query ?? "", t, lang)}${nsSuffix}` }
+      })
     }
     const [m1, m2] = shuffle(movies)
     const [s1] = shuffle(tv)
@@ -111,9 +115,9 @@ export function HomeHero({ search }: { search?: ReactNode }) {
       className: ["p-frame p-frame-side p-frame-left", "p-frame p-frame-main", "p-frame p-frame-side p-frame-right"][i],
       alt: titleOf(item),
       item,
-      url: `/api/poster/${item.media_type}/${item.id}?ranking=&rank=${item.rank}&rs=${SLOT_RANK_STYLES[i]}&tl=0&gradHeight=25&blur=30&bf=50&bd=40&logoFit=0${nsSuffix}`,
+      url: `/api/poster/${item.media_type}/${item.id}${localizeDemoParams(`ranking=&rank=${item.rank}&rs=${SLOT_RANK_STYLES[i]}&tl=0&gradHeight=25&blur=30&bf=50&bd=40&logoFit=0`, t, lang)}${nsSuffix}`,
     }))
-  }, [trending, titleOf, nsSuffix])
+  }, [trending, titleOf, nsSuffix, t, lang])
 
   // Parallasse attivo solo su dispositivi con hover (desktop); calcolato una
   // volta per non ri-eseguire matchMedia a ogni mousemove.

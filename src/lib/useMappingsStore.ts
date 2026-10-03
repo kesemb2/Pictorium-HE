@@ -73,7 +73,7 @@ export function useMappingsStore() {
       a.download = `pictorium-backup-${new Date().toISOString().slice(0, 10)}.json`
       a.click()
       URL.revokeObjectURL(url)
-      import("sonner").then(({ toast }) => toast.success(t("ui.saved") || "Backup esportato con successo!"))
+      import("sonner").then(({ toast }) => toast.success(t("ui.backupExported")))
     } catch (e) {
       console.error("[pictorium] Export failed:", e)
       import("sonner").then(({ toast }) => toast.error(t("ui.exportError")))

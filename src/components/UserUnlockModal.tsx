@@ -219,14 +219,14 @@ export function UserUnlockModal() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") void savePassword() }}
                 placeholder="••••••••"
-                className="w-full font-mono text-xs py-2 pl-3 pr-10 rounded-lg bg-black/40 border border-white/10 text-white placeholder-zinc-600 focus:outline-none focus:border-accent-orange/50"
+                className="w-full font-mono text-xs py-2 ps-3 pe-10 rounded-lg bg-black/40 border border-white/10 text-white placeholder-zinc-600 focus:outline-none focus:border-accent-orange/50"
               />
               <button
                 type="button"
                 onClick={() => setShowInput((s) => !s)}
                 aria-label={showInput ? t("ui.hideKey") : t("ui.showKey")}
                 title={showInput ? t("ui.hideKey") : t("ui.showKey")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200 transition-colors cursor-pointer"
+                className="absolute end-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200 transition-colors cursor-pointer"
               >
                 {showInput ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -244,14 +244,14 @@ export function UserUnlockModal() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") void saveSecret() }}
                 placeholder="••••••••"
-                className="w-full font-mono text-xs py-2 pl-3 pr-10 rounded-lg bg-black/40 border border-white/10 text-white placeholder-zinc-600 focus:outline-none focus:border-accent-orange/50"
+                className="w-full font-mono text-xs py-2 ps-3 pe-10 rounded-lg bg-black/40 border border-white/10 text-white placeholder-zinc-600 focus:outline-none focus:border-accent-orange/50"
               />
               <button
                 type="button"
                 onClick={() => setShowInput((s) => !s)}
                 aria-label={showInput ? t("ui.hideKey") : t("ui.showKey")}
                 title={showInput ? t("ui.hideKey") : t("ui.showKey")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200 transition-colors cursor-pointer"
+                className="absolute end-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200 transition-colors cursor-pointer"
               >
                 {showInput ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>

@@ -5,7 +5,7 @@ import { usePSelector } from "@/lib/context"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { usePosterEditor } from "@/lib/contexts/PosterEditorContext"
 import { Toggle } from "@/components/Toggle"
-import { REGIONS } from "@/lib/regions"
+import { REGIONS, regionLabel } from "@/lib/regions"
 import { UI_LANGUAGES } from "@/lib/utils"
 
 /** Scheda Prefs (localizzazione, metadati episodi, automazioni). Estratta da SettingsPanel: solo JSX + context. */
@@ -57,7 +57,7 @@ export function PrefsPanel({ active }: { active: boolean }) {
           >
             {REGIONS.map((r) => (
               <option key={r.code} value={r.code} className="bg-zinc-900 text-zinc-100">
-                {r.flag} {r.label}
+                {r.flag} {regionLabel(r, lang)}
               </option>
             ))}
           </select>

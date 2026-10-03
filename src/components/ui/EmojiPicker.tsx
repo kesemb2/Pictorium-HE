@@ -2,18 +2,19 @@
 
 import React, { useState, useRef, useEffect } from "react"
 import { Smile, ChevronDown, ChevronUp } from "lucide-react"
+import { t } from "@/lib/i18n"
 
 export const EMOJI_CATEGORIES = [
   {
-    name: "Streaming e Cinema",
+    nameKey: "ui.emojiGroupStreaming",
     emojis: ["🍿", "🎬", "📺", "⛩️", "☁️", "🍎", "🏔️", "🏰", "🔴", "📦", "🟣", "🌶️", "🏆", "🔥", "⭐", "🎭"],
   },
   {
-    name: "Generi e Temi",
+    nameKey: "ui.emojiGroupGenres",
     emojis: ["🚀", "🧟", "👽", "🤖", "🤠", "🕵️", "🗡️", "🩸", "🎃", "🦖", "🛸", "💎", "👑", "🎯", "⚡", "🔮", "🕶️", "💣", "🎪"],
   },
   {
-    name: "Paesi e Simboli",
+    nameKey: "ui.emojiGroupPlaces",
     emojis: ["🇮🇹", "🇺🇸", "🇬🇧", "🇯🇵", "🇰🇷", "🇫🇷", "🇪🇸", "🇩🇪", "🌍", "🪐", "🏖️", "🎵", "🎸", "📜", "⏳", "🦄", "🐉"],
   },
 ] as const
@@ -77,7 +78,7 @@ export function EmojiPicker({ currentName, onSelectEmoji }: EmojiPickerProps) {
           }`}
         >
           <Smile className="w-3 h-3 text-accent-orange" />
-          <span>{isOpen ? "Chiudi" : "Altre emoji"}</span>
+          <span>{isOpen ? t("ui.close") : t("ui.emojiMore")}</span>
           {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
         </button>
       </div>
@@ -85,9 +86,9 @@ export function EmojiPicker({ currentName, onSelectEmoji }: EmojiPickerProps) {
       {isOpen && (
         <div className="p-2.5 bg-surface border border-white/10 rounded-xl shadow-xl space-y-2.5 mb-2 animate-fade-in">
           {EMOJI_CATEGORIES.map((cat) => (
-            <div key={cat.name} className="space-y-1">
+            <div key={cat.nameKey} className="space-y-1">
               <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider px-0.5">
-                {cat.name}
+                {t(cat.nameKey)}
               </div>
               <div className="flex flex-wrap gap-1">
                 {cat.emojis.map((em) => {

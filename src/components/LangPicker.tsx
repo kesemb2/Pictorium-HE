@@ -2,11 +2,13 @@
 
 import { useState, useRef, useEffect } from "react"
 import { PICKER_LANGS } from "@/lib/utils"
-import { REGIONS } from "@/lib/regions"
+import { REGIONS, regionLabel } from "@/lib/regions"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { ChevronLeft, Lock, ArrowRight, ShieldCheck } from "lucide-react"
 import { isMultiUserServer } from "@/lib/guest-guard"
 import { currentPathUuid } from "@/lib/user-token"
+import { getLang } from "@/lib/i18n"
+import { translateServerError } from "@/lib/server-error"
 
 interface SetupWizardProps {
   /** Applica la lingua (codice 2 lettere) senza chiudere il wizard. */
@@ -92,7 +94,7 @@ export function LangPicker({ onPickLang, onPickRegion, onDone, skipPin }: SetupW
         onDone()
       } else {
         const err = await res.json().catch(() => ({}))
-        setPinError(err.error || t("ui.pinSaveError"))
+        setPinError(translateServerError(err.error, t, "ui.pinSaveError"))
       }
     } catch {
       setPinError(t("ui.pinConnError"))
@@ -137,9 +139,9 @@ export function LangPicker({ onPickLang, onPickRegion, onDone, skipPin }: SetupW
         </div>
 
         {step === "lang" && (
-          <div key="lang" className="grid grid-cols-2 gap-2 max-h-[52vh] overflow-y-auto pr-0.5 animate-step-enter">
+          <div key="lang" className="grid grid-cols-2 gap-2 max-h-[52vh] overflow-y-auto pe-0.5 animate-step-enter">
             {PICKER_LANGS.map((l) => (
-              <button type="button" key={l.key} onClick={() => pickLang(l.code)} className="surface-card flex items-center gap-2 px-4 py-3.5 rounded-2xl hover:-translate-y-0.5 active:scale-[0.97] transition-all duration-200 text-left group cursor-pointer">
+              <button type="button" key={l.key} onClick={() => pickLang(l.code)} className="surface-card flex items-center gap-2 px-4 py-3.5 rounded-2xl hover:-translate-y-0.5 active:scale-[0.97] transition-all duration-200 text-start group cursor-pointer">
                 <span className="text-2xl shrink-0">{l.flag}</span>
                 <div>
                   <p className="text-sm font-medium text-zinc-200 group-hover:text-accent transition-colors">{l.name}</p>
@@ -151,12 +153,12 @@ export function LangPicker({ onPickLang, onPickRegion, onDone, skipPin }: SetupW
         )}
 
         {step === "region" && (
-          <div key="region" className="grid grid-cols-2 gap-2 max-h-[52vh] overflow-y-auto pr-0.5 animate-step-enter">
+          <div key="region" className="grid grid-cols-2 gap-2 max-h-[52vh] overflow-y-auto pe-0.5 animate-step-enter">
             {REGIONS.map((r) => (
-              <button type="button" key={r.code} onClick={() => pickRegion(r.code)} className="surface-card flex items-center gap-2 px-4 py-3.5 rounded-2xl hover:-translate-y-0.5 active:scale-[0.97] transition-all duration-200 text-left group cursor-pointer">
+              <button type="button" key={r.code} onClick={() => pickRegion(r.code)} className="surface-card flex items-center gap-2 px-4 py-3.5 rounded-2xl hover:-translate-y-0.5 active:scale-[0.97] transition-all duration-200 text-start group cursor-pointer">
                 <span className="text-2xl shrink-0">{r.flag}</span>
                 <div>
-                  <p className="text-sm font-medium text-zinc-200 group-hover:text-accent transition-colors">{r.label}</p>
+                  <p className="text-sm font-medium text-zinc-200 group-hover:text-accent transition-colors">{regionLabel(r, getLang())}</p>
                   <p className="text-xs text-muted uppercase tracking-wider">{r.code}</p>
                 </div>
               </button>
@@ -202,7 +204,7 @@ export function LangPicker({ onPickLang, onPickRegion, onDone, skipPin }: SetupW
                 className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-black font-semibold text-xs tracking-wide uppercase hover:opacity-90 active:scale-98 disabled:opacity-30 disabled:pointer-events-none transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>{pinLoading ? t("ui.setupPinSaving") : t("ui.setupPinSave")}</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-4 h-4 rtl:-scale-x-100" />
               </button>
 
               <button
@@ -222,7 +224,7 @@ export function LangPicker({ onPickLang, onPickRegion, onDone, skipPin }: SetupW
             onClick={() => setStep(step === "pin" ? "region" : "lang")}
             className="mx-auto mt-5 flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-all active:scale-95 cursor-pointer"
           >
-            <ChevronLeft className="w-3.5 h-3.5" />
+            <ChevronLeft className="w-3.5 h-3.5 rtl:-scale-x-100" />
             {t("ui.back")}
           </button>
         )}

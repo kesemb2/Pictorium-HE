@@ -26,6 +26,7 @@ import { envWithFallback } from "@/lib/env-compat"
 import { isPersonQuery, pickTopPerson } from "@/lib/person-search"
 import { normalizeCatalogId, normalizeCatalogIdKeys, normalizeCatalogIdList } from "@/lib/catalog-definitions"
 import type { PosterShape } from "@/lib/types"
+import { canonicalGenreLabel } from "@/lib/stremio-labels"
 
 const log = createLogger("catalog")
 
@@ -446,7 +447,10 @@ export async function pictoriumCatalog(
   // C4: tipo ignoto → 400 invece di servire silenziosamente dati series.
   const stType = normalizeCatalogType(mediaType)
   if (!stType) return catalogResponse({ metas: [] }, 400)
-  const extra = parseCatalogExtra(extraSegments, req.nextUrl.searchParams)
+  const parsedExtra = parseCatalogExtra(extraSegments, req.nextUrl.searchParams)
+  // Fork: il manifest può offrire le opzioni genere in ebraico; tutta la
+  // logica a valle ragiona sulle etichette canoniche.
+  const extra = { ...parsedExtra, genre: canonicalGenreLabel(parsedExtra.genre) }
   // Namespace utente (multi-user): null con flag OFF o senza `?u=` → path
   // globale byte-identico a oggi. Con `u` → SOLO namespace, mai fallback.
   // Spazi inventati → anonimo (v1.23.0): niente cache key separate.

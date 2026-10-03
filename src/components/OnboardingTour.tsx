@@ -68,7 +68,7 @@ export function OnboardingTour() {
         <button type="button"
           onClick={close}
           aria-label={t("ui.close")}
-          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-zinc-500 hover:bg-white/10 hover:text-zinc-300 transition-all duration-200 active:scale-90 z-10"
+          className="absolute top-4 end-4 w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-zinc-500 hover:bg-white/10 hover:text-zinc-300 transition-all duration-200 active:scale-90 z-10"
         >
           <X className="w-4 h-4" />
         </button>
@@ -116,7 +116,7 @@ export function OnboardingTour() {
                 onClick={() => setStep((s) => s - 1)}
                 className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-medium text-zinc-300 hover:bg-white/5 hover:text-white transition-all duration-150 active:scale-95"
               >
-                <ChevronLeft className="w-3.5 h-3.5" />
+                <ChevronLeft className="w-3.5 h-3.5 rtl:-scale-x-100" />
                 {t("ui.back")}
               </button>
             ) : (
@@ -136,7 +136,7 @@ export function OnboardingTour() {
                 className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-medium text-white bg-white/10 hover:bg-white/20 transition-all duration-150 active:scale-95"
               >
                 {t("ui.next")}
-                <ChevronRight className="w-3.5 h-3.5" />
+                <ChevronRight className="w-3.5 h-3.5 rtl:-scale-x-100" />
               </button>
             )}
           </div>

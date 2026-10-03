@@ -316,7 +316,7 @@ export function usePictorium(): PictoriumCtx {
     try { localStorage.setItem(key, val) } catch { /* localStorage non disponibile */ }
   }, [])
 
-  const [lang, setLang] = useState("it")
+  const [lang, setLang] = useState("he")
   const t = useMemo(() => createT(lang), [lang])
   const [tmdbKey, setTmdbKeyState] = useState("")
   // True se l'istanza ha una chiave TMDB env (booleano pubblico da

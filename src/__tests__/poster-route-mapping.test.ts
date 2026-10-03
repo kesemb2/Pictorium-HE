@@ -1840,7 +1840,8 @@ describe("GET /api/poster/[type]/[id] error and edge cases", () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.quality).toMatchObject({ value: "4K", source: "torrentio", status: "resolved", rawTokens: ["4k"] })
-    expect(body.logoSelection.requestedLang).toBe("it")
+    // Senza lang il poster esce in ebraico (regione di default IL).
+    expect(body.logoSelection.requestedLang).toBe("he")
     expect(body.logoSelection.usedLang).toBe("en")
     expect(body.cache.hit).toBe(false)
     expect(body.meta.mappingId).toBeNull()

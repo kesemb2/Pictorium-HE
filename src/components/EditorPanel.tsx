@@ -62,13 +62,13 @@ export function EditorPanel({ title, tabs, activeTab, onTabChange, headerRight, 
                     className={`tab-chip h-8 px-2.5 rounded-lg text-[13px] font-semibold border transition-all shrink-0 ${activeTab === tab.key ? "tab-chip-active bg-accent-orange/15 text-accent-orange border-accent-orange/35" : "bg-white/5 text-muted border-white/10 hover:text-zinc-200 hover:bg-white/10"}`}
                   >
                     {tab.label}
-                    {tab.count !== undefined && <span className="ml-1 text-[11px] opacity-60">{tab.count}</span>}
+                    {tab.count !== undefined && <span className="ms-1 text-[11px] opacity-60">{tab.count}</span>}
                   </button>
                 ))}
               </div>
             )}
           </div>
-          {headerRight && <span className="shrink-0 ml-auto flex items-center">{headerRight}</span>}
+          {headerRight && <span className="shrink-0 ms-auto flex items-center">{headerRight}</span>}
         </div>
       )}
       <div className="editor-panel-body scrollbar-none">

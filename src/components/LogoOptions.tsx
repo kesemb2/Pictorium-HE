@@ -64,7 +64,7 @@ export const LogoOptions = React.memo(function LogoOptions({ logos, selectedLogo
             className={`tab-chip h-7 px-2.5 rounded-lg text-[11px] font-semibold border transition-all shrink-0 ${activeLogoGroup === tab.key ? "tab-chip-active bg-accent-orange/15 text-accent-orange border-accent-orange/35" : "bg-white/5 text-muted border-white/10 hover:text-zinc-200 hover:bg-white/10"}`}
           >
             {tab.label}
-            <span className="ml-1 text-[10px] opacity-60">{tab.count}</span>
+            <span className="ms-1 text-[10px] opacity-60">{tab.count}</span>
           </button>
         ))}
       </div>
@@ -91,7 +91,7 @@ export const LogoOptions = React.memo(function LogoOptions({ logos, selectedLogo
                     <button type="button" key={img.file_path} disabled={disabled} onClick={() => selectLogo(img)} className={`poster-tile group relative p-2 rounded-xl transition-all duration-200 ease-out flex items-center justify-center h-20 ${disabled ? "opacity-40 cursor-not-allowed" : ""} ${isActive ? "poster-tile-active bg-accent-orange/10" : ""}`} title={isActive ? t("ui.logoSelected") : undefined}>
                       {/* eslint-disable-next-line @next/next/no-img-element -- TMDB dynamic URL */}
                       <img src={posterUrl(img.file_path, "w154")} alt="" loading="lazy" decoding="async" className="max-h-14 max-w-full object-contain transition-transform duration-200 group-hover:scale-110" />
-                      {isActive && <div className="absolute top-1 right-1 rounded-md bg-accent-orange text-white p-0.5 shadow-sm shadow-accent-orange/40"><Check className="w-3 h-3" /></div>}
+                      {isActive && <div className="absolute top-1 end-1 rounded-md bg-accent-orange text-white p-0.5 shadow-sm shadow-accent-orange/40"><Check className="w-3 h-3" /></div>}
                     </button>
                   )
                 })}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { TrendingUp, Trophy } from "lucide-react"
 import { useT } from "@/lib/contexts/TranslationContext"
-import { getRegionDef } from "@/lib/regions"
+import { getRegionDef, regionLabel } from "@/lib/regions"
 
 interface Props {
   tmdbId: number
@@ -13,7 +13,7 @@ interface Props {
 }
 
 export function JwRankBadge({ tmdbId, type, regionCode = "IT" }: Props) {
-  const { t } = useT()
+  const { t, lang } = useT()
   const [rank, setRank] = useState<number | null | undefined>(undefined)
   const [top, setTop] = useState(20)
   const region = getRegionDef(regionCode)
@@ -48,7 +48,7 @@ export function JwRankBadge({ tmdbId, type, regionCode = "IT" }: Props) {
       className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
         isTop3 ? "bg-amber-500/15 text-amber-300 border-amber-500/30" : "bg-white/[0.06] text-zinc-200 border-white/10"
       }`}
-      title={t("ui.rankTitle", { rank, country: region.label })}
+      title={t("ui.rankTitle", { rank, country: regionLabel(region, lang) })}
     >
       {isTop3 ? <Trophy className="w-3 h-3" /> : <TrendingUp className="w-3 h-3 text-accent-orange" />}
       {t("ui.rankTrending", { rank, flag: region.flag })}

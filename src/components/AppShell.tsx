@@ -216,7 +216,7 @@ export function AppShell() {
       {!(view === "edit" && selected) && <DesktopCommunityLinks />}
 
       {/* Desktop Toolbar — Floating Island */}
-      <div className="hidden md:flex absolute top-4 right-4 z-20">
+      <div className="hidden md:flex absolute top-4 end-4 z-20">
         <div className="flex items-center gap-1.5 p-1.5 rounded-2xl bg-black/60 backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/50 relative z-50">
           {/* Installa Pictorium Hub Pill Button */}
           <button
@@ -245,7 +245,7 @@ export function AppShell() {
             }`}
           >
             <Layers className="w-3.5 h-3.5 text-accent-orange" />
-            <span>{t("ui.catalogs") || "Cataloghi"}</span>
+            <span>{t("ui.catalogs")}</span>
           </button>
 
           <div className="h-4 w-px bg-white/10 mx-0.5" />
@@ -265,7 +265,7 @@ export function AppShell() {
             }`}
           >
             <Palette className="w-3.5 h-3.5 text-accent-orange" />
-            <span className="hidden xl:inline">{t("ui.myPostersBtn") || "I Miei Poster"}</span>
+            <span className="hidden xl:inline">{t("ui.myPostersBtn")}</span>
             <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-white/[0.08] text-zinc-300 border border-white/10">{mappings.length}</span>
           </button>
 
@@ -349,7 +349,7 @@ export function AppShell() {
       {/* Mobile Bottom Navigation Bar (iOS / Android Style) */}
       <nav
         aria-label={t("ui.mainNav")}
-        className={`md:hidden fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/90 backdrop-blur-2xl border-t border-white/[0.08] shadow-[0_-10px_30px_rgba(0,0,0,0.5)] px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] transition-all duration-200 ${
+        className={`md:hidden fixed bottom-0 start-0 end-0 z-40 bg-zinc-950/90 backdrop-blur-2xl border-t border-white/[0.08] shadow-[0_-10px_30px_rgba(0,0,0,0.5)] px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] transition-all duration-200 ${
           view === "edit" && selected ? "translate-y-full pointer-events-none opacity-0" : "translate-y-0 opacity-100"
         }`}
       >
@@ -369,7 +369,7 @@ export function AppShell() {
             <span className="h-8 flex items-center justify-center">
               <Layers className="w-5 h-5" />
             </span>
-            <span className="text-[10px] tracking-tight truncate">{t("ui.catalogs") || "Cataloghi"}</span>
+            <span className="text-[10px] tracking-tight truncate">{t("ui.catalogs")}</span>
           </button>
 
           {/* Proxy Addon (seconda voce) */}
@@ -385,7 +385,7 @@ export function AppShell() {
             <span className="h-8 flex items-center justify-center">
               <Sparkles className="w-5 h-5 text-accent-orange" />
             </span>
-            <span className="text-[10px] tracking-tight truncate">{t("ui.proxyShort") || "Proxy"}</span>
+            <span className="text-[10px] tracking-tight truncate">{t("ui.proxyShort")}</span>
           </button>
 
           {/* Installa Hub (Featured Central Pill) */}
@@ -436,13 +436,13 @@ export function AppShell() {
               <div className="relative">
                 <Palette className="w-5 h-5" />
                 {mappings.length > 0 && (
-                  <span className="absolute -top-1 -right-2 px-1 min-w-3.5 h-3.5 bg-accent-orange text-[9px] font-bold text-white rounded-full flex items-center justify-center leading-none">
+                  <span className="absolute -top-1 -end-2 px-1 min-w-3.5 h-3.5 bg-accent-orange text-[9px] font-bold text-white rounded-full flex items-center justify-center leading-none">
                     {mappings.length}
                   </span>
                 )}
               </div>
             </span>
-            <span className="text-[10px] tracking-tight truncate">{t("ui.myPostersBtn") || "I Miei"}</span>
+            <span className="text-[10px] tracking-tight truncate">{t("ui.myPostersBtn")}</span>
           </button>
 
           {/* Impostazioni */}
@@ -460,7 +460,7 @@ export function AppShell() {
             <span className="h-8 flex items-center justify-center">
               <Settings className="w-5 h-5" />
             </span>
-            <span className="text-[10px] tracking-tight truncate">{t("ui.settingsTitle") || "Opzioni"}</span>
+            <span className="text-[10px] tracking-tight truncate">{t("ui.settingsTitle")}</span>
           </button>
         </div>
       </nav>

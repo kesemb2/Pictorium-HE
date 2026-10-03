@@ -104,7 +104,7 @@ export function SimklCard({ items, title, totalCount, meta = [], onClick, onItem
                 )}
                 {isSaved && (
                   <div
-                    className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg ring-1 ring-white/30 z-10"
+                    className="absolute top-1.5 end-1.5 w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg ring-1 ring-white/30 z-10"
                     title={t("ui.alreadyCustomized")}
                   >
                     <Check className="w-3.5 h-3.5 stroke-[3]" />
@@ -119,7 +119,7 @@ export function SimklCard({ items, title, totalCount, meta = [], onClick, onItem
       <div className="info">
         <h3>
           <span className="truncate">{title}</span>
-          <span className="grid-hint ml-2 shrink-0" title={t("ui.viewAll")}>⧉</span>
+          <span className="grid-hint ms-2 shrink-0" title={t("ui.viewAll")}>⧉</span>
         </h3>
         <div className="meta flex items-center justify-between mt-2.5">
           {count > 0 && (

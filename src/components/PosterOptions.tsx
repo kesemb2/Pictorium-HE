@@ -65,7 +65,7 @@ export function PosterOptions({ posters, posterActivePath, lang, selectPoster, a
 
   const posterTabs = useMemo(() => {
     const tabs: { key: string; label: string; count: number }[] = []
-    if (hasClean) tabs.push({ key: "clean", label: "Clean", count: cleanPosters.length + customPosters.length + (savedCustomPoster ? 1 : 0) })
+    if (hasClean) tabs.push({ key: "clean", label: t("ui.clean"), count: cleanPosters.length + customPosters.length + (savedCustomPoster ? 1 : 0) })
     for (const [language, imgs] of langGroups) {
       if (imgs.length > 0) tabs.push({ key: language, label: LANG_NAMES[language] || language, count: imgs.length })
     }
@@ -288,7 +288,7 @@ export function PosterOptions({ posters, posterActivePath, lang, selectPoster, a
                 onClick={toggleAutoRotateClean}
                 className={`px-2 py-1 text-[11px] font-semibold rounded-lg border transition-all ${ed.autoRotateClean ? "bg-accent-orange/20 text-accent-orange border-accent-orange/25 animate-pulse-ring" : "bg-white/5 text-muted border-white/10"}`}
               >
-                {ed.autoRotateClean ? <><Check className="w-3 h-3 inline mr-1" />ON</> : "OFF"}
+                {ed.autoRotateClean ? <><Check className="w-3 h-3 inline me-1" />{t("ui.on")}</> : t("ui.off")}
               </button>
             </div>
           )}
@@ -354,7 +354,7 @@ export function PosterOptions({ posters, posterActivePath, lang, selectPoster, a
               <div key={`custom:${img.file_path}`} className="relative group rounded-xl overflow-hidden">
                 <PosterBtn staggerIndex={ci} img={img} active={posterActivePath === img.file_path} onSelect={selectPoster} title={t("ui.customPosterActive")} />
                 {onRemoveCustomPoster && (
-                  <div className="absolute top-1.5 right-1.5 z-20 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                  <div className="absolute top-1.5 end-1.5 z-20 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                     <button type="button"
                       aria-label={t("ui.remove")}
                       title={t("ui.remove")}
@@ -385,11 +385,11 @@ export function PosterOptions({ posters, posterActivePath, lang, selectPoster, a
                   <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/50 to-transparent opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity" />
                   {showBadge && (
                     <div className={`fit-badge z-20 ${isHighScore ? "fit-badge-amber" : ""}`}>
-                      <Sparkles className="w-2.5 h-2.5 inline mr-0.5" />
+                      <Sparkles className="w-2.5 h-2.5 inline me-0.5" />
                       {isHighScore ? t("ui.bestFit") : t("ui.bestFitAlt")}
                     </div>
                   )}
-                  <div className="absolute top-1.5 right-1.5 z-20 flex flex-col gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                  <div className="absolute top-1.5 end-1.5 z-20 flex flex-col gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                     <button type="button"
                       aria-label={inRotation ? t("ui.removeFromRotation") : t("ui.addToRotation")}
                       onClick={(e) => { e.stopPropagation(); toggleRotation(img.file_path) }}

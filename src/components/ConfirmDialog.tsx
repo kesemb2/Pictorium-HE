@@ -24,7 +24,7 @@ export const ConfirmDialog = React.memo(function ConfirmDialog({
   inline?: boolean
   /**
    * Posizione viewport (già clampata dal chiamante) per la tendina: con
-   * `inline` ignora l'ancoraggio `absolute top-full right-0` e si posiziona
+   * `inline` ignora l'ancoraggio `absolute top-full end-0` e si posiziona
    * `fixed`, così non dipende dal layout né viene clippata (es. conferma
    * sotto il cestino di una tile in griglia). Senza, comportamento invariato.
    */
@@ -44,7 +44,7 @@ export const ConfirmDialog = React.memo(function ConfirmDialog({
         className={
           anchor
             ? "z-[200] surface-card border border-white/10 rounded-2xl p-4 shadow-2xl shadow-black/80 min-w-56 max-w-[calc(100vw-2rem)] max-h-[80vh] overflow-y-auto animate-fade-scale-in select-text"
-            : "absolute top-full right-0 mt-2 z-[200] surface-card border border-white/10 rounded-2xl p-4 shadow-2xl shadow-black/80 min-w-56 max-w-[calc(100vw-2rem)] max-h-[80vh] overflow-y-auto animate-fade-scale-in select-text"
+            : "absolute top-full end-0 mt-2 z-[200] surface-card border border-white/10 rounded-2xl p-4 shadow-2xl shadow-black/80 min-w-56 max-w-[calc(100vw-2rem)] max-h-[80vh] overflow-y-auto animate-fade-scale-in select-text"
         }
         onClick={(e) => e.stopPropagation()}
       >
