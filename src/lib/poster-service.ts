@@ -49,6 +49,7 @@ import { qualityBadgeIconPath } from "./quality-badge-styles"
 import type { QualityBadgeStyle } from "./badge-styles"
 import { FORMAT_ICON_PATHS, type VideoFormat } from "./av-specs"
 import { resolveBadgeText, type BadgeVariableContext } from "./badge-variables"
+import { isRankKey } from "./i18n"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -680,6 +681,8 @@ const NETWORK_FILES_COMBINED: Record<string, string> = {
   dg_cinema: "direzione-generale-cinema-e-audiovisivo-vector-logo.svg",
   dc: "DC_Studios_logo.svg",
   bigtalk: "Big+Talk+Studios+-+Logo+-+Brandmark.webp",
+  batinthesun: "12x16-batinthesun.png",
+  horrorsection: "ths-logo-300_webp.png",
 }
 
 // B4: memo per (networkKey, targetH, fg). Gli SVG in public/networks/ sono
@@ -1290,7 +1293,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   const studioBadge = computed.studioBadge
   const isNetStudio = isNetworkStudio(studioBadge)
 
-  let topBadge: { type: "extra"; label: string } | { type: "rank"; rank: number; label: string } | null = null
+  let topBadge: { type: "extra"; label: string } | { type: "rank"; rank: number; label: string; ribbonLabel?: string } | null = null
   if (rankingEnabled) {
     if (queryExtra) {
       topBadge = { type: "extra" as const, label: queryExtra }
@@ -1299,7 +1302,10 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
       if (b.type === "extra") {
         topBadge = { type: "extra" as const, label: b.label }
       } else {
-        topBadge = { type: "rank" as const, rank: b.rank!, label: qLabel || b.rankLabel || b.label }
+        // Sottotitolo nastro: override custom esplicito (non rank-key) vince,
+        // altrimenti il periodo computato ("Oggi", anche per gli anime).
+        const customRibbon = qLabel && !isRankKey(qLabel) ? qLabel : undefined
+        topBadge = { type: "rank" as const, rank: b.rank!, label: qLabel || b.rankLabel || b.label, ribbonLabel: customRibbon ?? b.ribbonLabel ?? b.label }
       }
     }
   }
@@ -1393,7 +1399,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // Parole fisse dei badge di classifica nella lingua del poster.
   const ribbonWords = { top: t("badge.top"), today: t("badge.today"), anime: t("badge.anime") }
   const rankBadgeKey = !showComingSoon && topBadge
-    ? badgeCacheKey("rank", topBadge.type === "extra" ? topBadge.label : `${(topBadge as { rank: number }).rank}:${topBadge!.label}`, CW, topLight, rankingBadgeStyle, accentColorRank, ribbonSide, isAnimeRank, effTopScale, rankingBadgeAccent ? "accent" : undefined, ribbonWords.top)
+    ? badgeCacheKey("rank", topBadge.type === "extra" ? topBadge.label : `${(topBadge as { rank: number }).rank}:${topBadge!.label}:${(topBadge as { ribbonLabel?: string }).ribbonLabel ?? ""}`, CW, topLight, rankingBadgeStyle, accentColorRank, ribbonSide, isAnimeRank, effTopScale, rankingBadgeAccent ? "accent" : undefined, ribbonWords.top)
     : null
   const formatsKey = (videoFormats && videoFormats.length > 0) ? videoFormats.join(",") : "none"
   // Icone A/V e colonna dei voti stanno sull'artwork dell'angolo alto, come
@@ -1468,7 +1474,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
               // Senza nastro il "colored" colora il badge default: nel renderer
               // del fork è lo stile "colored" stesso.
               const rankStyle = rankingBadgeAccent && !isRibbonRankingStyle(rankingBadgeStyle) ? "colored" : rankingBadgeStyle
-              return renderRankingBadge((topBadge as { rank: number }).rank, isRibbonRankingStyle(rankingBadgeStyle) ? badgePw : topBadgePw, topBadge!.label, topLight, rankStyle, accentColorRank, ribbonSide, isAnimeRank, rankingBadgeStyle === "bar" ? effTopScale : 100, ribbonWords)
+              return renderRankingBadge((topBadge as { rank: number }).rank, isRibbonRankingStyle(rankingBadgeStyle) ? badgePw : topBadgePw, topBadge!.label, topLight, rankStyle, accentColorRank, ribbonSide, isAnimeRank, rankingBadgeStyle === "bar" ? effTopScale : 100, ribbonWords, (topBadge as { ribbonLabel?: string }).ribbonLabel)
                 .then((r) => { const v = { ...r, isRank: true }; cacheSet(rankBadgeKey, v, ["badge"], BADGE_CACHE_TTL); return v })
             }))
       : Promise.resolve(null)

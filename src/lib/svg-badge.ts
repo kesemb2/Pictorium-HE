@@ -311,6 +311,12 @@ export async function buildRankingBadgeSVG(
   scale = 100,
   /** Parole fisse del badge nella lingua del poster (vedi RibbonWords). */
   words?: RibbonWords,
+  /**
+   * Sottotitolo dei nastri (netflix, netflix-color): il periodo della chart
+   * ("Oggi" nella lingua del poster, anche per gli anime) o la label custom.
+   * Senza, il nastro netflix ripiega sul periodo/label come prima.
+   */
+  ribbonLabel?: string,
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
   const s = badgeStyle || "default"
   const periodText = label || words?.today || "Oggi"
@@ -338,13 +344,13 @@ export async function buildRankingBadgeSVG(
 
   let result: { svg: string; w: number; h: number }
   if (s === "netflix-color") {
-    // Stile nuovo di upstream: lo disegna il suo renderer, nastro senza
-    // dicitura come tutti i nastri di upstream.
-    result = buildHouseRankingSvg({ rank, label: "", pw, topLight: !!topLight, style: s, accentColor, side, isAnime, words })
+    // Stile nuovo di upstream: lo disegna il suo renderer, con il periodo
+    // sotto il numero come i nastri di upstream.
+    result = buildHouseRankingSvg({ rank, label: ribbonLabel ?? "", pw, topLight: !!topLight, style: s, accentColor, side, isAnime, words })
   } else if (isNetflix) {
-    // Il nastro mostra l'etichetta sotto il numero: per gli anime è "anime",
-    // per film/serie è il periodo del rank (es. "Oggi") — stesso sistema.
-    result = buildNetflixRankBadgeSVG(rank, pw, !!topLight, side, isAnime, periodText, words)
+    // Il nastro mostra il periodo sotto il numero ("Oggi", anche per gli
+    // anime, come upstream); senza ribbonLabel la label/periodo di prima.
+    result = buildNetflixRankBadgeSVG(rank, pw, !!topLight, side, isAnime, ribbonLabel ?? periodText, words)
   } else if (s === "bar") {
     result = buildRankingBarSvg(fullText, pw, fs, fg, bg)
   } else if (s === "pill") {
@@ -366,8 +372,10 @@ export async function renderRankingBadge(
   topLight?: boolean, badgeStyle?: RankingBadgeStyle, accentColor?: string, side?: "left" | "right", isAnime?: boolean,
   scale = 100,
   words?: RibbonWords,
+  /** Sottotitolo dei nastri (vedi buildRankingBadgeSVG). */
+  ribbonLabel?: string,
 ): Promise<{ png: Buffer; w: number; h: number }> {
-  const r = await buildRankingBadgeSVG(rank, pw, label, topLight, badgeStyle, accentColor, side, isAnime, scale, words)
+  const r = await buildRankingBadgeSVG(rank, pw, label, topLight, badgeStyle, accentColor, side, isAnime, scale, words, ribbonLabel)
   if (r) return r
   throw new Error(`SVG ranking badge failed: rank=${rank}`)
 }

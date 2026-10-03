@@ -38,6 +38,7 @@ const RENDER_FILES = [
   "src/lib/fanart-artwork.ts",
   "src/lib/fonts.ts",
   "src/lib/genre-normalize.ts",
+  "src/lib/i18n.ts",
   "src/lib/image-utils.ts",
   "src/lib/justwatch.ts",
   "src/lib/logo-contrast.ts",
