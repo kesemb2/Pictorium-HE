@@ -113,22 +113,23 @@ export async function posterZoneStats(
   posterBuf: Buffer,
   zone: { left: number; top: number; width: number; height: number },
   band?: BlurOverlay | null,
+  canvas: { readonly w: number; readonly h: number } = { w: STD_W, h: STD_H },
 ): Promise<ZoneStats | null> {
   const left = Math.max(0, Math.round(zone.left))
   const top = Math.max(0, Math.round(zone.top))
-  const width = Math.min(STD_W - left, Math.round(zone.width))
-  const height = Math.min(STD_H - top, Math.round(zone.height))
+  const width = Math.min(canvas.w - left, Math.round(zone.width))
+  const height = Math.min(canvas.h - top, Math.round(zone.height))
   if (width <= 0 || height <= 0) return null
 
   if (!band) {
-    const stats = await computeRegionStats(posterBuf, left, top, width, height)
+    const stats = await computeRegionStats(posterBuf, left, top, width, height, canvas.w, canvas.h)
     if (!stats) return null
     return { luminance: relativeLuminance(stats.meanR, stats.meanG, stats.meanB), stdDev: stats.stdDev }
   }
 
   try {
     const zonePixels = await sharp(posterBuf)
-      .resize(STD_W, STD_H, { fit: "fill" })
+      .resize(canvas.w, canvas.h, { fit: "fill" })
       .extract({ left, top, width, height })
       .removeAlpha()
       .raw()
@@ -142,7 +143,7 @@ export async function posterZoneStats(
         const zi = (y * width + x) * 3
         let r = zonePixels[zi], g = zonePixels[zi + 1], b = zonePixels[zi + 2]
         if (covered) {
-          const oi = (overlayRow * STD_W + left + x) * 4
+          const oi = (overlayRow * canvas.w + left + x) * 4
           const a = band.overlay[oi + 3] / 255
           r = r * (1 - a) + band.overlay[oi] * a
           g = g * (1 - a) + band.overlay[oi + 1] * a
@@ -179,8 +180,9 @@ export async function posterLogoZoneLuminance(
   posterBuf: Buffer,
   zone: { left: number; top: number; width: number; height: number },
   band?: BlurOverlay | null,
+  canvas?: { readonly w: number; readonly h: number },
 ): Promise<number | null> {
-  const stats = await posterZoneStats(posterBuf, zone, band)
+  const stats = await posterZoneStats(posterBuf, zone, band, canvas)
   return stats ? stats.luminance : null
 }
 

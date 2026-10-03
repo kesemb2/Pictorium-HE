@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import sharp from "sharp"
-import { escSvg, estimateTextWidth, fontFamilyFor, satinPillStops } from "./badge-svg-shared"
+import { escSvg, estimateTextWidth, fontFamilyFor, satinPillStops, scaledDropShadow, type TextStyle } from "./badge-svg-shared"
 import { renderSVG } from "./svg-badge"
 import { formatSeparateValue } from "./ratings"
 
@@ -33,7 +33,10 @@ const RATINGS_DIR = path.join(process.cwd(), "public", "rating")
  * l'ombra standard sborda sul pill successivo e agli angoli sembra un
  * blocco squadrato. Con dy=2 + blur 2 l'estensione (~4px) resta nel gap.
  */
-const SEPARATE_SHADOW_FILTER = `<filter id="seps" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="2" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.55"/></filter>`
+const SEPARATE_SHADOW = { dx: 2, dy: 2, sd: 2, alpha: 0.55 } as const
+function separateShadowFilter(style?: TextStyle): string {
+  return `<filter id="seps" x="-30%" y="-30%" width="160%" height="160%">${scaledDropShadow(SEPARATE_SHADOW, style)}</filter>`
+}
 
 /** Gap verticale tra le pill dello stack. */
 export const SEPARATE_STACK_GAP = 5
@@ -80,6 +83,8 @@ export async function renderSeparateRatingStack(
   items: readonly { id: string; value: number }[],
   pw: number,
   topLight = true,
+  /** Controlli del testo del fork (ombra) e alone della zona: le pill stanno sull'artwork. */
+  style?: TextStyle,
 ): Promise<SeparateRatingStack | null> {
   // Pill compatte in stile moderno: proporzioni solide e bilanciate col badge 4K.
   const fs = Math.round(Math.max(14 * pw / 380, 11))
@@ -119,7 +124,7 @@ export async function renderSeparateRatingStack(
   }
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${colW}" height="${totalH}">` +
-    `<defs><linearGradient id="sepg" x1="0" y1="0" x2="0" y2="1">${satinPillStops(topLight)}</linearGradient>${SEPARATE_SHADOW_FILTER}</defs>` +
+    `<defs><linearGradient id="sepg" x1="0" y1="0" x2="0" y2="1">${satinPillStops(topLight)}</linearGradient>${separateShadowFilter(style)}</defs>` +
     parts.join("") +
     `</svg>`
   const png = await renderSVG(svg, colW)

@@ -29,7 +29,7 @@ import { computeLogoLayout, logoAlignPadX, PORTRAIT_LOGO_MAX_HEIGHT_PCT, PORTRAI
 import { logoDefaultScaleFromAspect } from "./logo-selection"
 import fs from "fs"
 import path from "path"
-import { estimateTextWidth, fitTitleText, fontFamilyFor, escSvg, titleStripHeight, titleTextFontSize, titleTextMaxW, type TextStyle } from "./badge-svg-shared"
+import { estimateTextWidth, fitTitleText, fontFamilyFor, escSvg, titleStripHeight, titleTextFontSize, titleTextMaxW, scaledDropShadow, textOpacityAttr, type TextStyle } from "./badge-svg-shared"
 // Box model di upstream: serve SOLO alle icone qualità/A-V, che sono una
 // funzione nuova di upstream disegnata su quella geometria (vedi badge-svg-upstream.ts).
 import { badgeBoxHeight, TOP_SHADOW_PAD } from "./badge-svg-upstream"
@@ -495,6 +495,8 @@ export async function renderQualityIconBadge(
   iconPath: string,
   pw: number,
   topLight?: boolean,
+  /** Fork: controlli del testo (opacità, ombra) e alone della zona d'angolo. */
+  style?: TextStyle,
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
   try {
     const src = await loadQualityIconSvg(iconPath)
@@ -517,8 +519,8 @@ export async function renderQualityIconBadge(
     // stacca l'icona mono/color da sfondi chiari o complessi, mentre
     // il padding TOP_SHADOW_PAD mantiene l'esatto ancoraggio visivo a valle.
     const compositeSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${totalH}" viewBox="0 0 ${totalW} ${totalH}">` +
-      `<defs><filter id="tds" x="-20%" y="-20%" width="180%" height="180%"><feDropShadow dx="2" dy="2" stdDeviation="2.5" flood-color="#000000" flood-opacity="0.65"/></filter></defs>` +
-      `<g filter="url(#tds)">` +
+      `<defs><filter id="tds" x="-20%" y="-20%" width="180%" height="180%">${scaledDropShadow({ dx: 2, dy: 2, sd: 2.5, alpha: 0.65 }, style)}</filter></defs>` +
+      `<g filter="url(#tds)"${textOpacityAttr(style)}>` +
       `<svg x="${TOP_SHADOW_PAD}" y="${TOP_SHADOW_PAD}" width="${w}" height="${h}" viewBox="0 0 ${vb.w} ${vb.h}"${fillAttr}>${innerContent}</svg>` +
       `</g></svg>`
     const png = await renderSVG(compositeSvg, totalW)
@@ -538,6 +540,8 @@ export async function renderQualityBadgeGroup(
   videoFormats: readonly VideoFormat[] | null | undefined,
   pw: number,
   topLight?: boolean,
+  /** Fork: stile applicato alle icone, che stanno sull'artwork come il testo. */
+  iconStyle?: TextStyle,
 ): Promise<{ png: Buffer; w: number; h: number; shadowPad: number } | null> {
   // `shadowPad`: padding d'ombra incluso nel bitmap, che il posizionamento
   // sottrae. Le icone e la colonna A/V sono di upstream e lo portano
@@ -547,7 +551,7 @@ export async function renderQualityBadgeGroup(
   let resBadge: { png: Buffer; w: number; h: number } | null = null
   let resPad = 0
   if (qualityIconPath) {
-    resBadge = await renderQualityIconBadge(qualityIconPath, pw, topLight)
+    resBadge = await renderQualityIconBadge(qualityIconPath, pw, topLight, iconStyle)
     if (resBadge) resPad = TOP_SHADOW_PAD
   }
   if (!resBadge && validFormats.length > 0) {
@@ -567,7 +571,7 @@ export async function renderQualityBadgeGroup(
   let useCombo = hasDV && hasAtmos
   let comboIcon: { png: Buffer; w: number; h: number } | null = null
   if (useCombo) {
-    comboIcon = await renderQualityIconBadge("quality-badges/video/dolby-vision-atmos.svg", pw, topLight)
+    comboIcon = await renderQualityIconBadge("quality-badges/video/dolby-vision-atmos.svg", pw, topLight, iconStyle)
     if (!comboIcon) useCombo = false
   }
 
@@ -580,7 +584,7 @@ export async function renderQualityBadgeGroup(
     if (useCombo && (fmt === "dv" || fmt === "atmos")) {
       continue
     }
-    const icon = await renderQualityIconBadge(FORMAT_ICON_PATHS[fmt], pw, topLight)
+    const icon = await renderQualityIconBadge(FORMAT_ICON_PATHS[fmt], pw, topLight, iconStyle)
     if (icon) formatBadges.push(icon)
   }
   if (formatBadges.length === 0) return { ...resBadge, shadowPad: resPad }
@@ -1016,7 +1020,15 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   const titleFit = showTitleUnderLogo
     ? fitTitleText(title!, titleMaxW, titleTextFontSize(badgePw))
     : null
-  const titleBandH = titleFit ? titleStripHeight(titleFit.fs) + TITLE_BAND_GAP : 0
+  // In 16:9 il logo poggia sul fondo (margine 0) e la riga del genere sta
+  // nell'angolo in basso a destra, alla stessa altezza: un titolo centrato
+  // sotto al logo ci finirebbe sopra. Si alza logo+titolo dell'ingombro della
+  // riga (≈ 2 × targetCenter, che ne è il centro dal fondo). In Cinematic Left
+  // il titolo sta a sinistra e la riga a destra: nessun conflitto.
+  const landscapeMetaClear = isLandscape && !isLandscapeLeft && titleFit && hasGenreBadge
+    ? Math.round(targetCenter * 2)
+    : 0
+  const titleBandH = titleFit ? titleStripHeight(titleFit.fs) + TITLE_BAND_GAP + landscapeMetaClear : 0
 
   // Un unico oggetto per la riga in basso e per il titolo: le due scritte
   // cadono sullo stesso artwork e devono avere lo stesso trattamento.
@@ -1040,7 +1052,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // e si indebolisce dove non ha niente da nascondere. Non fa mai PIÙ di quanto
   // chiesto, e il fade non si tocca.
   const fittedBand = blurEnabled
-    ? await fitBandToPoster(posterBuf, { blurHeight, blurFade, blurIntensity, blurDarkness })
+    ? await fitBandToPoster(posterBuf, { blurHeight, blurFade, blurIntensity, blurDarkness }, CH)
     : { blurHeight, blurFade, blurIntensity, blurDarkness }
   const accentBottomFraction = blurEnabled
     ? Math.min(Math.max(fittedBand.blurHeight / 100, 100 / CH), 1)
@@ -1118,18 +1130,28 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // Il testo in basso e il titolo cadono sull'artwork, e da quando la fascia si
   // ritira invece di coprire, su quell'artwork non c'è più niente a garantirne
   // la leggibilità. Ogni scritta viene giudicata su ciò che sta dietro a LEI,
-  // misurato con la fascia già fusa dentro (solo portrait: le zone si misurano
-  // sul canvas 500x750).
+  // misurato con la fascia già fusa dentro, sulla tela vera (anche 16:9).
+  const canvas = { w: CW, h: CH }
   const metaZoneTop = Math.max(0, CH - Math.round((targetCenter + (badgeBottomOffset ?? 0)) * 1.8))
   const titleZoneTop = logoResult ? Math.min(logoResult.top + logoResult.h, metaZoneTop) : 0
-  const [metaZoneStats, titleZoneStats] = isLandscape
-    ? [null, null]
-    : await Promise.all([
-        posterZoneStats(posterBuf, { left: 0, top: metaZoneTop, width: CW, height: CH - metaZoneTop }, blurOverlay),
-        titleFit && logoResult && metaZoneTop > titleZoneTop
-          ? posterZoneStats(posterBuf, { left: 0, top: titleZoneTop, width: CW, height: metaZoneTop - titleZoneTop }, blurOverlay)
-          : Promise.resolve(null),
-      ])
+  // In ritratto la riga del genere è centrata: si misura tutta la larghezza.
+  // In 16:9 sta in un angolo (destra, o sotto al logo a sinistra in
+  // Cinematic Left): misurare l'altra metà vorrebbe dire giudicare il testo
+  // su un artwork che non ha dietro.
+  const halfW = Math.round(CW / 2)
+  const metaZone = !isLandscape
+    ? { left: 0, width: CW }
+    : isLandscapeLeft ? { left: 0, width: halfW } : { left: halfW, width: CW - halfW }
+  // Il titolo sta sotto al logo: in 16:9 conta la colonna del logo.
+  const titleZone = !isLandscape || !logoResult
+    ? { left: 0, width: CW }
+    : { left: logoResult.left, width: logoResult.w }
+  const [metaZoneStats, titleZoneStats] = await Promise.all([
+    posterZoneStats(posterBuf, { ...metaZone, top: metaZoneTop, height: CH - metaZoneTop }, blurOverlay, canvas),
+    titleFit && logoResult && metaZoneTop > titleZoneTop
+      ? posterZoneStats(posterBuf, { ...titleZone, top: titleZoneTop, height: metaZoneTop - titleZoneTop }, blurOverlay, canvas)
+      : Promise.resolve(null),
+  ])
   const textTreatmentOpts = { darkText: autoDarkText !== false, halo: textHalo !== false }
   const metaTreatment = zoneTextTreatment(metaZoneStats, textTreatmentOpts)
   const titleTreatment = zoneTextTreatment(titleZoneStats ?? metaZoneStats, textTreatmentOpts)
@@ -1171,6 +1193,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
           posterBuf,
           { left: logoResult.left, top: logoResult.top, width: logoResult.w, height: logoResult.h },
           blurOverlay,
+          canvas,
         ),
       ])
       const strength = logoScrimStrength(logoContrast(inkLum, zoneLum))
@@ -1191,11 +1214,12 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     if (scrim) composites.push(scrim)
     // Alone sagomato come il logo, quando l'artwork dietro è movimentato. Sta
     // SOPRA la velatura ellittica e sotto al logo.
-    if (textHalo !== false && !isLandscape) {
+    if (textHalo !== false) {
       const logoZone = await posterZoneStats(
         posterBuf,
         { left: logoResult.left, top: logoResult.top, width: logoResult.w, height: logoResult.h },
         blurOverlay,
+        canvas,
       )
       const strength = zoneTextTreatment(logoZone, { darkText: false, halo: true }).halo
       const haloPng = strength > 0 ? await buildLogoHalo(logoResult.input, logoResult.w, logoResult.h, strength) : null
@@ -1212,16 +1236,21 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     }
     composites.push(logoResult)
   }
-  // Titolo tradotto sotto il logo, centrato sul logo (in portrait il logo è
-  // centrato, quindi è centrato sul poster come prima).
+  // Titolo tradotto sotto il logo, allineato al logo: centrato sotto un logo
+  // centrato (ritratto, 16:9 centrale), a filo del suo bordo sinistro in
+  // Cinematic Left, dove tutta la colonna parte dallo stesso margine.
   if (titleFit && logoResult) {
     const titleBadge = await renderTitleText(title!, titleMaxW, titleFit.fs, titleTreatment.color || undefined, titleTextStyle).catch(() => null)
     if (titleBadge) {
       const logoCenterX = logoResult.left + logoResult.w / 2
+      // Più largo del logo: centrato comunque, per non sbordare da un lato solo.
+      const wantLeft = isLandscapeLeft && titleBadge.w <= logoResult.w
+        ? logoResult.left
+        : Math.round(logoCenterX - titleBadge.w / 2)
       composites.push({
         input: titleBadge.png,
         top: Math.min(logoResult.top + logoResult.h + TITLE_BAND_GAP, CH - titleBadge.h),
-        left: Math.min(Math.max(0, Math.round(logoCenterX - titleBadge.w / 2)), Math.max(0, CW - titleBadge.w)),
+        left: Math.min(Math.max(0, wantLeft), Math.max(0, CW - titleBadge.w)),
       })
     }
   }
@@ -1365,8 +1394,24 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     ? badgeCacheKey("rank", topBadge.type === "extra" ? topBadge.label : `${(topBadge as { rank: number }).rank}:${topBadge!.label}`, CW, topLight, rankingBadgeStyle, accentColorRank, ribbonSide, isAnimeRank, effTopScale, rankingBadgeAccent ? "accent" : undefined)
     : null
   const formatsKey = (videoFormats && videoFormats.length > 0) ? videoFormats.join(",") : "none"
+  // Icone A/V e colonna dei voti stanno sull'artwork dell'angolo alto, come
+  // il testo sta su quello in basso: stessi controlli del testo e, dove
+  // l'angolo è movimentato, lo stesso alone. Si misura l'angolo in cui
+  // finiscono (a sinistra quando a destra c'è il nastro).
+  const cornerW = Math.round(CW * 0.3)
+  const cornerStats = hasQualityBadge || (input.separateRatings?.length ?? 0) > 0
+    ? await posterZoneStats(
+        posterBuf,
+        { left: ribbonSide === "right" ? 0 : CW - cornerW, top: 0, width: cornerW, height: Math.round(CH * 0.25) },
+        null,
+        canvas,
+      )
+    : null
+  const cornerTreatment = zoneTextTreatment(cornerStats, { darkText: false, halo: textHalo !== false })
+  const cornerStyle: TextStyle = { ...textStyle, shadowColor: cornerTreatment.shadowColor, halo: cornerTreatment.halo }
+  const cornerStyleKey = `${textOpacity}:${textShadowOpacity}:${textShadowBlur}:${textShadowOffset}:${Math.round(cornerTreatment.halo * 20)}`
   const qualityBadgeKey = hasQualityBadge
-    ? badgeCacheKey("quality", quality, CW, topLight, effQualityScale, qualityIconPath ?? "std", formatsKey)
+    ? badgeCacheKey("quality", quality, CW, topLight, effQualityScale, qualityIconPath ?? "std", formatsKey, cornerStyleKey)
     : null
   const comingSoonKey = showComingSoon
     ? badgeCacheKey("comingsoon", comingSoonLabel, CW, topLight, ribbonSide)
@@ -1511,7 +1556,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     qualityBadgeKey
       ? (cacheGet<{ png: Buffer; w: number; h: number; shadowPad: number }>(qualityBadgeKey)
           || coalesceBadgeRender(qualityBadgeKey, async () => {
-              const res = await renderQualityBadgeGroup(quality!, qualityBadgeStyle, videoFormats, badgePw, topLight)
+              const res = await renderQualityBadgeGroup(quality!, qualityBadgeStyle, videoFormats, badgePw, topLight, { ...cornerStyle, halo: Math.round(cornerTreatment.halo * 20) / 20 })
               if (res) cacheSet(qualityBadgeKey, res, ["badge"], BADGE_CACHE_TTL)
               return res
             }))
@@ -2100,10 +2145,10 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
       : ((isRibbonRankingStyle(rankingBadgeStyle) && ribbonSide === "right" && topBadge?.type === "rank" && !!finalRankBadge)
         || (showComingSoon && ribbonSide === "right" && !!ribbonLayout))
     const stackTop = qualityStackAnchor ? qualityStackAnchor.top + 6 : netBaseTop - 10
-    const stackKey = badgeCacheKey("separate", items.map((i) => `${i.id}${i.value}`).join(","), CW, topLight)
+    const stackKey = badgeCacheKey("separate", items.map((i) => `${i.id}${i.value}`).join(","), CW, topLight, cornerStyleKey)
     const cached = cacheGet<{ png: Buffer; w: number; h: number }>(stackKey)
     const stack = cached ?? await coalesceBadgeRender(stackKey, () =>
-      renderSeparateRatingStack(items, badgePw, topLight)
+      renderSeparateRatingStack(items, badgePw, topLight, { ...cornerStyle, halo: Math.round(cornerTreatment.halo * 20) / 20 })
         .then((r) => { if (r) cacheSet(stackKey, r, ["badge"], BADGE_CACHE_TTL); return r })
     )
     const fitted = stack ? await fitBadgeToCanvas(stack, CW, CH) : null

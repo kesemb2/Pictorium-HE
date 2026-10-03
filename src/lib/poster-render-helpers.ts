@@ -232,11 +232,27 @@ export function clampAccentRegionFraction(fraction: number | null | undefined): 
 // Buffer: stesso oggetto = stessi byte, quindi niente invalidazione; le entry
 // muoiono col GC dei buffer. Stessi byte negli stessi algoritmi → output
 // identico, solo meno decode (1 resize 200×300 e 1 raw logo risparmiati).
-const thumbMemo = new WeakMap<Buffer, Promise<Buffer>>()
-function posterThumb(posterBuf: Buffer): Promise<Buffer> {
+//
+// Il thumb segue l'aspetto della base: 200×300 sul ritratto (identico a
+// prima), 200×~113 sul 16:9. Prima era sempre un ritaglio `cover` 200×300, che
+// su una base landscape misurava solo il terzo centrale dell'immagine.
+interface PosterThumb {
+  readonly buf: Buffer
+  readonly w: number
+  readonly h: number
+}
+const THUMB_W = 200
+const thumbMemo = new WeakMap<Buffer, Promise<PosterThumb>>()
+function posterThumb(posterBuf: Buffer): Promise<PosterThumb> {
   let p = thumbMemo.get(posterBuf)
   if (!p) {
-    p = sharp(posterBuf).resize(200, 300, { fit: "cover" }).toBuffer()
+    p = (async () => {
+      const meta = await sharp(posterBuf).metadata()
+      const aspect = meta.width && meta.height ? meta.height / meta.width : 1.5
+      const h = Math.max(1, Math.round(THUMB_W * aspect))
+      const buf = await sharp(posterBuf).resize(THUMB_W, h, { fit: "fill" }).toBuffer()
+      return { buf, w: THUMB_W, h }
+    })()
     thumbMemo.set(posterBuf, p)
   }
   return p
@@ -278,25 +294,26 @@ export async function extractBadgeColor(
     return `#${result.r.toString(16).padStart(2, "0")}${result.g.toString(16).padStart(2, "0")}${result.b.toString(16).padStart(2, "0")}`
   }
 
-  const thumbBuf = await posterThumb(posterBuf)
+  const thumb = await posterThumb(posterBuf)
+  const thumbBuf = thumb.buf
 
   // Crop to target region for more focused color extraction
   let posterAnalysisBuf = thumbBuf
-  const posterW = 200
-  let posterH = 300
+  const posterW = thumb.w
+  let posterH = thumb.h
   // Il ritaglio segue `regionFraction`: per la fascia bassa i chiamanti passano
   // l'altezza vera del blur, così l'accent nasce dagli stessi pixel che poi
   // verranno tinti. Con il default 0.4 il ritaglio resta 120px come prima.
-  const regionH = Math.max(1, Math.min(300, Math.round(300 * clampAccentRegionFraction(regionFraction))))
+  const regionH = Math.max(1, Math.min(thumb.h, Math.round(thumb.h * clampAccentRegionFraction(regionFraction))))
   if (region === 'bottom') {
     posterH = regionH
     posterAnalysisBuf = await sharp(thumbBuf)
-      .extract({ left: 0, top: 300 - posterH, width: 200, height: posterH })
+      .extract({ left: 0, top: thumb.h - posterH, width: thumb.w, height: posterH })
       .toBuffer()
   } else if (region === 'top') {
     posterH = regionH
     posterAnalysisBuf = await sharp(thumbBuf)
-      .extract({ left: 0, top: 0, width: 200, height: posterH })
+      .extract({ left: 0, top: 0, width: thumb.w, height: posterH })
       .toBuffer()
   }
 
@@ -357,8 +374,9 @@ interface ThumbRows {
 
 /** Energia di dettaglio e luminosità riga per riga sul thumb già decodificato. */
 async function thumbRowStats(posterBuf: Buffer): Promise<ThumbRows> {
-  const w = 200, h = 300
-  const rgb = await sharp(await posterThumb(posterBuf)).removeAlpha().raw().toBuffer()
+  const thumb = await posterThumb(posterBuf)
+  const w = thumb.w, h = thumb.h
+  const rgb = await sharp(thumb.buf).removeAlpha().raw().toBuffer()
   const energy = new Float64Array(h)
   const lightness = new Float64Array(h)
   for (let y = 0; y < h; y++) {
@@ -409,18 +427,18 @@ async function thumbRowStats(posterBuf: Buffer): Promise<ThumbRows> {
  * Vive nel percorso di render, quindi l'anteprima dell'editor — che è essa
  * stessa un render server — lo eredita senza una seconda implementazione.
  */
-export async function fitBandToPoster(posterBuf: Buffer, requested: BandFit): Promise<BandFit> {
+export async function fitBandToPoster(posterBuf: Buffer, requested: BandFit, canvasH: number = STD_H): Promise<BandFit> {
   const { blurHeight, blurFade, blurIntensity, blurDarkness } = requested
   if (!Number.isFinite(blurHeight) || !Number.isFinite(blurFade)) return requested
   try {
     const { energy, lightness } = await thumbRowStats(posterBuf)
     const rows = energy.length
-    const thumbRow = (y: number) => Math.min(rows - 1, Math.max(0, Math.floor(y * rows / STD_H)))
+    const thumbRow = (y: number) => Math.min(rows - 1, Math.max(0, Math.floor(y * rows / canvasH)))
 
     // --- Ritirata ---
     let fittedHeight = blurHeight
     if (blurHeight > MIN_FITTED_BAND_PCT) {
-      const topRow = thumbRow(STD_H - Math.round(STD_H * blurHeight / 100))
+      const topRow = thumbRow(canvasH - Math.round(canvasH * blurHeight / 100))
       if (energy[topRow] >= BUSY_ROW_ENERGY) {
         let runEnd = topRow
         while (runEnd + 1 < rows && energy[runEnd + 1] >= BUSY_ROW_ENERGY) runEnd++
@@ -430,7 +448,7 @@ export async function fitBandToPoster(posterBuf: Buffer, requested: BandFit): Pr
     }
 
     // --- Indebolimento, misurato sulla striscia che la fascia copre davvero ---
-    const firstRow = thumbRow(STD_H - Math.round(STD_H * fittedHeight / 100))
+    const firstRow = thumbRow(canvasH - Math.round(canvasH * fittedHeight / 100))
     let sumL = 0, sumE = 0, n = 0
     for (let y = firstRow; y < rows; y++) { sumL += lightness[y]; sumE += energy[y]; n++ }
     const stripL = n > 0 ? sumL / n : 0.5
@@ -474,14 +492,14 @@ export async function extractSceneTint(
   regionFraction: number = DEFAULT_ACCENT_REGION_FRACTION,
 ): Promise<string | null> {
   try {
-    const thumbBuf = await posterThumb(posterBuf)
-    const posterW = 200
-    const stripH = Math.max(1, Math.min(300, Math.round(300 * clampAccentRegionFraction(regionFraction))))
+    const thumb = await posterThumb(posterBuf)
+    const posterW = thumb.w
+    const stripH = Math.max(1, Math.min(thumb.h, Math.round(thumb.h * clampAccentRegionFraction(regionFraction))))
 
-    const stripBuf = stripH >= 300
-      ? thumbBuf
-      : await sharp(thumbBuf)
-          .extract({ left: 0, top: 300 - stripH, width: posterW, height: stripH })
+    const stripBuf = stripH >= thumb.h
+      ? thumb.buf
+      : await sharp(thumb.buf)
+          .extract({ left: 0, top: thumb.h - stripH, width: posterW, height: stripH })
           .toBuffer()
 
     const pixels = await sharp(stripBuf).ensureAlpha().raw().toBuffer()

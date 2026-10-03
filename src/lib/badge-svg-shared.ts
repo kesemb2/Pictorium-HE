@@ -262,6 +262,32 @@ export function textShadowBox(style?: TextStyle): { pad: number; drop: number } 
   }
 }
 
+/**
+ * Ombra (e alone) di un elemento che sta sull'artwork senza essere testo del
+ * fork: icone A/V, pill della colonna dei voti. Parte dall'ombra che quel
+ * renderer usava già (`base`) e la scala con gli stessi controlli del testo.
+ * Ai valori di default restituisce `base` identico, quindi l'SVG non cambia.
+ *
+ * L'alone qui è più stretto di quello del testo (stdDeviation 5 invece di 9):
+ * questi bitmap hanno un margine d'ombra fisso e un alone largo verrebbe
+ * tagliato a riquadro.
+ */
+export function scaledDropShadow(
+  base: { dx: number; dy: number; sd: number; alpha: number },
+  style?: TextStyle,
+): string {
+  const n = normalizeTextStyle(style)
+  const isDefault = n.shadowOpacity === 1 && n.shadowBlur === 1 && n.shadowOffset === 1
+    && n.shadowColor === DEFAULT_TEXT_STYLE.shadowColor && n.halo <= 0
+  if (isDefault) {
+    return `<feDropShadow dx="${num(base.dx)}" dy="${num(base.dy)}" stdDeviation="${num(base.sd)}" flood-color="#000000" flood-opacity="${num(base.alpha)}"/>`
+  }
+  const halo = n.halo > 0
+    ? `<feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="rgba(${n.shadowColor},${num(TEXT_HALO_LAYER.alpha * n.halo)})"/>`
+    : ""
+  return halo + `<feDropShadow dx="${num(base.dx * n.shadowOffset)}" dy="${num(base.dy * n.shadowOffset)}" stdDeviation="${num(base.sd * n.shadowBlur)}" flood-color="rgba(${n.shadowColor},${num(base.alpha * n.shadowOpacity)})"/>`
+}
+
 /** Attributo `opacity` sul gruppo, omesso quando è 100 (SVG invariato). */
 export function textOpacityAttr(style?: TextStyle): string {
   const n = normalizeTextStyle(style)

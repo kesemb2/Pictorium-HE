@@ -177,21 +177,24 @@ export async function computeRegionStats(
   top: number,
   width: number,
   height: number,
+  canvasW: number = STD_W,
+  canvasH: number = STD_H,
 ): Promise<RegionStats | null> {
   const l = Math.max(0, Math.round(left))
   const t = Math.max(0, Math.round(top))
-  const w = Math.min(STD_W - l, Math.round(width))
-  const h = Math.min(STD_H - t, Math.round(height))
+  const w = Math.min(canvasW - l, Math.round(width))
+  const h = Math.min(canvasH - t, Math.round(height))
   if (w <= 0 || h <= 0) return null
 
-  const cacheKey = `${l}:${t}:${w}:${h}`
+  // La tela entra nella chiave: la stessa zona su ritratto e 16:9 non coincide.
+  const cacheKey = canvasW === STD_W && canvasH === STD_H ? `${l}:${t}:${w}:${h}` : `${canvasW}x${canvasH}:${l}:${t}:${w}:${h}`
   const hash = bufferHash(posterBuf)
   const cached = statsCache.get(cacheKey)
   if (cached && cached.hash === hash) return cached.stats
 
   try {
     const { data: rawPixels, info } = await sharp(posterBuf)
-      .resize(STD_W, STD_H, { fit: "fill" })
+      .resize(canvasW, canvasH, { fit: "fill" })
       .extract({ left: l, top: t, width: w, height: h })
       .removeAlpha()
       .raw()
