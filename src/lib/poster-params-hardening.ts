@@ -109,6 +109,8 @@ export const POSTER_CACHE_ALLOWLIST: ReadonlySet<string> = new Set([
   // parametri condividerebbero una entry di cache.
   "ad", "bts", "bbs", "bto", "bbo", "lbo", "to", "tso", "tsb", "tsf",
   "star", "dtx", "halo", "tul",
+  // Segui-spazio: politica di rivalidazione (entra in chiave/ETag via serializzazione).
+  "live",
 ])
 
 // Numerici 0-100 (gradienti/blur/tinta/fade/ombra-alta) e offset px: step 5.

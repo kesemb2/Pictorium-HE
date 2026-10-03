@@ -19,6 +19,21 @@ interface InstallModalProps {
   posterUrlPatternAuto?: string
   /** Fork: template dell'endpoint logo (`/api/logo/{type}/{id}`). */
   logoUrlPattern?: string
+  /** Varianti Nuvio a formato automatico (`shape={shape}`): combinano il
+   *  placeholder id scelto con il placeholder shape (Nuvio sceglie
+   *  poster/landscape per vista; square ricade sul verticale). */
+  posterUrlPatternNuvio?: string
+  posterUrlPatternNuvioImdb?: string
+  posterUrlPatternNuvioAuto?: string
+  /**
+   * Modalità template poster (controllata dal context): "follow" = Segui il
+   * mio spazio (live=1, nessun visuale congelato), "fixed" = Impostazioni
+   * fisse nel link. Riguarda solo gli URL poster, mai il manifest.
+   */
+  linkMode?: "follow" | "fixed"
+  onLinkModeChange?: (m: "follow" | "fixed") => void
+  /** Spazio utente attivo: con spazio, il default iniziale è "follow". */
+  hasUserSpace?: boolean
 }
 
 /** Riga template copiabile con stato "copiato" proprio. */
@@ -69,7 +84,7 @@ function PatternRow({ value, tag, copyLabel }: { value: string; tag: string; cop
   )
 }
 
-export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, posterUrlPattern, posterUrlPatternImdb, posterUrlPatternAuto, logoUrlPattern }: InstallModalProps) {
+export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, posterUrlPattern, posterUrlPatternImdb, posterUrlPatternAuto, logoUrlPattern, posterUrlPatternNuvio, posterUrlPatternNuvioImdb, posterUrlPatternNuvioAuto, linkMode: controlledLinkMode, onLinkModeChange, hasUserSpace }: InstallModalProps) {
   const { t } = useT()
   const [hubMode, setHubMode] = useState<"all" | "catalogs" | "search">("all")
   const [copied, setCopied] = useState(false)
@@ -77,6 +92,15 @@ export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, po
   // l'id disponibile per la vista, default), TMDB (primario, esatto) o IMDb
   // (fallback universale). Una sola riga visibile alla volta.
   const [patternKind, setPatternKind] = useState<"tmdb" | "imdb" | "auto">("auto")
+  // Formato automatico Nuvio (`shape={shape}`): Nuvio sceglie poster/landscape
+  // per vista (square → poster verticale). Nessuna persistenza: solo display.
+  const [nuvioShape, setNuvioShape] = useState(false)
+  // Modalità template poster: "follow" (Segui il mio spazio) / "fixed"
+  // (Impostazioni fisse nel link). Controllata dal context quando disponibile,
+  // altrimenti stato locale (default follow con spazio utente).
+  const [internalLinkMode, setInternalLinkMode] = useState<"follow" | "fixed">(hasUserSpace ? "follow" : "fixed")
+  const linkMode = controlledLinkMode ?? internalLinkMode
+  const setLinkMode = onLinkModeChange ?? setInternalLinkMode
   const [qrSvg, setQrSvg] = useState<string>("")
   const [baseManifestUrl, setBaseManifestUrl] = useState(propManifestUrl || "")
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -316,6 +340,23 @@ export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, po
                 {t("ui.aiomLinkDesc")}
               </p>
 
+              <div className="text-[10px] text-zinc-400 leading-tight">
+                <span className="block font-semibold text-zinc-300">{t(linkMode === "follow" ? "ui.linkModeFollow" : "ui.linkModeFixed")}</span>
+                <span className="block mt-0.5">{t(linkMode === "follow" ? "ui.linkModeFollowSub" : "ui.linkModeFixedSub")}</span>
+              </div>
+              <details className="text-[10px] text-zinc-400">
+                <summary className="cursor-pointer">{t("ui.linkModeAdvanced")}</summary>
+                <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={linkMode === "fixed"}
+                    onChange={(e) => setLinkMode(e.target.checked ? "fixed" : "follow")}
+                    className="h-3.5 w-3.5 accent-orange-500 cursor-pointer"
+                  />
+                  {t("ui.linkModeFixed")}
+                </label>
+              </details>
+
               <div className="flex items-center gap-1.5">
                 <label
                   htmlFor="pattern-kind-select"
@@ -335,9 +376,38 @@ export function InstallModal({ isOpen, onClose, manifestUrl: propManifestUrl, po
                 </select>
               </div>
 
+              <label
+                htmlFor="pattern-nuvio-shape"
+                className="flex items-start gap-2 cursor-pointer"
+              >
+                <input
+                  id="pattern-nuvio-shape"
+                  type="checkbox"
+                  checked={nuvioShape}
+                  onChange={(e) => setNuvioShape(e.target.checked)}
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-orange-500 cursor-pointer"
+                />
+                <span className="text-[10px] text-zinc-400 leading-tight">
+                  <span className="block font-semibold text-zinc-300">{t("ui.patternNuvio")}</span>
+                  <span className="block mt-0.5">{t("ui.nuvioShapeDesc")}</span>
+                </span>
+              </label>
+
               <PatternRow
-                value={(patternKind === "tmdb" ? posterUrlPattern : patternKind === "imdb" ? posterUrlPatternImdb : posterUrlPatternAuto) || posterUrlPattern || posterUrlPatternImdb || posterUrlPatternAuto || ""}
-                tag={patternKind === "tmdb" ? t("ui.patternTagTmdb") : patternKind === "imdb" ? t("ui.patternTagImdb") : t("ui.patternTagAuto")}
+                value={(() => {
+                  if (!nuvioShape) {
+                    return (patternKind === "tmdb" ? posterUrlPattern : patternKind === "imdb" ? posterUrlPatternImdb : posterUrlPatternAuto) || posterUrlPattern || posterUrlPatternImdb || posterUrlPatternAuto || ""
+                  }
+                  const nuvio = (patternKind === "tmdb" ? posterUrlPatternNuvio : patternKind === "imdb" ? posterUrlPatternNuvioImdb : posterUrlPatternNuvioAuto)
+                    || posterUrlPatternNuvio || posterUrlPatternNuvioImdb || posterUrlPatternNuvioAuto || ""
+                  // Fallback: se il context non ha ancora generato la variante
+                  // Nuvio, resta il template base (mai riga vuota).
+                  return nuvio || (patternKind === "tmdb" ? posterUrlPattern : patternKind === "imdb" ? posterUrlPatternImdb : posterUrlPatternAuto) || posterUrlPattern || posterUrlPatternImdb || posterUrlPatternAuto || ""
+                })()}
+                tag={(() => {
+                  const base = patternKind === "tmdb" ? t("ui.patternTagTmdb") : patternKind === "imdb" ? t("ui.patternTagImdb") : t("ui.patternTagAuto")
+                  return nuvioShape ? `${base} · {shape}` : base
+                })()}
                 copyLabel={t("ui.aiomLinkTitle")}
               />
             </div>

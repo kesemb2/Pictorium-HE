@@ -259,6 +259,8 @@ const itDict: Record<string, string> = {
   "ui.labTplGenreColored": "Colorato",
   "ui.labTplGenreBordo": "Bordo",
   "ui.labTplGenreVetro": "Vetro",
+  "ui.provider": "Provider",
+  "ui.prefsLangRegionTitle": "Lingua e regione",
 }
 
 function mockT(key: string, params?: Record<string, string | number>): string {

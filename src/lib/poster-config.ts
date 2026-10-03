@@ -34,7 +34,8 @@ export function clamp(v: number, min: number, max: number): number {
 /**
  * Formato canvas — precedenza: query `shape` > mapping salvato >
  * config token > server defaults > "poster". Solo "landscape" attiva il
- * ramo 16:9 (base = backdrop TMDB); qualsiasi altro valore → portrait.
+ * ramo 16:9 (base = backdrop TMDB); "poster" e "square" (fallback esplicito
+ * Nuvio: Pictorium non ha un canvas quadrato) selezionano il verticale.
  * Usato dalla route PRIMA del fetch (serve a scegliere la base) e dentro
  * resolvePosterRenderConfig per coerenza.
  */
@@ -46,7 +47,9 @@ export function resolvePosterShape(
 ): PosterShape {
   const q = (searchParams.get("shape") || "").toLowerCase()
   if (q === "landscape") return "landscape"
-  if (q === "poster") return "poster"
+  if (q === "poster" || q === "square") return "poster"
+  // Placeholder Nuvio `{shape}` ricevuto senza sostituzione (o qualsiasi
+  // valore non riconosciuto): nessun errore, vale il fallback sotto.
   if (mapping?.posterShape === "landscape" || mapping?.posterShape === "poster") return mapping.posterShape
   if (configOverride?.posterShape === "landscape" || configOverride?.posterShape === "poster") return configOverride.posterShape
   if (sd.posterShape === "landscape" || sd.posterShape === "poster") return sd.posterShape
@@ -251,9 +254,13 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
   // Fix M3: includere i campi blur salvati nel mapping nella catena di fallback
   // (query > mapping > configOverride > default), come già fatto per badgeGenre/badgeStyle.
   // Prima il mapping salvato con blur custom non veniva mai applicato.
+  // Percorso live (`live=1`, Segui-spazio): i parametri assenti seguono lo
+  // spazio salvato (vedi badges/blur sotto). Dichiarata qui perché il primo
+  // uso (blurEnabled) precede il blocco badges.
+  const isLiveFollow = q.get("live") === "1"
   const blurEnabled = q.get("be") !== null
     ? q.get("be") !== "0"
-    : (m?.blurEnabled != null ? m.blurEnabled : (configOverride !== null ? configOverride.blurEnabled : true))
+    : (m?.blurEnabled != null ? m.blurEnabled : (configOverride !== null ? configOverride.blurEnabled : (isLiveFollow ? (esd.blurEnabled ?? true) : true)))
   // Clamp espliciti: impediscono a valori estremi (query o config) di arrivare a
   // sharp.blur con sigma enormi o gradienti fuori scala (potenziale DoS CPU).
   // Mapping non-clean senza valori congelati: default per tipo poster (come
@@ -318,8 +325,27 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
   const qRanking = q.get("ranking")
   // OFF/ON espliciti in query vincono sempre (anche su titolo non salvato
   // senza token): senza, badges=0/ranking=0 venivano ignorati (hasQuery false).
-  const badgesEnabled = qBadges !== null ? qBadges !== "0" : (hasQuery ? (configOverride !== null ? configOverride.globalBadges : showBadges) : true)
-  const rankingEnabled = qRanking !== null ? qRanking !== "0" : (hasQuery ? (configOverride !== null ? configOverride.rankingBadges : rankingBadges) : true)
+  // Percorso live (`live=1`, Segui-spazio): il parametro assente segue lo
+  // spazio (mapping > config > sd), non il default ON — altrimenti un `false`
+  // salvato diventerebbe `true`. Fuori dal live, comportamento invariato.
+  const badgesEnabled = qBadges !== null
+    ? qBadges !== "0"
+    : (isLiveFollow
+      ? (mapping?.showBadges ?? configOverride?.globalBadges ?? sd.globalBadges ?? showBadges)
+      : (hasQuery
+      ? (configOverride !== null
+        ? configOverride.globalBadges
+        : showBadges)
+      : true))
+  const rankingEnabled = qRanking !== null
+    ? qRanking !== "0"
+    : (isLiveFollow
+      ? (mapping?.rankingBadges ?? configOverride?.rankingBadges ?? sd.rankingBadges ?? rankingBadges)
+      : (hasQuery
+      ? (configOverride !== null
+        ? configOverride.rankingBadges
+        : rankingBadges)
+      : true))
 
   // Componenti badge genere/rating — precedenza: query `bg/by/br` > mapping salvato
   // > config token/profilo > server defaults > true (tutti ON di default).
@@ -589,7 +615,7 @@ const qSide = q.get("side")
     ? "right"
     : qSide === "left"
       ? "left"
-      : (configOverride?.ribbonSide === "right" ? "right" : "left")
+      : ((configOverride?.ribbonSide ?? (isLiveFollow ? sd.ribbonSide : undefined)) === "right" ? "right" : "left")
 
   // Pre-release pre-digitale (solo film): query `pre` > config token > server
   // defaults > false. Globale, nessun override per-titolo.

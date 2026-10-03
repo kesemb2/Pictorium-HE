@@ -12,7 +12,7 @@ import { userRateLimitKey } from "@/lib/user-auth"
 import { touchUserActivity } from "@/lib/user-activity"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { recordPosterUrl } from "@/lib/poster-url-log"
-import { getServerDefaults, getServerDefaultsForUser } from "@/lib/server-defaults"
+import { getServerDefaultsForUser, getServerDefaultsChecked } from "@/lib/server-defaults"
 import { getRegionDef, normalizeRegion, parseRegion, defaultRegionForLang } from "@/lib/regions"
 import { BEST_FIT_GLOBAL, resolveLogoFitEnabled } from "@/lib/best-fit-config"
 import { selectAutoFitCandidates, selectBestLogoFitPosterPath } from "@/lib/poster-auto-fit"
@@ -35,6 +35,7 @@ import {
   beginPosterRender,
   getPendingPoster,
   isImmutablePosterRequest,
+  isLivePosterRequest,
   isPosterRefreshRequest,
   normalizePosterCacheParams,
   posterHeaders,
@@ -362,7 +363,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // 1. Get mapping + server defaults (no network)
   // (`scopedUser` già risolto sopra: serve anche al ramo tt e alle chiavi.)
   let mapping = await getById(mediaType, tmdbId, scopedUser)
-  const sd = scopedUser ? await getServerDefaultsForUser(scopedUser) : getServerDefaults()
+  // Lettura revisionata via epoch: dopo un save su un'altra istanza, l'epoch
+  // avanzata invalida i default in memoria (finestra residua = 500ms di
+  // cache lettura epoch, mai i 5min del TTL defaults).
+  const sd = scopedUser ? await getServerDefaultsForUser(scopedUser) : await getServerDefaultsChecked()
   const qRegion = parseRegion(req.nextUrl.searchParams.get("region") ?? req.nextUrl.searchParams.get("country"))
   const configRegion = parseRegion(configOverride?.region)
   const langParam = req.nextUrl.searchParams.get("lang") || mapping?.language
@@ -517,6 +521,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     mappingVersionMatches: !!currentMappingVersion && req.nextUrl.searchParams.get("mv") === currentMappingVersion,
   })
   const refreshRequest = isPosterRefreshRequest(req.nextUrl.searchParams)
+  // Percorso "Segui il mio spazio": politica di rivalidazione (non forza il
+  // render). Stessi header su 200 e 304, mai immutable (vedi isImmutable...).
+  const isLive = isLivePosterRequest(req.nextUrl.searchParams)
   // isPreview effettivo calcolato a inizio richiesta (può essere declassato
   // dalla blindatura opt-in PICTORIUM_PREVIEW_AUTH) — non rileggere la query.
   // Poster non-mappato (composto al volo con dati dinamici): TTL ridotto (6h)
@@ -533,12 +540,29 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // La variante è un'entry separata (storage key propria) con TTL proprio.
   const variantTtlSec = dynamicPoster && needsVariant ? (dynamicCutTtlSec ?? dynamicPosterTtlSec(variantKey)) : undefined
 
+  // Validatore della richiesta condizionale: null in preview (sempre 200) e
+  // quando assente. I confronti usano SEMPRE l'ETag della rappresentazione
+  // richiesta (canonico o variante), mai incrociati (audit, problema 1).
+  const ifNoneMatch = isPreview ? null : req.headers.get("If-None-Match")
+  const isConditional = ifNoneMatch !== null
+
   // C3: risposta non-canonica da payload canonico (cache variante o conversione).
   // opts (ttlMs/immutable) dal fresh render effimero; sulle HIT riuso record.
+  // Il chiamante garantisce un canonico fresco o appena renderizzato: una
+  // variante scaduta non viene MAI servita da qui (si riconverte e si
+  // sovrascrive); solo una variante fresca evita la conversione.
   const serveResponseVariant = async (canonical: PosterCachePayload, opts?: { ttlMs?: number; immutable?: boolean }): Promise<Response> => {
+    // La conversione e i waiter ereditano anche il TTL degradato del canonico.
+    if (opts?.ttlMs === undefined && canonical.ttlSec !== undefined) {
+      opts = { ...opts, ttlMs: canonical.ttlSec * 1000 }
+    }
     const variantHit = readCachedPoster(variantKey)
-    if (variantHit.payload) {
-      return posterResponse(variantHit.payload, variantHit.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat, variantHit.ttlSec ?? variantTtlSec)
+    if (variantHit.payload && !variantHit.stale) {
+      if (isConditional && ifNoneMatch === variantHit.payload.etag) {
+        log.debug("Poster cache: 304 (variant)", { mediaType, tmdbId, ms: Date.now() - startTime })
+        return new Response(null, { status: 304, headers: posterNotModifiedHeaders(variantHit.payload.etag, variantHit.immutable ?? immutablePoster, dynamicPoster, variantHit.ttlSec ?? variantTtlSec, isLive) })
+      }
+      return posterResponse(variantHit.payload, variantHit.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat, variantHit.ttlSec ?? variantTtlSec, undefined, isLive)
     }
     const converted = canonicalFormat === "webp" ? await convertToJpeg(canonical.buffer) : await convertPosterFormat(canonical.buffer)
     const variant: PosterCachePayload = { buffer: converted, etag: variantEtagFor(canonical.etag, outputFormat as "jpeg" | "webp") }
@@ -546,53 +570,64 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     // storage: la chiave le separa già, ma scrivere ogni tick è flood.
     if (!isPreview) writeCachedPoster(variantKey, variant, mappingTag, opts)
     const freshVariantTtl = opts?.ttlMs !== undefined ? Math.max(1, Math.round(opts.ttlMs / 1000)) : variantTtlSec
-    return posterResponse(variant, opts?.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat, freshVariantTtl)
+    if (isConditional && ifNoneMatch === variant.etag) {
+      log.debug("Poster cache: 304 (fresh variant)", { mediaType, tmdbId, ms: Date.now() - startTime })
+      return new Response(null, { status: 304, headers: posterNotModifiedHeaders(variant.etag, opts?.immutable ?? immutablePoster, dynamicPoster, freshVariantTtl, isLive) })
+    }
+    return posterResponse(variant, opts?.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat, freshVariantTtl, undefined, isLive)
   }
 
   // 3. Memory cache check
+  // Copia fresca + ETag corrispondente → 304 senza rendering; fresca + ETag
+  // diverso → 200. Copia scaduta + condizionale (o live=1) → rivalidazione
+  // completa sotto, MAI 304 sulla copia scaduta (audit, problema 2). Solo le
+  // non condizionali fuori dal live conservano lo SWR (copia + refresh).
   // C3: la variante ha fast-path dedicato; il canonico resta il
-  // fallback (conversione) quando la variante è assente/evicted.
+  // fallback (conversione) quando la variante è assente/scadata.
   if (needsVariant && !refreshRequest) {
     const variantHit = readCachedPoster(variantKey)
-    if (variantHit.payload) {
+    if (variantHit.payload && !variantHit.stale) {
       recordPosterRequest(true, outputFormat)
-      if (!isPreview && req.headers.get("If-None-Match") === variantHit.payload.etag) {
-        if (variantHit.stale) recordPosterStaleHit()
+      if (isConditional && ifNoneMatch === variantHit.payload.etag) {
         log.debug("Poster cache: 304 (variant)", { mediaType, tmdbId, ms: Date.now() - startTime })
-        return new Response(null, { status: 304, headers: posterNotModifiedHeaders(variantHit.payload.etag, variantHit.immutable ?? immutablePoster, dynamicPoster, variantHit.ttlSec ?? variantTtlSec) })
+        return new Response(null, { status: 304, headers: posterNotModifiedHeaders(variantHit.payload.etag, variantHit.immutable ?? immutablePoster, dynamicPoster, variantHit.ttlSec ?? variantTtlSec, isLive) })
       }
-      if (!variantHit.stale) {
-        log.debug("Poster cache: fresh variant hit", { mediaType, tmdbId, ms: Date.now() - startTime })
-        return posterResponse(variantHit.payload, variantHit.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat, variantHit.ttlSec ?? variantTtlSec)
-      }
+      log.debug("Poster cache: fresh variant hit", { mediaType, tmdbId, ms: Date.now() - startTime })
+      return posterResponse(variantHit.payload, variantHit.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat, variantHit.ttlSec ?? variantTtlSec, undefined, isLive)
+    }
+    if (variantHit.payload && !isConditional && !isLive) {
+      recordPosterRequest(true, outputFormat)
       recordPosterStaleHit()
       schedulePosterRefresh(req, isPreview)
       log.debug("Poster cache: stale variant hit (refresh scheduled)", { mediaType, tmdbId, ms: Date.now() - startTime })
-      return posterResponse(variantHit.payload, variantHit.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat)
+      return posterResponse(variantHit.payload, variantHit.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat, undefined, undefined, isLive)
     }
+    // Variante assente/scadata con condizionale o live: si prosegue al
+    // canonico sotto (fresco → conversione; scaduto/assente → render).
   }
   const cachedPoster = readCachedPoster(cacheKey)
-  if (cachedPoster.payload) {
+  if (cachedPoster.payload && !cachedPoster.stale) {
     recordPosterRequest(true, outputFormat)
-    if (!isPreview && !needsVariant && req.headers.get("If-None-Match") === cachedPoster.payload.etag) {
-      if (cachedPoster.stale) recordPosterStaleHit()
+    if (!needsVariant && isConditional && ifNoneMatch === cachedPoster.payload.etag) {
       log.debug("Poster cache: 304", { mediaType, tmdbId, ms: Date.now() - startTime })
-        return new Response(null, { status: 304, headers: posterNotModifiedHeaders(cachedPoster.payload.etag, cachedPoster.immutable ?? immutablePoster, dynamicPoster, cachedPoster.ttlSec ?? dynamicTtlSec) })
+      return new Response(null, { status: 304, headers: posterNotModifiedHeaders(cachedPoster.payload.etag, cachedPoster.immutable ?? immutablePoster, dynamicPoster, cachedPoster.ttlSec ?? dynamicTtlSec, isLive) })
     }
-    if (!cachedPoster.stale) {
-      log.debug("Poster cache: fresh hit", { mediaType, tmdbId, ms: Date.now() - startTime })
-      if (needsVariant) return serveResponseVariant(cachedPoster.payload)
-      return posterResponse(cachedPoster.payload, cachedPoster.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat, cachedPoster.ttlSec ?? dynamicTtlSec,
-        serverTimingValue([{ name: "cache", desc: "HIT" }, { name: "total", durMs: Date.now() - startTime }]))
-    }
-    if (!refreshRequest) {
-      recordPosterStaleHit()
-      schedulePosterRefresh(req, isPreview)
-      log.debug("Poster cache: stale hit (refresh scheduled)", { mediaType, tmdbId, ms: Date.now() - startTime })
-      if (needsVariant) return serveResponseVariant(cachedPoster.payload)
-      return posterResponse(cachedPoster.payload, cachedPoster.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat, cachedPoster.ttlSec ?? dynamicTtlSec)
-    }
+    log.debug("Poster cache: fresh hit", { mediaType, tmdbId, ms: Date.now() - startTime })
+    if (needsVariant) return serveResponseVariant(cachedPoster.payload)
+    return posterResponse(cachedPoster.payload, cachedPoster.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat, cachedPoster.ttlSec ?? dynamicTtlSec,
+      serverTimingValue([{ name: "cache", desc: "HIT" }, { name: "total", durMs: Date.now() - startTime }]), isLive)
   }
+  if (cachedPoster.payload && !isConditional && !isLive && !refreshRequest) {
+    recordPosterRequest(true, outputFormat)
+    recordPosterStaleHit()
+    schedulePosterRefresh(req, isPreview)
+    log.debug("Poster cache: stale hit (refresh scheduled)", { mediaType, tmdbId, ms: Date.now() - startTime })
+    if (needsVariant) return serveResponseVariant(cachedPoster.payload)
+    return posterResponse(cachedPoster.payload, cachedPoster.immutable ?? immutablePoster, isPreview, dynamicPoster, outputFormat, cachedPoster.ttlSec ?? dynamicTtlSec, undefined, isLive)
+  }
+  // Copia scaduta con condizionale o live=1, oppure nessuna copia: si
+  // rivalida (deduplicazione inflight sotto, poi confronto sul validatore
+  // finale). Se la rivalidazione fallisce, errore — mai un falso 304.
 
   const pendingPoster = getPendingPoster(cacheKey)
   if (pendingPoster) {
@@ -613,8 +648,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       // Finding 5: il waiter della preview deve ricevere gli header no-store
       // anche quando si coalesce con un render in flight (era hardcoded false).
       // C3: il payload condiviso è canonico — il waiter non-canonico converte.
-      if (needsVariant) return serveResponseVariant(payload)
-      return posterResponse(payload, immutablePoster, isPreview, dynamicPoster, outputFormat, dynamicTtlSec)
+      // Il confronto condizionale usa il validatore della rappresentazione
+      // richiesta (audit, problema 1): niente conversione solo per il 304.
+      if (needsVariant) {
+        const waiterVariantEtag = variantEtagFor(payload.etag, outputFormat as "jpeg" | "webp")
+        if (isConditional && ifNoneMatch === waiterVariantEtag) {
+          return new Response(null, { status: 304, headers: posterNotModifiedHeaders(waiterVariantEtag, immutablePoster, dynamicPoster, payload.ttlSec ?? variantTtlSec, isLive) })
+        }
+        return serveResponseVariant(payload)
+      }
+      if (isConditional && ifNoneMatch === payload.etag) {
+        return new Response(null, { status: 304, headers: posterNotModifiedHeaders(payload.etag, immutablePoster, dynamicPoster, payload.ttlSec ?? dynamicTtlSec, isLive) })
+      }
+      return posterResponse(payload, immutablePoster, isPreview, dynamicPoster, outputFormat, payload.ttlSec ?? dynamicTtlSec, undefined, isLive)
     }
     // Coalesce scaduto: o il render è fallito (negative cache) o è ancora in
     // corso — mai duplicare il render, rispondere 503 con backoff esplicito.
@@ -757,11 +803,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // salvato > session cache TMDB del processo > resolve server-side con memo
   // 7gg (quarto anello, prima della race) > ramo else (details +
   // external_ids in append). Senza QID ovunque: fallback SPARQL invariato.
+  // F2: the session cache is language-isolated — reads use the same
+  // query > mapping > region chain as the branches that populate it (it
+  // matches preferredLanguage when mapping is null, and fbLang of the
+  // landscape fallback).
   let wikidataId: string | null = null
+  const sessionLang = req.nextUrl.searchParams.get("lang") || mapping?.language || posterRegion.lang2
   {
     const queryWikidataId = hardenedParams.get("wikidata_id")
     const mappingWikidataId = mapping?.wikidataId ?? null
-    const sessionWikidataId = getTMDBSessionCache(mediaType, tmdbId)?.externalIds?.wikidata_id ?? null
+    const sessionWikidataId = getTMDBSessionCache(mediaType, tmdbId, sessionLang)?.externalIds?.wikidata_id ?? null
     if (isValidWikidataQid(queryWikidataId)) wikidataId = queryWikidataId
     else if (isValidWikidataQid(mappingWikidataId)) wikidataId = mappingWikidataId
     else if (isValidWikidataQid(sessionWikidataId)) wikidataId = sessionWikidataId
@@ -865,11 +916,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     // fallback getExternalIds che richiede una chiave TMDB assente in Stremio.
     imdbId = imdbId ?? mapping.imdbId ?? null
     etag = `"m${etagBase}:${mapping.updatedAt}"`
-    if (!customRatingConfig.enabled && req.headers.get("If-None-Match") === etag) {
-      clearTimeout(renderDeadline)
-      completePosterRender(null)
-      return new Response(null, { status: 304, headers: posterNotModifiedHeaders(etag, immutablePoster, dynamicPoster, dynamicTtlSec) })
-    }
+    // Niente uscita 304 anticipata qui: il validatore sintetico non
+    // rappresenta i byte (rank live e altre dipendenze dinamiche) — la
+    // decisione 304/200 avviene solo dopo aver risolto il contenuto
+    // (hit fresca) o ri-renderizzato (audit freschezza, problemi 1–2).
   } else {
     const preferredLanguage = req.nextUrl.searchParams.get("lang") || posterRegion.lang2
     posterRequestedLang = preferredLanguage
@@ -884,7 +934,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       // piccola): aggiungerla sempre a ogni richiesta costerebbe un payload più
       // grande e la stessa RTT, quindi il retry è condizionato e paga l'extra
       // RTT solo nei casi in cui aggiunge davvero qualcosa.
-      const sessionData = getTMDBSessionCache(mediaType, tmdbId)
+      const sessionData = getTMDBSessionCache(mediaType, tmdbId, preferredLanguage)
       let details: Awaited<ReturnType<typeof getDetails>>
       let images: Awaited<ReturnType<typeof getImages>>
       let extIds: { imdb_id: string | null; tvdb_id?: number | null; wikidata_id?: string | null }
@@ -912,7 +962,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         images = needsOrigLang
           ? await getImages(mediaType, tmdbId, `${baseLangs},${origLang}`, apiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => imgs)
           : imgs
-        setTMDBSessionCache(mediaType, tmdbId, { details: det, images, externalIds: extIds })
+        setTMDBSessionCache(mediaType, tmdbId, preferredLanguage, { details: det, images, externalIds: extIds })
       }
       // Candidato sfondo per il ramo landscape: backdrop principale TMDB,
       // poi il primo backdrops di /images (già 16:9 nativi).
@@ -1334,20 +1384,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     try {
       const fbApiKey = effTmdbKey
       const fbLang = req.nextUrl.searchParams.get("lang") || mapping?.language || posterRegion.lang2
-      const cached = getTMDBSessionCache(mediaType, tmdbId)
+      const cached = getTMDBSessionCache(mediaType, tmdbId, fbLang)
       let fbDetails = cached?.details
       if (!fbDetails) {
         fbDetails = await getDetails(mediaType, tmdbId, fbLang, fbApiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS)
-        const prev = getTMDBSessionCache(mediaType, tmdbId)
-        setTMDBSessionCache(mediaType, tmdbId, { ...prev ?? undefined, details: fbDetails })
+        const prev = getTMDBSessionCache(mediaType, tmdbId, fbLang)
+        setTMDBSessionCache(mediaType, tmdbId, fbLang, { ...prev ?? undefined, details: fbDetails })
       }
       autoBackdropPath = fbDetails?.backdrop_path || null
       if (!autoBackdropPath) {
         const fbImages = cached?.images
           ?? await getImages(mediaType, tmdbId, `${fbLang},en,null`, fbApiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => null)
         if (fbImages && !cached?.images) {
-          const prev = getTMDBSessionCache(mediaType, tmdbId)
-          setTMDBSessionCache(mediaType, tmdbId, { ...prev ?? undefined, images: fbImages })
+          const prev = getTMDBSessionCache(mediaType, tmdbId, fbLang)
+          setTMDBSessionCache(mediaType, tmdbId, fbLang, { ...prev ?? undefined, images: fbImages })
         }
         autoBackdropPath = fbImages?.backdrops?.[0]?.file_path || null
       }
@@ -1543,11 +1593,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           ? (qQualityParam
               ? Promise.resolve(qQualityParam)
               : (() => {
-                  const sessionTitle = getTMDBSessionCache(mediaType, tmdbId)?.details?.title
-                    || getTMDBSessionCache(mediaType, tmdbId)?.details?.name
+                  const sessionTitle = getTMDBSessionCache(mediaType, tmdbId, sessionLang)?.details?.title
+                    || getTMDBSessionCache(mediaType, tmdbId, sessionLang)?.details?.name
                     || null
                   const fallbackTitle = mapping?.title || hardenedParams.get("title") || autoTitle || sessionTitle || genreName || null
-                  const effSeasonCount = seasonCount ?? getTMDBSessionCache(mediaType, tmdbId)?.details?.number_of_seasons ?? null
+                  const effSeasonCount = seasonCount ?? getTMDBSessionCache(mediaType, tmdbId, sessionLang)?.details?.number_of_seasons ?? null
                   return resolveStreamQuality(
                     mediaType === "movie" ? "movie" : "series",
                     imdbId,
@@ -1576,7 +1626,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
                   // qualità): senza searchQuery la query chiede 5 titoli
                   // popolari generici e il match per tmdbId fallisce quasi
                   // sempre → disponibilità ignota → poster normale.
-                  const sessionDetails = getTMDBSessionCache(mediaType, tmdbId)?.details
+                  const sessionDetails = getTMDBSessionCache(mediaType, tmdbId, sessionLang)?.details
                   const preTitle = mapping?.title
                     || hardenedParams.get("title")
                     || autoTitle
@@ -1651,7 +1701,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           if (!rankingEnabledEarly && !customRatingConfig.enabled && !sepFetch) return false
           if (!imdbId) {
             // F6: externalIds già in session cache (ramo non-mappato) → niente rete.
-            const extIds = getTMDBSessionCache(mediaType, tmdbId)?.externalIds
+            const extIds = getTMDBSessionCache(mediaType, tmdbId, sessionLang)?.externalIds
               ?? (await getExternalIds(mediaType, tmdbId, effTmdbKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => null))
             if (extIds?.imdb_id) imdbId = extIds.imdb_id
           }
@@ -1669,7 +1719,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
             // precedenti) — senza, niente backfill come prima. Stesso
             // fallback del ramo auto, così la colonna separati non perde
             // `tmdb` a MDBList down pur con chiave TMDB valida.
-            const cachedTmdbVote = getTMDBSessionCache(mediaType, tmdbId)?.details?.vote_average
+            const cachedTmdbVote = getTMDBSessionCache(mediaType, tmdbId, sessionLang)?.details?.vote_average
             const genuineTmdbVote = typeof cachedTmdbVote === "number" && Number.isFinite(cachedTmdbVote) && cachedTmdbVote > 0
               ? cachedTmdbVote
               : undefined
@@ -1819,7 +1869,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
             // Un singolo retry sul fallimento transitorio (cold-start
             // upstream): senza dettagli saltano studio/network badge e il
             // render resta cachato così per tutto il TTL.
-            const details = getTMDBSessionCache(mediaType, tmdbId)?.details
+            const details = getTMDBSessionCache(mediaType, tmdbId, preferredLang)?.details
               ?? (await getDetails(mediaType, tmdbId, preferredLang, apiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => null))
               ?? (await getDetails(mediaType, tmdbId, preferredLang, apiKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS).catch(() => null))
             if (!details) return
@@ -2197,6 +2247,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     // Fine della fase prep (resize, config, accent): da qui solo composite CPU.
     const tCompositeStart = Date.now()
     const composited = await generatePosterBuffer(genInput)
+    // 10. Il validatore rappresenta i byte effettivi: hash del buffer finale
+    // (audit, problema 1). Rank live, rating, qualità, premi e ogni altra
+    // dipendenza dinamica cambiano i byte → cambia l'ETag. Sulle cache hit il
+    // confronto riusa questo ETag senza ri-renderizzare.
+    etag = `"${createHash("sha256").update(composited).digest("hex")}"`
     if (customRatingConfig.enabled) {
       etag = `${etag.slice(0, -1)}:cr${hashKey(JSON.stringify(genInput.ratings))}"`
     }
@@ -2211,7 +2266,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     }
 
     // 11. Cache + response
-    const payload = { buffer: composited, etag }
+    const payload = { buffer: composited, etag, ttlSec: effectiveTtlSec }
     // Qualità effimera (timeout/errore upstream) o Wikidata degradato: storage
     // 120s + niente immutable, così il degradato non avvelena CDN per 6h/24h.
     // Resolved (anche null) → TTL pieno invariato.
@@ -2226,10 +2281,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     }
     completePosterRender(payload)
     recordPosterRequest(false, outputFormat)
-    // Enabled enrichment must revalidate against the final state, including [].
+    // Confronto finale sul validatore della rappresentazione richiesta: una
+    // rivalidazione (copia scaduta/assente + condizionale) risponde 304 solo
+    // se il contenuto ri-risolto è davvero invariato (audit, problema 2).
     const responseEtag = needsVariant ? variantEtagFor(etag, outputFormat as "jpeg" | "webp") : etag
-    if (customRatingConfig.enabled && !isPreview && req.headers.get("If-None-Match") === responseEtag) {
-      return new Response(null, { status: 304, headers: posterNotModifiedHeaders(responseEtag, effectiveImmutable, dynamicPoster, effectiveTtlSec) })
+    if (isConditional && ifNoneMatch === responseEtag) {
+      return new Response(null, { status: 304, headers: posterNotModifiedHeaders(responseEtag, effectiveImmutable, dynamicPoster, effectiveTtlSec, isLive) })
     }
     log.info("Poster rendered", { mediaType, tmdbId, ms: Date.now() - startTime, bytes: composited.byteLength, cached: !!mappingTag, format: outputFormat, fetchMs: tFetchMs, prepMs: tCompositeStart - startTime - tFetchMs, compositeMs: Date.now() - tCompositeStart })
     // Registra l'URL ESATTA appena servita, così il warmup riscalda quello che
@@ -2239,7 +2296,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     // C3: il non-canonico è variante di risposta (convertita + cachata), non un render.
     if (needsVariant) return serveResponseVariant(payload, ephemeralTtl ? { ttlMs: QUALITY_EPHEMERAL_TTL_SEC * 1000, immutable: false } : dynamicCutTtlMs !== null ? { ttlMs: dynamicCutTtlMs, immutable: immutablePoster } : { immutable: immutablePoster })
     const renderHeaders = {
-      ...posterHeaders(etag, effectiveImmutable, isPreview, dynamicPoster, outputFormat, effectiveTtlSec),
+      ...posterHeaders(etag, effectiveImmutable, isPreview, dynamicPoster, outputFormat, effectiveTtlSec, isLive),
       "Server-Timing": serverTimingValue([
         { name: "fetch", durMs: tFetchMs },
         { name: "prep", durMs: tCompositeStart - startTime - tFetchMs },

@@ -21,6 +21,29 @@ async function alphaBounds(png: Buffer) {
   return { minX, maxX, width: info.width }
 }
 
+describe("ranking ribbon period (fork renderer)", () => {
+  // Fork: il nastro netflix è il renderer del fork; da upstream arriva solo
+  // il sottotitolo periodo (ribbonLabel), anche per gli anime.
+  it("shows ribbonLabel under the rank on netflix ribbons, anime included", async () => {
+    for (const isAnime of [false, true]) {
+      const withPeriod = await buildRankingBadgeSVG(1, 380, isAnime ? "Anime" : "Film", false, "netflix", "#e50914", "left", isAnime, 100, undefined, "Oggi")
+      const sameAsPeriodLabel = await buildRankingBadgeSVG(1, 380, "Oggi", false, "netflix", "#e50914", "left", isAnime)
+      expect(withPeriod).not.toBeNull()
+      // Il periodo sostituisce la label per media type (Film/Anime).
+      expect(withPeriod!.png).toEqual(sameAsPeriodLabel!.png)
+    }
+    const { svg } = buildNetflixRankBadgeSVG(1, 380, false, "left", true, "Oggi")
+    expect(svg).toContain(">Oggi<")
+    expect(svg).not.toContain(">anime<")
+  })
+
+  it("uses the poster-language words with the period (Hebrew)", () => {
+    const { svg } = buildNetflixRankBadgeSVG(2, 380, false, "left", false, "היום", { top: "טופ", today: "היום", anime: "אנימה" })
+    expect(svg).toContain("טופ")
+    expect(svg).toContain("היום")
+  })
+})
+
 describe("buildGenreBadgeSVG", () => {
   it("keeps genre separators in natural text flow", () => {
     const { svg } = buildGenreTextSvg("Sci-Fi & Fantasy", "8.0", "2022", 63, "#e5e7eb", "shadow")
