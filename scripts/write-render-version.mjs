@@ -36,7 +36,7 @@ const RENDER_FILES = [
   "src/lib/custom-poster-base.ts",
   "src/lib/director-label.ts",
   "src/lib/fanart-artwork.ts",
-  "src/lib/fanart-textless.ts",
+  "src/lib/poster-textless.ts",
   "src/lib/fonts.ts",
   "src/lib/genre-normalize.ts",
   "src/lib/i18n.ts",

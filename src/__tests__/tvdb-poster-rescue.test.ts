@@ -43,6 +43,12 @@ vi.mock("@/lib/server-defaults", async (importOriginal) => {
   }
 })
 
+// Controllo visivo "senza testo": spiato, passa di default (poster piatti).
+vi.mock("@/lib/poster-textless", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/poster-textless")>()
+  return { ...actual, checkPosterText: vi.fn(actual.checkPosterText) }
+})
+
 let posterPng: Buffer
 let logoPng: Buffer
 const requestedUrls: string[] = []
@@ -208,6 +214,21 @@ describe("B1 TVDB poster rescue (no TMDB clean + logo + key)", () => {
     // Poster finale non-clean: i default 30/50 non vincono sul profilo 20/80.
     expect(body.appearance.blurHeight).toBe(20)
     expect(body.appearance.blurFade).toBe(80)
+  })
+
+  it("rescue \"textless\" per TVDB ma con testo visibile: niente logo, base non-clean", async () => {
+    const { checkPosterText } = await import("@/lib/poster-textless")
+    vi.mocked(checkPosterText).mockImplementationOnce(async (url: string) => ({ url, textless: !url.includes("artworks.thetvdb.com"), score: 1.5 }))
+    const res = await posterGET(
+      new NextRequest("http://localhost:3000/api/poster/tv/630105?api_key=test&tvdb_key=K&gradHeight=30&bf=50&debug=1"),
+      { params: Promise.resolve({ type: "tv", id: "630105" }) },
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.posterSource).toBe("tvdb")
+    expect(body.images.logo).toBeNull()
+    expect(body.appearance.blurHeight).toBe(20)
+    expect(body.textCheck.some((c: { url: string; textless: boolean }) => c.url.includes("artworks.thetvdb.com") && !c.textless)).toBe(true)
   })
 
   it("rescue textless: logo tenuto e blur ai default (base clean)", async () => {

@@ -84,7 +84,7 @@ import { generatePosterBuffer, type GenerationInput } from "@/lib/poster-service
 import { computeTopBadge } from "@/lib/poster-badge"
 import { containsHebrew } from "@/lib/badge-svg-shared"
 import { getFanartMovie, getFanartTv, isFanartEnabled, type FanartImage } from "@/lib/fanart-artwork"
-import { checkFanartPosterText, isFanartAssetUrl, rejectTextedFanart, verifiedTextlessPosters, type FanartTextCheck } from "@/lib/fanart-textless"
+import { checkFanartPosterText, checkPosterText, isFanartAssetUrl, rejectTextedFanart, verifiedTextlessPosters, verifyCleanPool, CLEAN_VERIFY_LIMIT, type PosterTextCheck } from "@/lib/poster-textless"
 import { logoContrast, logoInkLuminance, posterLogoZoneLuminance } from "@/lib/logo-contrast"
 import { isTmdbTrending } from "@/lib/tmdb-trending-badge"
 import { parseDateFormat } from "@/lib/release-badge"
@@ -739,8 +739,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // sovrapporre mai il logo a un poster con testo, (2) forzare il profilo
   // blur non-clean sui default iniettati da Stremio (Golden Rule col client).
   let autoPosterClean = false
-  // Verdetti del controllo "senza testo" sui poster fanart (debug=1).
-  const fanartTextChecks: FanartTextCheck[] = []
+  // Verdetti del controllo "senza testo" sui candidati clean (debug=1).
+  const posterTextChecks: PosterTextCheck[] = []
+  // Da dove viene il poster finale (debug=1): rende leggibile la catena.
+  let posterSource: "query" | "mapping" | "tmdb-clean" | "fanart" | "tvdb" | "backdrop-crop" | "language" | null = null
   // Il rescue TVDB ha restituito artwork textless (base clean, logo tenuto)?
   let tvdbRescueClean = false
   // Lingua richiesta per artwork/logo (ramo non-mappato; default da posterRegion):
@@ -893,8 +895,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     showBadges = req.nextUrl.searchParams.get("badges") !== "0"
     rankingBadges = req.nextUrl.searchParams.get("ranking") !== "0"
     etag = `"p${etagBase}"`
+    posterSource = "query"
   } else if (mapping) {
     posterPath = mapping.posterPath
+    posterSource = "mapping"
     // Poster non-clean (language !== null) ha già testo incorporato → mai
     // sovrapporre il logo in portrait. In landscape la base è il backdrop
     // (senza testo): il logo resta sempre, anche senza poster clean.
@@ -907,7 +911,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       : undefined
     if (isMappingClean && mappedFanartBase) {
       const check = await checkFanartPosterText(mappedFanartBase, req.signal)
-      fanartTextChecks.push(check)
+      posterTextChecks.push(check)
       if (!check.textless) isMappingClean = false
     }
     const effectiveMappingLogo = (isMappingClean || isLandscape) && !mapping.logoDisabled ? mapping.logoPath : null
@@ -1072,6 +1076,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       const allLogos: TMDBImage[] = [...images.logos, ...fanartLogos]
       if (!hasLangLogo) hasLangLogo = fanartLogos.some((l) => l.iso_639_1 === preferredLanguage)
 
+      // Pool clean TMDB VERIFICATO: il tag `iso_639_1: null` da solo non basta,
+      // TMDB ha poster "No Language" con titolo, tagline o crediti stampati.
+      // Solo i primi CLEAN_VERIFY_LIMIT (in parallelo, verdetti in cache 30
+      // giorni). Pigro: si
+      // analizza solo quando un clean può davvero diventare la base (c'è un
+      // logo da comporci sopra) — in landscape la base è il backdrop.
+      const cleanEnabled = sd.disableCleanPosters !== true
+      const tmdbCleanTagged = images.posters.filter((p: TMDBImage) => p.iso_639_1 === null)
+      let verifiedCleanPromise: Promise<TMDBImage[]> | null = null
+      const verifiedCleanList = (): Promise<TMDBImage[]> => {
+        verifiedCleanPromise ??= (cleanEnabled && !isLandscape && tmdbCleanTagged.length > 0
+          ? verifyCleanPool(tmdbCleanTagged.map((p: TMDBImage) => p.file_path), { limit: CLEAN_VERIFY_LIMIT, signal: renderAbort.signal, checks: posterTextChecks })
+            .then((ok) => tmdbCleanTagged.filter((p: TMDBImage) => ok.includes(p.file_path)))
+          : Promise.resolve(tmdbCleanTagged))
+        return verifiedCleanPromise
+      }
+
       // Il logo si risolve PRIMA del poster. Serve a due cose: i livelli con
       // backdrop valgono solo se c'è un logo da appoggiarci sopra (un backdrop
       // ritagliato senza logo è un'immagine senza titolo), e prima il logo
@@ -1087,7 +1108,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         // sta scavalcando nessuna preferenza: si sta solo smettendo di prendere
         // il primo a caso quando uno degli altri si legge meglio.
         const tier = selectLogoTier(allLogos, preferredLanguage, details.original_language)
-        const cleanPoster = images.posters.find((p: TMDBImage) => p.iso_639_1 === null)
+        const cleanPoster = tier.length > 1 ? (await verifiedCleanList())[0] : undefined
         const chosenLogo = tier.length > 1 && cleanPoster
           ? await pickReadableLogo(tier, async (candidate) => {
               try {
@@ -1118,9 +1139,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       // il ramo clean è saltato del tutto e si usa la catena in lingua sotto
       // (badge invariati, niente logo sopra in portrait). Mapping salvati e
       // scelta manuale (query poster=) non passano di qui.
-      const cleanEnabled = sd.disableCleanPosters !== true
-      const clean = cleanEnabled ? images.posters.find((p: TMDBImage) => p.iso_639_1 === null) : undefined
+      // Senza logo un clean non diventa base (si ripiega sul poster in lingua):
+      // lì basta il tag, niente analisi.
+      const verifiedClean = logoPath ? await verifiedCleanList() : tmdbCleanTagged
+      // Lista per chi pesca "i clean" (best-fit): i clean con testo spariscono.
+      const postersForClean = images.posters.filter((p: TMDBImage) => p.iso_639_1 !== null || verifiedClean.includes(p))
+      const clean = cleanEnabled ? verifiedClean[0] : undefined
       if (clean) {
+        posterSource = "tmdb-clean"
         // Ramo clean: best-fit pesca solo dalla pool clean, quindi il poster
         // finale resta clean (logo tenuto) salvo il fallback in lingua sotto.
         autoPosterClean = true
@@ -1139,7 +1165,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         // Solo con logo (un clean senza logo non ha titolo da comporre) e con
         // almeno 2 clean, altrimenti fallback storico invariato.
         const dynamicCleanPool = (dynamicDayBucket !== null && !isLandscape && logoPath)
-          ? images.posters.filter((p: TMDBImage) => p.iso_639_1 === null)
+          ? verifiedClean
           : []
         if (dynamicDayBucket !== null && dynamicCleanPool.length >= 2) {
           const picked = dynamicCleanPool[rotationIndexFor(dynamicDayBucket, dynamicCleanPool.length)]
@@ -1157,7 +1183,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
               ? Number(qGradEarly)
               : (sd.gradientHeight ?? 30)
             const bestFit = await selectBestLogoFitPosterPath({
-              posters: images.posters, logoPath,
+              posters: postersForClean, logoPath,
               fetchImage: async (path: string) => {
                 // Byte-LRU (F3): key = URL finale (imgSrc lancia su URL esterni
                 // come prima, fuori dalla cache). B5: signal combinato col
@@ -1212,6 +1238,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           const origPoster = details.original_language ? images.posters.find((p: TMDBImage) => p.iso_639_1 === details.original_language) : undefined
           const nonCleanPoster = images.posters.find((p: TMDBImage) => p.iso_639_1 !== null)
           const fallbackPoster = langPoster || origPoster || nonCleanPoster || clean
+          posterSource = "language"
           log.info("No logo — fallback to language poster", { mediaType, tmdbId, poster: fallbackPoster.file_path })
           posterPath = fallbackPoster.file_path
           autoPosterClean = fallbackPoster.iso_639_1 === null
@@ -1225,10 +1252,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         // in lingua. Solo portrait (il landscape ha già la base backdrop).
         // Fail-open: qualsiasi errore → fallback in lingua sotto.
         // Fork: prima di TVDB, il poster textless di fanart.tv (lang "None").
-        // Solo "00" E verificato senza testo (fanart-textless): un tag sbagliato
+        // Solo "00" E verificato senza testo (poster-textless): un tag sbagliato
         // non deve mai far passare per clean un poster con il titolo stampato.
         const fanartPoster = !isLandscape && cleanEnabled
-          ? (await verifiedTextlessPosters(fanart?.posters ?? [], { limit: 3, signal: renderAbort.signal, checks: fanartTextChecks }))[0]
+          ? (await verifiedTextlessPosters(fanart?.posters ?? [], { limit: 3, signal: renderAbort.signal, checks: posterTextChecks }))[0]
           : undefined
         let tvdbRescue: string | null = null
         if (!fanartPoster && !isLandscape && logoPath && tvdbApiKey && cleanEnabled) {
@@ -1245,7 +1272,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
               tvdbRescue = rescuedArt?.image ?? null
               // Solo il textless salva davvero il logo: con testo incorporato
               // la base non è clean → niente logo sopra (doppio logo).
+              // Il flag TVDB da solo non basta: anche qui il controllo visivo.
               tvdbRescueClean = !!tvdbRescue && rescuedArt?.includesText === false
+              if (tvdbRescue && tvdbRescueClean) {
+                const check = await checkPosterText(tvdbRescue, renderAbort.signal)
+                posterTextChecks.push(check)
+                tvdbRescueClean = check.textless
+              }
             }
           } catch {
             // Fallthrough al fallback in lingua.
@@ -1276,12 +1309,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           }
         }
         if (fanartPoster) {
+          posterSource = "fanart"
           log.info("Fallback: textless fanart poster", { mediaType, tmdbId })
           posterPath = fanartPoster.url
           autoPosterClean = true
         } else if (backdropRescue) {
+          posterSource = "backdrop-crop"
           autoPosterClean = true
         } else if (tvdbRescue) {
+          posterSource = "tvdb"
           log.info("TVDB poster rescue", { mediaType, tmdbId, poster: tvdbRescue })
           recordTvdbRescue()
           posterPath = tvdbRescue
@@ -1303,6 +1339,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           const origPoster = details.original_language ? images.posters.find((p: TMDBImage) => p.iso_639_1 === details.original_language) : undefined
           const chosen = langPoster || origPoster || images.posters[0]
           if (chosen) posterPath = chosen.file_path
+          posterSource = "language"
           if (isLandscape && logoPath) {
             autoPosterClean = true
           } else {
@@ -2100,7 +2137,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           logo: logoPath,
           backdrop: backdropPath,
         },
-        fanartTextCheck: fanartTextChecks,
+        posterSource,
+        textCheck: posterTextChecks,
         logoSelection: {
           requestedLang: posterRequestedLang,
           usedLang: logoChosenIso,

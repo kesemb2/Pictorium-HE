@@ -79,7 +79,7 @@ export async function tryRotatePoster(
   rotationState: EffectiveRotationState,
   /**
    * Percorsi da escludere al momento della rotazione (es. poster fanart con
-   * testo: vedi fanart-textless). Invocato solo quando la rotazione scatta.
+   * testo: vedi poster-textless). Invocato solo quando la rotazione scatta.
    */
   rejectPaths?: (paths: readonly string[]) => Promise<ReadonlySet<string>>,
 ): Promise<Mapping | null> {

@@ -5,7 +5,7 @@ import { getScopedUserId, extractUserParam } from "@/lib/user-auth"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { cacheGet, cacheSet } from "@/lib/cache"
 import { jsonGzip } from "@/lib/json-response"
-import { checkFanartPosterText } from "@/lib/fanart-textless"
+import { checkFanartPosterText } from "@/lib/poster-textless"
 
 /** Poster "00" analizzati per titolo (in parallelo, anteprime piccole). */
 const VERIFY_LIMIT = 6

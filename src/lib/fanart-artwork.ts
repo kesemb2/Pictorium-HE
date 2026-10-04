@@ -51,10 +51,12 @@ export interface FanartArtwork {
 const EMPTY: FanartArtwork = { posters: [], backgrounds: [], logos: [] }
 
 export function fanartApiKey(): string | undefined {
-  // Anche il nome NUDO, come ogni altro provider della casa (mdblist.ts,
-  // tmdb.ts, meta-handler.ts). Prima si leggeva solo `PICTORIUM_FANART_API_KEY`
-  // e una chiave messa come `FANART_API_KEY` veniva ignorata in silenzio.
+  // Un solo nome per tutta l'istanza, qualunque si sia scelto su Vercel: il
+  // livello del fork leggeva `*_FANART_API_KEY`, la tab Fanart.tv di upstream
+  // `*_FANART_KEY`, e con l'altro nome una delle due restava spenta in
+  // silenzio. Anche i nomi NUDI, come ogni altro provider della casa.
   const raw = envWithFallback("FANART_API_KEY")
+    || envWithFallback("FANART_KEY")
     || process.env.FANART_API_KEY
     || process.env.FANART_KEY
   return raw?.trim() || undefined
@@ -68,7 +70,7 @@ export function isFanartEnabled(): boolean {
  * Candidati textless: SOLO lingua "None" ("00"). Una lingua assente non dice
  * nulla sul testo (record vecchi, upload incompleti) e non conta. È una
  * condizione necessaria, non sufficiente: per i poster serve anche il
- * controllo visivo (fanart-textless.ts).
+ * controllo visivo (poster-textless.ts).
  */
 export function textlessOnly(images: readonly FanartImage[]): readonly FanartImage[] {
   return images.filter((i) => i.lang === TEXTLESS_LANG)
@@ -156,7 +158,7 @@ export interface FanartAsTmdbImage {
  * Loghi e sfondi fanart in forma TMDB: `lang` "00"/assente → `iso_639_1: null`
  * (per un logo significa "neutro", per uno sfondo è la regola di fanart: niente
  * testo sugli sfondi). NON usarla per i poster: lì `null` significa "clean" e
- * serve la verifica di fanart-textless.ts (`fanartPostersAsTmdb`).
+ * serve la verifica di poster-textless.ts (`fanartPostersAsTmdb`).
  */
 export function toTmdbShape(images: readonly FanartImage[]): FanartAsTmdbImage[] {
   return images.map((i) => ({
