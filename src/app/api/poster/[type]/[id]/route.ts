@@ -3,6 +3,8 @@ import sharp from "sharp"
 import { initSharp } from "@/lib/sharp-config"
 import { getImages, getDetails, getDetailsWithExternalIds, getExternalIds, getKeywords, getReleaseDates, resolveUserApiKeys, type TMDBImage, type TMDBCompany } from "@/lib/tmdb"
 import { getJWRankings, hasJWOffers } from "@/lib/justwatch"
+import { resolveRankingSource } from "@/lib/ranking-source"
+import { fetchCustomRankingTop20, findRankingCustomCatalog } from "@/lib/custom-ranking"
 import { extractDigitalReleaseDate, isDigitalPreRelease } from "@/lib/pre-release"
 import { getAll, getById, getImdbAlias } from "@/lib/store"
 import { getScopedUserId, userExists } from "@/lib/user-auth"
@@ -925,6 +927,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     backdropOffsetX = mapping?.backdropOffsetX ?? 0
     backdropOffsetY = mapping?.backdropOffsetY ?? 0
     genreName = mapping.genreName ?? null
+    // A saved genre is a localized string, not a language-independent ID.
+    // Explicit poster language wins, just as it does for automatic posters.
+    const genreLang = req.nextUrl.searchParams.get("lang")
+    if (genreName && genreLang && effTmdbKey && mapping.showBadges !== false && !queryGenre) {
+      try {
+        const cached = getTMDBSessionCache(mediaType, tmdbId, genreLang)
+        const localizedDetails = cached?.details
+          ?? await getDetails(mediaType, tmdbId, genreLang, effTmdbKey, renderAbort.signal, POSTER_TMDB_TIMEOUT_MS)
+        if (!cached?.details && localizedDetails) {
+          setTMDBSessionCache(mediaType, tmdbId, genreLang, { ...cached ?? undefined, details: localizedDetails })
+        }
+        genreName = localizedDetails?.genres?.[0]?.name || genreName
+      } catch {
+        // Keep the saved genre if TMDB is unavailable.
+      }
+    }
     voteAverage = mapping.voteAverage ?? null
     resolvedTitle = mapping.title || null
     // Il mapping salva il poster scelto, non la lingua del logo: senza quel
@@ -1549,6 +1567,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     // Rank anime inviato dal client nella preview WYSIWYG (override del fetch).
     const qAnimeRankParam = hardenedParams.get("animerank")
     const qAnimeRank = qAnimeRankParam ? Number(qAnimeRankParam) : NaN
+    // Global Top 20 source for this title (same selection as catalogs and
+    // trending/rank: config token wins, namespace defaults fill the gaps).
+    // A custom list drives the trendRank channel (Film/Serie label);
+    // JustWatch is never consulted for the slot, misses never fall back to
+    // it, and the anime/platform paths below stay untouched.
+    const rankingSelection = {
+      customCatalogs: configOverride?.customCatalogs ?? sd.customCatalogs,
+      rankingSourceMovie: configOverride?.rankingSourceMovie ?? sd.rankingSourceMovie,
+      rankingSourceSeries: configOverride?.rankingSourceSeries ?? sd.rankingSourceSeries,
+    }
+    const rankingSource = resolveRankingSource(
+      rankingSelection,
+      mediaType === "movie" ? "movie" : "series",
+    )
+    const rankingCustom = rankingSource.kind === "custom"
+      ? findRankingCustomCatalog(rankingSelection.customCatalogs, rankingSource.customId)
+      : undefined
 
     // Quarto anello QID (mapping legacy senza wikidataId salvato): una
     // external_ids con memo 7gg invece della lotteria SPARQL — il REST diventa
@@ -1607,13 +1642,35 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         rankingEnabledEarly
           // R3: signal del watchdog — allo scatto della deadline il fetch
           // abortisce invece di proseguire come zombie in background.
-          ? getJWRankings(mediaType === "movie" ? "MOVIE" : "SHOW", posterRegion.code, 20, undefined, posterRegion.lang, renderAbort.signal)
-            .then((r) => r.find((x) => x.tmdbId === tmdbId)?.rank ?? null)
-            // Solo il FETCH FALLITO (rete/outage) ripiega sul rank salvato nel
-            // mapping (degraded esplicito). La miss genuina (fetch riuscito, il
-            // titolo è fuori chart) resta null: MAI resuscitare il rank stantio
-            // del save precedente (es. "top 15" di un titolo oggi fuori top 20).
-            .catch(() => mapping?.badgeRank ?? mapping?.trendRank ?? null)
+          // Custom-driven slot: the shared ranking service resolves the rank
+          // in the list Top-20 (trendRank channel, Film/Serie label). Misses,
+          // provider errors and aborts all yield no badge and never consult
+          // JustWatch: under a custom source no saved rank is ever
+          // resuscitated, so a stale JustWatch-era badge can not resurface
+          // during a custom outage.
+          ? (rankingSource.kind === "custom" && rankingCustom
+            ? fetchCustomRankingTop20({
+                custom: rankingCustom,
+                slot: mediaType === "movie" ? "movie" : "series",
+                apiKey: effTmdbKey,
+                mdblistKey: effMdblistKey,
+                tvdbKey: effTvdbKey,
+                userId: scopedUser,
+                signal: renderAbort.signal,
+              })
+              .then((r) => {
+                if (r.status !== "ok") return null
+                const idx = r.items.findIndex((x) => x.tmdbId === tmdbId)
+                return idx >= 0 ? idx + 1 : null
+              })
+              .catch(() => null)
+            : getJWRankings(mediaType === "movie" ? "MOVIE" : "SHOW", posterRegion.code, 20, undefined, posterRegion.lang, renderAbort.signal)
+              .then((r) => r.find((x) => x.tmdbId === tmdbId)?.rank ?? null)
+              // Solo il FETCH FALLITO (rete/outage) ripiega sul rank salvato nel
+              // mapping (degraded esplicito). La miss genuina (fetch riuscito, il
+              // titolo è fuori chart) resta null: MAI resuscitare il rank stantio
+              // del save precedente (es. "top 15" di un titolo oggi fuori top 20).
+              .catch(() => mapping?.badgeRank ?? mapping?.trendRank ?? null))
           : Promise.resolve(null),
         // Rank anime (media_type=tv): la lista MDBList trending anime senza
         // chiave risponde 503 "Invalid API key" → rank sempre null. Si usa la
@@ -1973,7 +2030,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       lang: req.nextUrl.searchParams.get("lang") || mapping?.language || posterRegion.lang2,
     })
     const {
-      badgeStyle, rankingBadgeStyle, qualityBadgeStyle,
+      badgeStyle, rankingBadgeStyle, qualityBadgeStyle, badgeFont,
       blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness, tintStrength, topShade,
       badgesEnabled, rankingEnabled,
       badgeGenre, badgeYear, badgeRating, badgeQuality, minQuality, sashOrder,
@@ -2189,6 +2246,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
             rankingEnabled,
             badgeStyle,
             rankingBadgeStyle,
+            badgeFont,
             badgeGenre,
             badgeYear,
             badgeRating,
@@ -2262,7 +2320,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       backdropScale, backdropOffsetX, backdropOffsetY,
       blurEnabled, blurHeight: effBlurHeight, blurIntensity, blurFade: effBlurFade, blurDarkness, tintStrength, topShade,
       badgesEnabled, rankingEnabled, genreName, voteAverage, badgeStyle,
-      rankingBadgeStyle, badgeGenre, badgeYear, badgeRating: effectiveBadgeRating, badgeQuality,
+      rankingBadgeStyle, badgeFont, badgeGenre, badgeYear, badgeRating: effectiveBadgeRating, badgeQuality,
       qualityBadgeStyle,
       videoFormats: finalVideoFormats,
       separateRatings: useSeparate ? sepItems : undefined,

@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { PICKER_LANGS } from "@/lib/utils"
-import { REGIONS, regionLabel } from "@/lib/regions"
+import { UI_LANGUAGES } from "@/lib/utils"
+import { CHART_REGIONS, GLOBAL_REGION_CODE, regionLabel } from "@/lib/regions"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { ChevronLeft, Lock, ArrowRight, ShieldCheck } from "lucide-react"
 import { isMultiUserServer } from "@/lib/guest-guard"
@@ -23,10 +23,13 @@ interface SetupWizardProps {
 
 /**
  * Configurazione guidata iniziale:
- * 1. lingua dell'interfaccia (12 nazionalità),
- * 2. nazionalità delle liste/classifiche (stesse 12),
+ * 1. lingua dell'interfaccia (UI_LANGUAGES, include lingue senza regione chart come `vi`),
+ * 2. ambito delle liste/classifiche (globale o paese supportato),
  * 3. protezione con PIN (solo in single-user: in multi-user ogni utente ha la sua password).
  */
+// Fork ebraico: Israele in cima, poi la classifica globale e l'ordine storico.
+const PICKER_REGIONS = [...CHART_REGIONS].sort((a, b) => Number(b.code === "IL") - Number(a.code === "IL"))
+
 export function LangPicker({ onPickLang, onPickRegion, onDone, skipPin }: SetupWizardProps) {
   const { t } = useT()
   const [step, setStep] = useState<"lang" | "region" | "pin">("lang")
@@ -124,7 +127,9 @@ export function LangPicker({ onPickLang, onPickRegion, onDone, skipPin }: SetupW
       <div className="w-full max-w-lg mx-4">
         <div className="text-center mb-8">
           {/* eslint-disable-next-line @next/next/no-img-element -- local SVG asset */}
-          <img src="/pictorium.svg" alt="Pictorium" loading="eager" decoding="async" className="h-auto w-[min(92vw,430px)] mx-auto mb-4 hover:brightness-110 transition-all duration-150" />
+          <img src="/pictorium.svg" alt="Pictorium" loading="eager" decoding="async" className="header-logo-dark h-auto w-[min(92vw,430px)] mx-auto mb-4 hover:brightness-110 transition-all duration-150" />
+          {/* eslint-disable-next-line @next/next/no-img-element -- local SVG asset */}
+          <img src="/pictorium-light.svg" alt="Pictorium" loading="eager" decoding="async" className="header-logo-light h-auto w-[min(92vw,430px)] mx-auto mb-4 hover:brightness-110 transition-all duration-150" />
           <h2 className="text-2xl font-bold text-zinc-100">{getTitle()}</h2>
           <p className="text-sm text-muted mt-1.5">{getSubtitle()}</p>
 
@@ -140,8 +145,8 @@ export function LangPicker({ onPickLang, onPickRegion, onDone, skipPin }: SetupW
 
         {step === "lang" && (
           <div key="lang" className="grid grid-cols-2 gap-2 max-h-[52vh] overflow-y-auto pe-0.5 animate-step-enter">
-            {PICKER_LANGS.map((l) => (
-              <button type="button" key={l.key} onClick={() => pickLang(l.code)} className="surface-card flex items-center gap-2 px-4 py-3.5 rounded-2xl hover:-translate-y-0.5 active:scale-[0.97] transition-all duration-200 text-start group cursor-pointer">
+            {UI_LANGUAGES.map((l) => (
+              <button type="button" key={l.code} onClick={() => pickLang(l.code)} className="surface-card flex items-center gap-2 px-4 py-3.5 rounded-2xl hover:-translate-y-0.5 active:scale-[0.97] transition-all duration-200 text-start group cursor-pointer">
                 <span className="text-2xl shrink-0">{l.flag}</span>
                 <div>
                   <p className="text-sm font-medium text-zinc-200 group-hover:text-accent transition-colors">{l.name}</p>
@@ -154,11 +159,11 @@ export function LangPicker({ onPickLang, onPickRegion, onDone, skipPin }: SetupW
 
         {step === "region" && (
           <div key="region" className="grid grid-cols-2 gap-2 max-h-[52vh] overflow-y-auto pe-0.5 animate-step-enter">
-            {REGIONS.map((r) => (
+            {PICKER_REGIONS.map((r) => (
               <button type="button" key={r.code} onClick={() => pickRegion(r.code)} className="surface-card flex items-center gap-2 px-4 py-3.5 rounded-2xl hover:-translate-y-0.5 active:scale-[0.97] transition-all duration-200 text-start group cursor-pointer">
                 <span className="text-2xl shrink-0">{r.flag}</span>
                 <div>
-                  <p className="text-sm font-medium text-zinc-200 group-hover:text-accent transition-colors">{regionLabel(r, getLang())}</p>
+                  <p className="text-sm font-medium text-zinc-200 group-hover:text-accent transition-colors">{r.code === GLOBAL_REGION_CODE ? t("ui.regionGlobal") : regionLabel(r, getLang())}</p>
                   <p className="text-xs text-muted uppercase tracking-wider">{r.code}</p>
                 </div>
               </button>

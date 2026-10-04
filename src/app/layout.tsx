@@ -59,6 +59,8 @@ export const viewport: Viewport = {
   themeColor: "#e85d2a",
 };
 
+import { ThemeProvider } from "@/lib/contexts/ThemeContext";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -67,12 +69,21 @@ export default function RootLayout({
   return (
     <html lang="he" dir="rtl" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} ${rubik.variable} h-full antialiased`}>
       <head>
+        {/* Prima del paint: tema (upstream) + lingua/direzione salvate (fork),
+            così né il tema né l'RTL lampeggiano. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var t;try{t=localStorage.getItem("pictorium_ui_theme");}catch(e){}var s=t==="light"||t==="dark"?t:"system";var d=s==="system"?(typeof window.matchMedia==="function"?(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):"dark"):s;document.documentElement.setAttribute("data-theme",d);document.documentElement.setAttribute("data-theme-setting",s);document.documentElement.classList.add(d);document.documentElement.classList.remove(d==="dark"?"light":"dark");var l;try{l=(localStorage.getItem("preferred_lang")||"").toLowerCase();}catch(e){}if(/^[a-z]{2}$/.test(l||"")){document.documentElement.lang=l;document.documentElement.dir=(l==="he"||l==="ar")?"rtl":"ltr";}})();`,
+          }}
+        />
         <link rel="preconnect" href="https://image.tmdb.org" />
         <link rel="preconnect" href="https://api.themoviedb.org" />
       </head>
       <body className="min-h-full" suppressHydrationWarning>
-        <DocumentChrome />
-        <main id="main-content">{children}</main>
+        <ThemeProvider>
+          <DocumentChrome />
+          <main id="main-content">{children}</main>
+        </ThemeProvider>
       </body>
     </html>
   );

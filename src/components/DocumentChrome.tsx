@@ -44,7 +44,6 @@ export function DocumentChrome() {
         duration={3000}
         closeButton={false}
         richColors={false}
-        theme="dark"
         icons={{
           success: <Check className="w-3.5 h-3.5 stroke-[2.5]" />,
           info: <Info className="w-3.5 h-3.5 stroke-[2.5]" />,

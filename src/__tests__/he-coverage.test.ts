@@ -24,6 +24,10 @@ const BRAND_VALUES = new Set([
   "mappings.json",
   "Stremio",
   "ElfHosted",
+  "AIOMetadata",
+  "Nuvio",
+  "https://.../manifest.json",
+  "#{rank} · {name}",
 ])
 
 describe("Hebrew dictionary coverage", () => {

@@ -23,18 +23,30 @@ import {
   X,
   KeyRound,
   RotateCw,
+  Download,
 } from "lucide-react"
+import { DefaultsPosterPreview } from "@/components/settings/DefaultsPosterPreview"
+import { VisualPresetsSection } from "@/components/settings/VisualPresetsSection"
 
 interface Props {
   setSettingsOpen: (v: boolean) => void
   exportData: () => void
   importData: () => void
   mobile?: boolean
+  onOpenInstall?: () => void
 }
 
-export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile }: Props) {
+export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile, onOpenInstall }: Props) {
   const { t } = useT()
   const ed = usePosterEditor()
+  const [mobileViewport, setMobileViewport] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    const update = () => setMobileViewport(window.innerWidth < 768)
+    update()
+    window.addEventListener("resize", update)
+    return () => window.removeEventListener("resize", update)
+  }, [])
 
   const [activeTab, setActiveTab] = useState<"badge" | "trasforma" | "prefs" | "data" | "spazio">(
     () => consumeSettingsTab() ?? "badge",
@@ -173,11 +185,11 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
     <div className="shrink-0">
       {/* Mobile Category Selector */}
       <div className="sm:hidden px-3 py-2 bg-white/[0.03] border-b border-white/10 flex items-center justify-between gap-2">
-        <label htmlFor="mobile-settings-category" className="text-xs font-semibold text-zinc-400 shrink-0">
+        <label htmlFor={mobile ? "mobile-settings-category" : "desktop-settings-category"} className="text-xs font-semibold text-zinc-400 shrink-0">
           {t("ui.section")}:
         </label>
         <select
-          id="mobile-settings-category"
+          id={mobile ? "mobile-settings-category" : "desktop-settings-category"}
           value={activeTab}
           onChange={(e) => setActiveTab(e.target.value as SettingsTabId)}
           className="flex-1 bg-zinc-900 border border-white/15 text-zinc-100 rounded-xl px-3 min-h-[44px] h-11 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-accent-orange cursor-pointer touch-manipulation"
@@ -261,11 +273,24 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
 
   // Actions Footer (condiviso desktop/mobile)
   const footer = (
-    <div className="border-t border-white/10 bg-[#0d0d10]/95 backdrop-blur-md px-4 sm:px-6 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+    <div className="settings-dialog-footer border-t border-white/10 bg-[#0d0d10]/95 backdrop-blur-md px-4 sm:px-6 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
       <p className="text-xs text-zinc-400 text-center sm:text-start select-none">
         {t("ui.defaultsAutoSaved")}
       </p>
       <div className="flex items-center justify-between sm:justify-end gap-2.5 w-full sm:w-auto">
+        {onOpenInstall && (
+          <button
+            type="button"
+            onClick={() => {
+              setSettingsOpen(false)
+              onOpenInstall()
+            }}
+            className="px-4 py-2.5 min-h-[44px] h-11 rounded-xl bg-accent-orange/15 hover:bg-accent-orange/25 border border-accent-orange/30 text-xs sm:text-sm font-semibold text-accent-orange transition-all active:scale-95 cursor-pointer touch-manipulation flex items-center justify-center gap-1.5"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>{t("ui.install")}</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setSettingsOpen(false)}
@@ -303,9 +328,15 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
   // Layout Mobile (innestato nella schermata di AppShell)
   if (mobile) {
     return (
-      <div ref={settingsRef} className="flex flex-col h-full min-h-0 w-full">
+      <div ref={settingsRef} className="settings-panel flex flex-col h-full min-h-0 w-full">
         {tabsNav}
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 pb-8">
+        {mobileViewport === true && (activeTab === "badge" || activeTab === "trasforma") && (
+          <div className="shrink-0 px-4 pt-3">
+            <DefaultsPosterPreview compact />
+          </div>
+        )}
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 pb-8" data-testid="settings-controls">
+          {mobileViewport === true && (activeTab === "badge" || activeTab === "trasforma") && <VisualPresetsSection />}
           {badgePanel}
           {trasformaPanel}
           {prefsPanel}
@@ -319,6 +350,8 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
     )
   }
 
+  const isVisualTab = activeTab === "badge" || activeTab === "trasforma"
+
   // Layout Desktop: Modal Dialog centrato con backdrop blur
   return (
     <div
@@ -331,21 +364,21 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
       <div
         ref={settingsRef}
         tabIndex={-1}
-        className="relative outline-none w-full max-w-2xl max-h-[88vh] flex flex-col rounded-2xl border border-white/10 bg-[#121216] shadow-2xl shadow-black/90 select-text animate-modal-panel-in overflow-hidden my-auto"
+        className={`settings-panel settings-dialog-panel relative outline-none w-full ${isVisualTab ? "max-w-5xl h-[88dvh]" : "max-w-2xl"} max-h-[88dvh] flex flex-col rounded-2xl border border-white/10 bg-[#121216] shadow-2xl shadow-black/90 select-text animate-modal-panel-in overflow-hidden my-auto transition-all duration-200`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header Modal */}
-        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/10 bg-[#141418] shrink-0">
+        <div className="settings-dialog-header flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/10 bg-[#141418] shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-accent-orange/15 text-accent-orange border border-accent-orange/25">
               <SlidersHorizontal className="w-4 h-4" />
             </div>
             <div>
               <h3 id="settings-dialog-title" className="text-sm sm:text-base font-bold text-zinc-100 flex items-center gap-1.5">
-                <span>{t("ui.settingsTitle")}</span>
+                <span>{t("ui.settingsGlobalTitle") || t("ui.settingsTitle")}</span>
               </h3>
-              <p className="text-[11px] text-muted hidden sm:block">
-                {t("ui.settingsSubtitle")}
+              <p className="text-[11px] text-muted hidden sm:block max-w-xl">
+                {t("ui.settingsGlobalDesc") || t("ui.settingsSubtitle")}
               </p>
             </div>
           </div>
@@ -362,12 +395,20 @@ export function SettingsPanel({ setSettingsOpen, exportData, importData, mobile 
         {tabsNav}
 
         {/* Contenuto scrollabile */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-          {badgePanel}
-          {trasformaPanel}
-          {prefsPanel}
-          {dataPanel}
-          {showSpaceTab && spazioPanel}
+        <div className={`flex-1 min-h-0 ${isVisualTab ? "flex flex-col md:grid md:grid-cols-[minmax(0,1fr)_minmax(220px,32%)]" : "flex flex-col"}`}>
+          <div className="min-w-0 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4" data-testid="settings-controls">
+            {mobileViewport === false && isVisualTab && <VisualPresetsSection />}
+            {badgePanel}
+            {trasformaPanel}
+            {prefsPanel}
+            {dataPanel}
+            {showSpaceTab && spazioPanel}
+          </div>
+          {isVisualTab && (
+            <div className="hidden md:block min-h-0 p-4 ps-0" data-testid="settings-preview">
+              {mobileViewport === false && <DefaultsPosterPreview />}
+            </div>
+          )}
         </div>
 
         {footer}

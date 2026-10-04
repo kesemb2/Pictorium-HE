@@ -2,7 +2,7 @@ import { textColorForBg } from "./accent-color"
 import { FONT_FILES } from "./fonts"
 import { buildTitleTextSvg, textShadowBox, type TextStyle, estimateTextWidth, fontFamilyFor, genreBadgeSafePad, genreBadgeSvgDims, genrePillMaxW, buildGenreBarSvg, buildGenrePillSvg, buildGenreTextSvg, buildGenreBorderedSvg, buildGenreGlassSvg, buildRankingBarSvg, buildRankingDefaultSvg, buildRankingPillSvg, buildRankingGlassSvg, buildRankingBorderedSvg, buildExtraBarSvg, buildExtraDefaultSvg, buildExtraPillSvg, buildExtraGlassSvg, buildExtraBorderedSvg, buildQualityBadgeSvg, escSvg, satinPillStops, containsHebrew, rtlSafe, type RibbonWords } from "./badge-svg-shared"
 import type { GenreParts } from "./badge-svg-shared"
-import type { BadgeStyle, RankingBadgeStyle, ExtraBadgeStyle } from "./badge-styles"
+import type { BadgeStyle, RankingBadgeStyle, ExtraBadgeStyle, BadgeFont } from "./badge-styles"
 // Renderer di upstream, solo per i tipi di badge che il fork non ha costruito
 // da sé (preset house/custom, nastro `netflix-color`): vedi badge-svg-upstream.ts.
 import { buildCustomBadgeSvg, buildHousePresetSvg, buildHouseRankingSvg, buildQualityBadgeSvg as buildQualityBadgeSvgUpstream, type HousePresetScene } from "./badge-svg-upstream"
@@ -55,6 +55,8 @@ export async function buildExtraBadgeSVG(
   accentColor?: string,
   /** Scala % applicata al font solo per lo stile barra (gli altri scalano via bitmap nel service). */
   scale = 100,
+  /** Font dei testi (default "inter" = resa storica). */
+  font: BadgeFont = "inter",
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
   const s = badgeStyle || "default"
   // Cap estetico per gli stili compatti: oltre il 65% di pw il testo si
@@ -67,7 +69,7 @@ export async function buildExtraBadgeSVG(
   // Barra full-width: la scala assottiglia nativamente (font+padding),
   // senza staccare la barra dal bordo come farebbe il resize bitmap.
   if (s === "bar") finalFs = (finalFs * scale) / 100
-  const projectedW = estimateTextWidth(label, finalFs) + Math.round(finalFs * 2) + Math.round(finalFs * 0.6) * 2
+  const projectedW = estimateTextWidth(label, finalFs, font) + Math.round(finalFs * 2) + Math.round(finalFs * 0.6) * 2
   if (projectedW > maxBadgeW) {
     finalFs = Math.max(maxBadgeW / projectedW * finalFs, 10)
   }
@@ -85,15 +87,15 @@ export async function buildExtraBadgeSVG(
 
   let result: { svg: string; w: number; h: number }
   if (s === "bar") {
-    result = buildExtraBarSvg(label, pw, fs, fg, bg)
+    result = buildExtraBarSvg(label, pw, fs, fg, bg, font)
   } else if (s === "pill") {
-    result = buildExtraPillSvg(label, fs, fg, bg)
+    result = buildExtraPillSvg(label, fs, fg, bg, font)
   } else if (isGlass) {
-    result = buildExtraGlassSvg(label, fs, fg, bg, !!topLight)
+    result = buildExtraGlassSvg(label, fs, fg, bg, !!topLight, font)
   } else if (s === "bordo") {
-    result = buildExtraBorderedSvg(label, fs, fg, !!topLight)
+    result = buildExtraBorderedSvg(label, fs, fg, !!topLight, font)
   } else {
-    result = buildExtraDefaultSvg(label, fs, fg, bg)
+    result = buildExtraDefaultSvg(label, fs, fg, bg, font)
   }
   const png = await renderSVG(result.svg, result.w)
   return { png, w: result.w, h: result.h }
@@ -108,6 +110,8 @@ export async function buildGenreBadgeSVG(
   /** Scala % applicata al font solo per lo stile barra (gli altri scalano via bitmap nel service). */
   scale = 100,
   textStyle?: TextStyle,
+  /** Font dei testi (default "inter" = resa storica). */
+  font: BadgeFont = "inter",
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
   const s = style || "shadow"
   const voteStr = voteAverage ? voteAverage.toFixed(1) : ""
@@ -120,14 +124,14 @@ export async function buildGenreBadgeSVG(
   if (s === "bar") finalFs = (finalFs * scale) / 100
   const aestheticMaxW = Math.round(pw * 0.86) // 86% per margine estetico
   const isMinimal = s === "minimal"
-  let dims = genreBadgeSvgDims(finalFs, genreName, voteStr, yearStr, parts, s)
+  let dims = genreBadgeSvgDims(finalFs, genreName, voteStr, yearStr, parts, s, font)
   let safePad = genreBadgeSafePad(finalFs)
   // Per shadow e minimal, buildGenreTextSvg aggiunge shadowPad*2 al renderW finale
   const extraShadowPad = s === "shadow" ? textShadowBox(textStyle).pad : (isMinimal ? 2 : 0)
   const estimatedRenderW = dims.totalW + safePad * 2 + extraShadowPad * 2
   if (estimatedRenderW > aestheticMaxW) {
     finalFs = Math.max(aestheticMaxW / estimatedRenderW * finalFs, 10)
-    dims = genreBadgeSvgDims(finalFs, genreName, voteStr, yearStr, parts, s)
+    dims = genreBadgeSvgDims(finalFs, genreName, voteStr, yearStr, parts, s, font)
     safePad = genreBadgeSafePad(finalFs)
   }
 
@@ -137,7 +141,7 @@ export async function buildGenreBadgeSVG(
     const maxPillW = genrePillMaxW(pw)
     if (dims.textContentW + _pillPad * 3 + safePad * 2 > maxPillW) {
       finalFs = Math.max(maxPillW / (dims.textContentW + _pillPad * 3 + safePad * 2) * finalFs, 10)
-      dims = genreBadgeSvgDims(finalFs, genreName, voteStr, yearStr, parts)
+      dims = genreBadgeSvgDims(finalFs, genreName, voteStr, yearStr, parts, undefined, font)
     }
   }
   let fs = Math.round(finalFs)
@@ -157,15 +161,15 @@ export async function buildGenreBadgeSVG(
 
   let result: { svg: string; w: number; h: number }
   if (s === "bordo") {
-    result = buildGenreBorderedSvg(genreName, voteStr, yearStr, fs, textColor, bottomLight ?? false, 0, parts)
+    result = buildGenreBorderedSvg(genreName, voteStr, yearStr, fs, textColor, bottomLight ?? false, 0, parts, font)
   } else if (s === "vetro") {
-    result = buildGenreGlassSvg(genreName, voteStr, yearStr, fs, textColor, bottomLight ?? false, 0, parts)
+    result = buildGenreGlassSvg(genreName, voteStr, yearStr, fs, textColor, bottomLight ?? false, 0, parts, font)
   } else if (isBar) {
-    result = buildGenreBarSvg(genreName, voteStr, yearStr, pw, fs, "rgba(0,0,0,0.80)", !!bottomLight, 0, parts)
+    result = buildGenreBarSvg(genreName, voteStr, yearStr, pw, fs, "rgba(0,0,0,0.80)", !!bottomLight, 0, parts, font)
   } else if (isPill) {
-    result = buildGenrePillSvg(genreName, voteStr, yearStr, fs, bgColor, textColor, 0, parts)
+    result = buildGenrePillSvg(genreName, voteStr, yearStr, fs, bgColor, textColor, 0, parts, font)
   } else {
-    result = buildGenreTextSvg(genreName, voteStr, yearStr, fs, textColor, s, 0, parts, textStyle)
+    result = buildGenreTextSvg(genreName, voteStr, yearStr, fs, textColor, s, 0, parts, textStyle, font)
     // Per shadow, il renderW include shadowPad*2 + safePad*2 aggiuntivi
     // Assicuriamoci che non superi aestheticMaxW
     let attempts = 0
@@ -173,7 +177,7 @@ export async function buildGenreBadgeSVG(
       // Riduciamo fs proporzionalmente al surplus
       const targetFs = Math.max(Math.round(fs * (aestheticMaxW - 16) / result.w), 10)
       if (targetFs >= fs) { fs = 10 } else { fs = targetFs }
-      result = buildGenreTextSvg(genreName, voteStr, yearStr, fs, textColor, s, 0, parts, textStyle)
+      result = buildGenreTextSvg(genreName, voteStr, yearStr, fs, textColor, s, 0, parts, textStyle, font)
       attempts++
     }
   }
@@ -186,8 +190,9 @@ export async function renderGenreBadge(
   year?: string, style?: BadgeStyle, accentColor?: string, bottomLight?: boolean, parts?: GenreParts,
   scale = 100,
   textStyle?: TextStyle,
+  font: BadgeFont = "inter",
 ): Promise<{ png: Buffer; w: number; h: number }> {
-  const r = await buildGenreBadgeSVG(genreName, voteAverage, pw, year, style, accentColor, bottomLight, parts, scale, textStyle)
+  const r = await buildGenreBadgeSVG(genreName, voteAverage, pw, year, style, accentColor, bottomLight, parts, scale, textStyle, font)
   if (r) return r
   throw new Error(`SVG genre badge failed: ${genreName}`)
 }
@@ -210,7 +215,7 @@ export function netflixRibbonFontSize(pw: number): number {
   return Math.round(Math.max(27 * pw / 380, 16))
 }
 
-export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boolean, side: "left" | "right" = "left", isAnime?: boolean, label?: string, words?: RibbonWords) {
+export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boolean, side: "left" | "right" = "left", isAnime?: boolean, label?: string, words?: RibbonWords, font: BadgeFont = "inter") {
   // Leggermente ridotto (-11%): fs base 24, w proporzionale 2.65
   const fs = Math.round(Math.max(24 * pw / 380, 16))
   const w = Math.round(fs * 2.65)
@@ -241,7 +246,7 @@ export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boo
   let subFs = Math.round(w * 0.19)
   if (hasSub) {
     const maxSubW = Math.round((w - slant) * 0.82)
-    const subW = estimateTextWidth(subLabel, subFs)
+    const subW = estimateTextWidth(subLabel, subFs, font)
     if (subW > maxSubW) {
       subFs = Math.max(Math.round(subFs * maxSubW / subW), 8)
     }
@@ -276,7 +281,7 @@ export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boo
   const shadowDx = isRight ? -3 : 3
 
   const subEl = hasSub
-    ? `<text x="${textX}" y="${subY}" fill="${textColor}" font-family="${fontFamilyFor(subLabel)}" font-weight="700" font-size="${subFs}" text-anchor="middle" dominant-baseline="central" letter-spacing="0.6" filter="url(#textShadow)">${escSvg(subLabel)}</text>`
+    ? `<text x="${textX}" y="${subY}" fill="${textColor}" font-family="${fontFamilyFor(subLabel, font)}" font-weight="700" font-size="${subFs}" text-anchor="middle" dominant-baseline="central" letter-spacing="0.6" filter="url(#textShadow)">${escSvg(subLabel)}</text>`
     : ""
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${totalH}" viewBox="0 0 ${totalW} ${totalH}">
@@ -291,8 +296,8 @@ export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boo
     </defs>
     <path d="${pathD}" fill="url(#nrg)" stroke="${ribbonStroke}" stroke-width="1" filter="url(#shadow3D)"/>
     <line x1="${highlightX1}" y1="1" x2="${highlightX2}" y2="1" stroke="rgba(255,255,255,0.4)" stroke-width="1.2"/>
-    <text x="${textX}" y="${topY}" fill="${textColor}" font-family="${fontFamilyFor(topWord)}" font-weight="800" font-size="${topFs}" text-anchor="middle" dominant-baseline="central" letter-spacing="${topSpacing}" filter="url(#textShadow)">${escSvg(rtlSafe(topWord))}</text>
-    <text x="${textX}" y="${rankY}" fill="${textColor}" font-family="Inter" font-weight="900" font-size="${rankFs}" text-anchor="middle" dominant-baseline="central" letter-spacing="${rankLetterSpacing}" filter="url(#textShadow)">${rank}</text>
+    <text x="${textX}" y="${topY}" fill="${textColor}" font-family="${fontFamilyFor(topWord, font)}" font-weight="800" font-size="${topFs}" text-anchor="middle" dominant-baseline="central" letter-spacing="${topSpacing}" filter="url(#textShadow)">${escSvg(rtlSafe(topWord))}</text>
+    <text x="${textX}" y="${rankY}" fill="${textColor}" font-family="${fontFamilyFor(String(rank), font)}" font-weight="900" font-size="${rankFs}" text-anchor="middle" dominant-baseline="central" letter-spacing="${rankLetterSpacing}" filter="url(#textShadow)">${rank}</text>
     ${subEl}
   </svg>`
   return { svg, w: totalW, h: totalH }
@@ -317,6 +322,8 @@ export async function buildRankingBadgeSVG(
    * Senza, il nastro netflix ripiega sul periodo/label come prima.
    */
   ribbonLabel?: string,
+  /** Font dei testi (default "inter" = resa storica). */
+  font: BadgeFont = "inter",
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
   const s = badgeStyle || "default"
   const periodText = label || words?.today || "Oggi"
@@ -325,7 +332,7 @@ export async function buildRankingBadgeSVG(
   let finalFs = 23 * pw / 380
   // Barra full-width: vedi nota in buildExtraBadgeSVG.
   if (s === "bar") finalFs = (finalFs * scale) / 100
-  const projectedW = estimateTextWidth(fullText, finalFs) + Math.round(finalFs * 2) + Math.round(finalFs * 0.6) * 2
+  const projectedW = estimateTextWidth(fullText, finalFs, font) + Math.round(finalFs * 2) + Math.round(finalFs * 0.6) * 2
   if (projectedW > maxBadgeW) {
     finalFs = Math.max(maxBadgeW / projectedW * finalFs, 10)
   }
@@ -346,22 +353,22 @@ export async function buildRankingBadgeSVG(
   if (s === "netflix-color") {
     // Stile nuovo di upstream: lo disegna il suo renderer, con il periodo
     // sotto il numero come i nastri di upstream.
-    result = buildHouseRankingSvg({ rank, label: ribbonLabel ?? "", pw, topLight: !!topLight, style: s, accentColor, side, isAnime, words })
+    result = buildHouseRankingSvg({ rank, label: ribbonLabel ?? "", pw, topLight: !!topLight, style: s, accentColor, side, isAnime, words, font })
   } else if (isNetflix) {
     // Il nastro mostra il periodo sotto il numero ("Oggi", anche per gli
     // anime, come upstream); senza ribbonLabel la label/periodo di prima.
-    result = buildNetflixRankBadgeSVG(rank, pw, !!topLight, side, isAnime, ribbonLabel ?? periodText, words)
+    result = buildNetflixRankBadgeSVG(rank, pw, !!topLight, side, isAnime, ribbonLabel ?? periodText, words, font)
   } else if (s === "bar") {
-    result = buildRankingBarSvg(fullText, pw, fs, fg, bg)
+    result = buildRankingBarSvg(fullText, pw, fs, fg, bg, font)
   } else if (s === "pill") {
-    result = buildRankingPillSvg(fullText, fs, fg, bg)
+    result = buildRankingPillSvg(fullText, fs, fg, bg, font)
   } else if (s === "vetro") {
-    result = buildRankingGlassSvg(fullText, fs, fg, bg, !!topLight)
+    result = buildRankingGlassSvg(fullText, fs, fg, bg, !!topLight, font)
   } else if (s === "bordo") {
-    result = buildRankingBorderedSvg(fullText, fs, fg, !!topLight)
+    result = buildRankingBorderedSvg(fullText, fs, fg, !!topLight, font)
   } else {
     // colored: passa la tinta accent come flatBg (resta piatta); default: gradiente.
-    result = buildRankingDefaultSvg(fullText, fs, fg, bg, !!topLight, isColored ? bg : undefined)
+    result = buildRankingDefaultSvg(fullText, fs, fg, bg, !!topLight, isColored ? bg : undefined, font)
   }
   const png = await renderSVG(result.svg, result.w)
   return { png, w: result.w, h: result.h }
@@ -374,8 +381,9 @@ export async function renderRankingBadge(
   words?: RibbonWords,
   /** Sottotitolo dei nastri (vedi buildRankingBadgeSVG). */
   ribbonLabel?: string,
+  font: BadgeFont = "inter",
 ): Promise<{ png: Buffer; w: number; h: number }> {
-  const r = await buildRankingBadgeSVG(rank, pw, label, topLight, badgeStyle, accentColor, side, isAnime, scale, words, ribbonLabel)
+  const r = await buildRankingBadgeSVG(rank, pw, label, topLight, badgeStyle, accentColor, side, isAnime, scale, words, ribbonLabel, font)
   if (r) return r
   throw new Error(`SVG ranking badge failed: rank=${rank}`)
 }
@@ -384,8 +392,9 @@ export async function renderExtraBadge(
   label: string, pw: number, topLight?: boolean,
   badgeStyle?: ExtraBadgeStyle, accentColor?: string,
   scale = 100,
+  font: BadgeFont = "inter",
 ): Promise<{ png: Buffer; w: number; h: number }> {
-  const r = await buildExtraBadgeSVG(label, pw, topLight, badgeStyle, accentColor, scale)
+  const r = await buildExtraBadgeSVG(label, pw, topLight, badgeStyle, accentColor, scale, font)
   if (r) return r
   throw new Error(`SVG extra badge failed: ${label}`)
 }
@@ -433,6 +442,7 @@ export async function renderComingSoonRibbon(
   label: string,
   pw: number,
   side: "left" | "right" = "left",
+  font: BadgeFont = "inter",
 ): Promise<{ png: Buffer; w: number; h: number }> {
   const s = pw / 380
   const layout = comingSoonRibbonLayout(pw)
@@ -449,7 +459,7 @@ export async function renderComingSoonRibbon(
   // Tetto stretto (120, non tutta la banda): le parole lunghe
   // ("Prossimamente", "Prochainement"...) respirano invece di toccare i bordi.
   const maxTextW = Math.round(120 * s)
-  const textW = estimateTextWidth(text, fs)
+  const textW = estimateTextWidth(text, fs, font)
   if (textW > maxTextW) {
     fs = Math.max(12, Math.floor((fs * maxTextW) / textW))
   }
@@ -466,7 +476,7 @@ export async function renderComingSoonRibbon(
     `</defs>` +
     `<g transform="translate(${cx},${c}) rotate(${rot})" filter="url(#csShadow)">` +
     `<rect x="${-half}" y="${Math.round(-bandH / 2)}" width="${half * 2}" height="${bandH}" fill="url(#csGrad)"/>` +
-    `<text x="0" y="${Math.round(1 * s)}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(text)}" font-weight="800" font-size="${fs}" fill="#ffffff" letter-spacing="0.05em">${escSvg(text)}</text>` +
+    `<text x="0" y="${Math.round(1 * s)}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(text, font)}" font-weight="800" font-size="${fs}" fill="#ffffff" letter-spacing="0.05em">${escSvg(text)}</text>` +
     `</g></svg>`
   const png = await renderSVG(svg, CS)
   return { png, w: CS, h: CS }
@@ -478,12 +488,13 @@ export async function renderQualityBadge(
   topLight?: boolean,
   /** Applicata a valle come resize bitmap in poster-service, non qui. */
   _scale = 100,
+  font: BadgeFont = "inter",
 ): Promise<{ png: Buffer; w: number; h: number }> {
   // Base al 120% nativa (come il badge genere): lo slider `qscale` parte da 100.
   const fs = Math.round(Math.max(14 * 1.2 * pw / 380, 10))
   const bg = topLight ? "rgba(0,0,0,0.80)" : "rgba(255,255,255,0.80)"
   const fg = topLight ? "rgba(255,255,255,0.80)" : "rgba(0,0,0,0.80)"
-  const result = buildQualityBadgeSvg(quality, fs, fg, bg, !!topLight)
+  const result = buildQualityBadgeSvg(quality, fs, fg, bg, !!topLight, font)
   const png = await renderSVG(result.svg, result.w)
   return { png, w: result.w, h: result.h }
 }

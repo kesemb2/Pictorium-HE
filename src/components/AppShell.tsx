@@ -12,6 +12,7 @@ import { requestSettingsTab } from "@/lib/settings-tab"
 import { isMultiUserServer } from "@/lib/guest-guard"
 import { Settings, Plug, QrCode, Images, Library, KeyRound } from "lucide-react"
 import { DesktopCommunityLinks, MobileCommunityLinks } from "@/components/HeaderCommunityLinks"
+import { ThemeToggle } from "@/components/ThemeToggle"
 
 // Code-splitting: viste/modali pesanti caricate on-demand per ridurre il JS iniziale.
 const SettingsPanel = dynamic(() => import("@/components/SettingsPanel").then((m) => m.SettingsPanel), { ssr: false })
@@ -353,11 +354,16 @@ export function AppShell() {
             </button>
           )}
 
+          <div className="h-4 w-px bg-white/10 mx-0.5" />
+
+          {/* Theme Selector */}
+          <ThemeToggle />
+
           {/* Settings Button */}
           <button
             type="button"
-            aria-label={t("ui.settings")}
-            title={t("ui.settings")}
+            aria-label={t("ui.settingsTitle") || t("ui.settingsGlobal")}
+            title={t("ui.settingsGlobal")}
             onClick={(e) => { e.stopPropagation(); if (toolbarLocked) return; setSettingsOpen((o) => !o) }}
             disabled={toolbarLocked}
             aria-disabled={toolbarLocked || undefined}
@@ -370,6 +376,9 @@ export function AppShell() {
         </div>
       </div>
 
+      <div className="md:hidden fixed top-3 start-3 z-50 rounded-xl border border-border bg-surface shadow-sm">
+        <ThemeToggle className="[&>div]:start-0 [&>div]:end-auto" />
+      </div>
       <div className="relative z-10 max-w-[1680px] mx-auto px-3 sm:px-4 pt-3 sm:pt-5 md:pt-[68px] pb-24 md:pb-6">
         {/* Header globale (logo + tagline + toolbar mobile) */}
         {!(view === "edit" && selected) && (
@@ -397,7 +406,19 @@ export function AppShell() {
             src="/pictorium.svg"
             alt="Pictorium"
             decoding="async"
-            className="header-logo h-10 sm:h-14 md:h-24 w-auto cursor-pointer hover:brightness-110 active:scale-95 transition-all duration-150 mb-1.5 md:mb-2"
+            className="header-logo header-logo-dark h-10 sm:h-14 md:h-24 w-auto cursor-pointer hover:brightness-110 active:scale-95 transition-all duration-150 mb-1.5 md:mb-2"
+          />
+          {/* eslint-disable-next-line @next/next/no-img-element -- local SVG asset */}
+          <img
+            onClick={goHome}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goHome() } }}
+            role="button"
+            tabIndex={0}
+            aria-label={t("ui.homeBtn")}
+            src="/pictorium-light.svg"
+            alt="Pictorium"
+            decoding="async"
+            className="header-logo header-logo-light h-10 sm:h-14 md:h-24 w-auto cursor-pointer hover:brightness-110 active:scale-95 transition-all duration-150 mb-1.5 md:mb-2"
           />
           <p className="header-tagline text-center text-[10px] sm:text-xs md:text-sm mb-3.5 sm:mb-4 md:mb-4 max-w-xs sm:max-w-none">{t("ui.homeTagline")}</p>
           <MobileCommunityLinks />
@@ -521,6 +542,7 @@ export function AppShell() {
             setSettingsOpen={setSettingsOpen}
             exportData={exportData}
             importData={importData}
+            onOpenInstall={() => setInstallOpen(true)}
           />
         )}
       </div>
@@ -530,14 +552,14 @@ export function AppShell() {
           ref={mobileSettingsDialogRef}
           role="dialog"
           aria-modal="true"
-          aria-label={t("ui.settingsTitle")}
+          aria-label={t("ui.settingsGlobalTitle") || t("ui.settingsTitle")}
           className={`fixed inset-0 z-[70] bg-background md:hidden flex flex-col ${closingSettings ? "animate-fade-out" : "animate-fade-scale-in"}`}
         >
           <div className="fixed inset-0 z-[-1]" onClick={() => closeSettings()} />
           <div className="sticky top-0 z-20 bg-surface/95 backdrop-blur-2xl flex items-center justify-between px-4 py-3 border-b border-white/10 shadow-lg shadow-black/20 shrink-0">
             <h2 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
               <Settings className="w-4 h-4 text-accent-orange" />
-              <span>{t("ui.settingsTitle")}</span>
+              <span>{t("ui.settingsGlobalTitle") || t("ui.settingsTitle")}</span>
             </h2>
             <button
               type="button"
@@ -549,7 +571,16 @@ export function AppShell() {
             </button>
           </div>
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden max-w-lg mx-auto w-full">
-            <SettingsPanel mobile setSettingsOpen={setSettingsOpen} exportData={exportData} importData={importData} />
+            <SettingsPanel
+              mobile
+              setSettingsOpen={setSettingsOpen}
+              exportData={exportData}
+              importData={importData}
+              onOpenInstall={() => {
+                closeSettings()
+                setInstallOpen(true)
+              }}
+            />
           </div>
         </div>
       )}

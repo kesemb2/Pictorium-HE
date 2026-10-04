@@ -5,6 +5,8 @@ import { PICTORIUM_CATALOGS, PICTORIUM_PEOPLE_SEARCH_CATALOGS, regionJwName } fr
 import { getOriginFromRequest } from "@/lib/poster-public-url"
 import { decodeConfig, type PictoriumUserConfig } from "@/lib/config-token"
 import { normalizeCatalogIdKeys, normalizeCatalogIdList } from "@/lib/catalog-definitions"
+import { rankingSourceCatalogName } from "@/lib/ranking-source"
+import { pictoriumExtraForAddon } from "@/lib/stremio-addon"
 import { getServerDefaultsChecked, getServerDefaultsForUser } from "@/lib/server-defaults"
 import { getScopedUserId } from "@/lib/user-auth"
 import { getRegionDef, normalizeRegion, parseRegion } from "@/lib/regions"
@@ -58,6 +60,8 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
       disabledCatalogIds: namespaceDefaults.disabledCatalogIds,
       homeDisabledCatalogIds: namespaceDefaults.homeDisabledCatalogIds,
       customCatalogs: namespaceDefaults.customCatalogs,
+      rankingSourceMovie: namespaceDefaults.rankingSourceMovie,
+      rankingSourceSeries: namespaceDefaults.rankingSourceSeries,
       catalogRenames: namespaceDefaults.catalogRenames,
       catalogOrder: namespaceDefaults.catalogOrder,
     }
@@ -71,6 +75,8 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
       disabledCatalogIds: userConfig.disabledCatalogIds ?? namespaceDefaults.disabledCatalogIds,
       homeDisabledCatalogIds: userConfig.homeDisabledCatalogIds ?? namespaceDefaults.homeDisabledCatalogIds,
       customCatalogs: userConfig.customCatalogs ?? namespaceDefaults.customCatalogs,
+      rankingSourceMovie: userConfig.rankingSourceMovie ?? namespaceDefaults.rankingSourceMovie,
+      rankingSourceSeries: userConfig.rankingSourceSeries ?? namespaceDefaults.rankingSourceSeries,
       catalogRenames: userConfig.catalogRenames ?? namespaceDefaults.catalogRenames,
       catalogOrder: userConfig.catalogOrder ?? namespaceDefaults.catalogOrder,
       region: userConfig.region ?? namespaceDefaults.region,
@@ -92,7 +98,7 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
   // (namespaceDefaults già risolto sopra: nessuna seconda lettura.)
   const manifestRegion = getRegionDef(parseRegion(userConfig?.region) ?? normalizeRegion(namespaceDefaults.region))
   const manifestLang = manifestRegion.lang2
-  let catalogs: Array<{ id: string; name: string; type: "movie" | "series"; customBaseId?: string }> =
+  let catalogs: Array<{ id: string; name: string; type: "movie" | "series"; customBaseId?: string; addonExtra?: ReturnType<typeof pictoriumExtraForAddon> }> =
     PICTORIUM_CATALOGS.map((c) => ({ ...c, name: localizeCatalogName(c.name, manifestLang) }))
   if (userConfig?.disabledCatalogIds && userConfig.disabledCatalogIds.length > 0) {
     const disabledSet = new Set(userConfig.disabledCatalogIds)
@@ -101,6 +107,18 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
   if (userConfig?.customCatalogs && userConfig.customCatalogs.length > 0) {
     for (const cc of userConfig.customCatalogs) {
       if (cc.enabled !== false) {
+        // Ramo addon: un solo catalogo movie|series con le capacità della
+        // fonte (niente split mixed, niente generi generici).
+        if (cc.addon) {
+          catalogs.push({
+            id: `pictorium-custom-${cc.type}-${cc.id}`,
+            name: cc.name,
+            type: cc.type === "series" ? "series" : "movie",
+            customBaseId: cc.id,
+            addonExtra: pictoriumExtraForAddon(cc.addon),
+          })
+          continue
+        }
         if (cc.type === "mixed") {
           catalogs.push({
             id: `pictorium-custom-movie-${cc.id}`,
@@ -133,6 +151,18 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
     if (customName && customName.trim()) {
       return { ...cat, name: customName.trim() }
     }
+    // A Top 20 driven by a custom list must not be called JustWatch: the
+    // custom list name wins over the regional JW name (renames still first).
+    const rankingName = rankingSourceCatalogName(
+      cat.id,
+      cat.type,
+      {
+        customCatalogs: userConfig?.customCatalogs,
+        rankingSourceMovie: userConfig?.rankingSourceMovie,
+        rankingSourceSeries: userConfig?.rankingSourceSeries,
+      },
+    )
+    if (rankingName) return { ...cat, name: rankingName }
     const jwName = regionJwName(cat.id, cat.type, manifestRegion)
     if (jwName) return { ...cat, name: jwName }
     return cat
@@ -163,6 +193,17 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
 
   const contentCatalogs = catalogs.map((c) => {
     const isHomeHidden = homeDisabledSet.has(c.id) || (c.customBaseId ? homeDisabledSet.has(c.customBaseId) : false)
+    // Ramo addon: capacità della fonte, mai filtri generici aggiunti.
+    if (c.addonExtra) {
+      const extra = c.addonExtra.map((e) => ({ ...e }))
+      if (isHomeHidden && !extra.some((e) => e.isRequired)) {
+        const skippable = extra.find((e) => e.name === "skip")
+        if (skippable) skippable.isRequired = true
+        else if (extra.length > 0) extra[0].isRequired = true
+        else extra.push({ name: "skip", isRequired: true })
+      }
+      return { id: c.id, name: c.name, type: c.type, extra }
+    }
     const genreOptions = localizeGenreOptions(getCatalogGenreOptions(c.type, c.id), manifestLang)
     return {
       id: c.id,
