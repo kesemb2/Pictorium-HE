@@ -83,7 +83,8 @@ import { LAND_W, LAND_H, landscapeBackdropUrl, pillarboxLandscapeBase, cropBackd
 import { generatePosterBuffer, type GenerationInput } from "@/lib/poster-service"
 import { computeTopBadge } from "@/lib/poster-badge"
 import { containsHebrew } from "@/lib/badge-svg-shared"
-import { getFanartMovie, getFanartTv, isFanartEnabled, textlessOnly, type FanartImage } from "@/lib/fanart-artwork"
+import { getFanartMovie, getFanartTv, isFanartEnabled, type FanartImage } from "@/lib/fanart-artwork"
+import { checkFanartPosterText, isFanartAssetUrl, rejectTextedFanart, verifiedTextlessPosters, type FanartTextCheck } from "@/lib/fanart-textless"
 import { logoContrast, logoInkLuminance, posterLogoZoneLuminance } from "@/lib/logo-contrast"
 import { isTmdbTrending } from "@/lib/tmdb-trending-badge"
 import { parseDateFormat } from "@/lib/release-badge"
@@ -390,7 +391,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       } else {
         const posterState = getEffectiveRotationState(mapping)
         isRotating = posterState.isRotating
-        const rotated = await tryRotatePoster(mapping, posterState)
+        // La rotazione non deve mai cadere su un poster fanart con testo
+        // (liste salvate prima della verifica): il filtro gira solo quando la
+        // rotazione scatta davvero, con i verdetti in cache.
+        const rotated = await tryRotatePoster(mapping, posterState, (paths) => rejectTextedFanart(paths, req.signal))
         if (rotated) mapping = rotated
       }
     } catch (error) {
@@ -735,6 +739,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // sovrapporre mai il logo a un poster con testo, (2) forzare il profilo
   // blur non-clean sui default iniettati da Stremio (Golden Rule col client).
   let autoPosterClean = false
+  // Verdetti del controllo "senza testo" sui poster fanart (debug=1).
+  const fanartTextChecks: FanartTextCheck[] = []
   // Il rescue TVDB ha restituito artwork textless (base clean, logo tenuto)?
   let tvdbRescueClean = false
   // Lingua richiesta per artwork/logo (ramo non-mappato; default da posterRegion):
@@ -892,7 +898,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     // Poster non-clean (language !== null) ha già testo incorporato → mai
     // sovrapporre il logo in portrait. In landscape la base è il backdrop
     // (senza testo): il logo resta sempre, anche senza poster clean.
-    const isMappingClean = mapping.language === null
+    let isMappingClean = mapping.language === null
+    // Base fanart salvata come clean (rotazione o tile Fanart.tv, anche da
+    // prima della verifica): se il controllo visivo vede testo, non è clean →
+    // niente logo sopra il titolo stampato.
+    const mappedFanartBase = !isLandscape
+      ? [mapping.customPosterUrl, mapping.posterPath].find((u) => isFanartAssetUrl(u))
+      : undefined
+    if (isMappingClean && mappedFanartBase) {
+      const check = await checkFanartPosterText(mappedFanartBase, req.signal)
+      fanartTextChecks.push(check)
+      if (!check.textless) isMappingClean = false
+    }
     const effectiveMappingLogo = (isMappingClean || isLandscape) && !mapping.logoDisabled ? mapping.logoPath : null
     logoPath = queryLogo || effectiveMappingLogo
     if (!isMappingClean && !isLandscape) logoPath = null
@@ -1208,7 +1225,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         // in lingua. Solo portrait (il landscape ha già la base backdrop).
         // Fail-open: qualsiasi errore → fallback in lingua sotto.
         // Fork: prima di TVDB, il poster textless di fanart.tv (lang "None").
-        const fanartPoster = !isLandscape && cleanEnabled ? textlessOnly(fanart?.posters ?? [])[0] : undefined
+        // Solo "00" E verificato senza testo (fanart-textless): un tag sbagliato
+        // non deve mai far passare per clean un poster con il titolo stampato.
+        const fanartPoster = !isLandscape && cleanEnabled
+          ? (await verifiedTextlessPosters(fanart?.posters ?? [], { limit: 3, signal: renderAbort.signal, checks: fanartTextChecks }))[0]
+          : undefined
         let tvdbRescue: string | null = null
         if (!fanartPoster && !isLandscape && logoPath && tvdbApiKey && cleanEnabled) {
           try {
@@ -2079,6 +2100,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           logo: logoPath,
           backdrop: backdropPath,
         },
+        fanartTextCheck: fanartTextChecks,
         logoSelection: {
           requestedLang: posterRequestedLang,
           usedLang: logoChosenIso,

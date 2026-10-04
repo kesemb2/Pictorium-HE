@@ -64,8 +64,8 @@ describe("textlessOnly", () => {
     expect(textlessOnly(imgs).map((i) => i.id)).toEqual(["2"])
   })
 
-  it("treats a missing language as textless", () => {
-    expect(textlessOnly([{ id: "1", url: ASSET("a"), lang: "", likes: 0 }])).toHaveLength(1)
+  it("never treats a missing language as textless (unknown, not \"None\")", () => {
+    expect(textlessOnly([{ id: "1", url: ASSET("a"), lang: "", likes: 0 }])).toHaveLength(0)
   })
 })
 
