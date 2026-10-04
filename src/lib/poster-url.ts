@@ -10,7 +10,7 @@ import { hexLuminance, computeBottomLight } from "./accent-color"
 import { normalizeGenreName } from "./genre-normalize"
 import type { SearchResult, TMDBImage } from "./types"
 import type { EnrichedAnimeItem } from "./validation"
-import type { BadgeStyle, RankingBadgeStyle, QualityBadgeStyle } from "./badge-styles"
+import type { BadgeStyle, RankingBadgeStyle, QualityBadgeStyle, BadgeFont } from "./badge-styles"
 import type { VideoFormat } from "./av-specs"
 import type { PosterShape, NetworkLogoPosition } from "./types"
 import { BADGE_PRESET_ID_RE, BADGE_PRESET_REV_RE } from "./badge-preset"
@@ -21,6 +21,8 @@ interface BadgeParams {
   rankingBadges: boolean
   badgeStyle: BadgeStyle
   rankingBadgeStyle: RankingBadgeStyle
+  /** Font dei testi badge (default "inter" = resa storica). */
+  badgeFont?: BadgeFont | null
   /** Stile icone del badge qualità (default "standard"). */
   qualityBadgeStyle?: QualityBadgeStyle | null
   /** Formati A/V abilitati (dv, atmos, imax, hdr, hdr10plus). */
@@ -145,6 +147,12 @@ export function buildUrlPattern(bp: BadgeParams & {
   mdblistApiKey?: string
   /** Namespace utente (multi-user): emesso come `u=` nel template. */
   userId?: string | null
+  /**
+   * Config token firmato (solo spazi senza namespace): porta cataloghi e
+   * selezione Top 20 del device dove i defaults di spazio non bastano.
+   * Assente ovunque altrove (template byte-identici a prima).
+   */
+  configToken?: string | null
   /** Namespace con chiavi server-side: omette le chiavi dal template (il
    *  server le risolve da namespace via `u=`) invece di incollarle in chiaro. */
   omitApiKey?: boolean
@@ -173,6 +181,7 @@ export function buildUrlPattern(bp: BadgeParams & {
   if (bp.followSpace) {
     const params = buildStremioPosterSearchParams({
       user: bp.userId ?? undefined,
+      config: bp.configToken ?? undefined,
       followSpace: true,
     })
     if (!bp.omitApiKey && bp.tmdbKey) params.set("api_key", bp.tmdbKey)
@@ -188,6 +197,7 @@ export function buildUrlPattern(bp: BadgeParams & {
   const params = buildStremioPosterSearchParams({
     lang: bp.lang,
     user: bp.userId ?? undefined,
+    config: bp.configToken ?? undefined,
     globalBadges: bp.globalBadges,
     rankingBadges: bp.rankingBadges,
     badgeGenre: bp.badgeGenre,
@@ -199,6 +209,7 @@ export function buildUrlPattern(bp: BadgeParams & {
     separateRatings: bp.separateRatings,
     badgeStyle: bp.badgeStyle,
     rankingBadgeStyle: bp.rankingBadgeStyle,
+    badgeFont: bp.badgeFont ?? undefined,
     qualityBadgeStyle: bp.qualityBadgeStyle,
     gradientHeight: bp.gradientHeight,
     blurIntensity: bp.blurIntensity,
@@ -278,12 +289,15 @@ export function buildLogoUrlPattern(input: { lang: string; tmdbKey?: string }): 
   return str ? `${url}?${str}` : url
 }
 
-export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
+export function buildPreviewUrl(ps: PosterState, bp: BadgeParams, configToken?: string | null): string {
   if (!ps.selected) return ""
   const params: string[] = [`rv=${RENDER_VERSION}`]
   // Namespace utente: la preview WYSIWYG deve leggere il mapping del
   // namespace, altrimenti mostra il poster globale (desync).
   if (ps.userId) params.push(`u=${ps.userId}`)
+  // Config token (solo spazi senza namespace, mai altrove): porta cataloghi e
+  // selezione Top 20 del device dove i defaults di spazio non bastano.
+  if (configToken) params.push(`config=${encodeURIComponent(configToken)}`)
   if (ps.tmdbKey) params.push(`api_key=${encodeURIComponent(ps.tmdbKey)}`)
   params.push(`badges=${bp.globalBadges ? "1" : "0"}`)
   params.push(`ranking=${bp.rankingBadges ? "1" : "0"}`)
@@ -372,6 +386,9 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams): string {
   params.push(`ts=${bp.topShade ?? 50}`)
   params.push(`bs=${bp.badgeStyle}`)
   params.push(`rs=${bp.rankingBadgeStyle}`)
+  // Font badge SEMPRE esplicito in preview (come bs/rs): senza, un mapping
+  // salvato con font diverso scavalcerebbe la scelta editor (desync WYSIWYG).
+  params.push(`bfont=${bp.badgeFont ?? "inter"}`)
   // Stile icone qualità SEMPRE esplicito in preview (come bs/rs): senza, un
   // mapping salvato con stile diverso scavalcerebbe la scelta editor (desync).
   params.push(`qbs=${bp.qualityBadgeStyle === "mono" || bp.qualityBadgeStyle === "color" ? bp.qualityBadgeStyle : "standard"}`)
@@ -515,4 +532,120 @@ function computeBadgeParams(ps: PosterState, bp: BadgeParams): string[] {
   }
   // For auto badges, let the server compute from its own TMDB data
   return params
+}
+
+export interface DefaultsPreviewParams {
+  defaultLogoScale?: number | null
+  defaultLogoOffsetX?: number | null
+  defaultLogoOffsetY?: number | null
+  tmdbKey?: string
+  userId?: string | null
+  lang?: string
+  defaultGlobalBadges?: boolean
+  defaultRankingBadges?: boolean
+  defaultBadgeGenre?: boolean
+  defaultBadgeYear?: boolean
+  defaultBadgeRating?: boolean
+  defaultBadgeQuality?: boolean
+  defaultCustomRatings?: boolean
+  defaultSeparateRatings?: boolean
+  defaultRatingSources?: string[]
+  defaultBadgeStyle?: BadgeStyle
+  defaultRankingBadgeStyle?: RankingBadgeStyle
+  defaultBadgeFont?: BadgeFont | null
+  defaultQualityBadgeStyle?: QualityBadgeStyle | null
+  defaultVideoFormats?: readonly VideoFormat[] | null
+  defaultBlurEnabled?: boolean
+  defaultBlurIntensity?: number
+  defaultBlurFade?: number
+  defaultBlurDarkness?: number
+  defaultTintStrength?: number
+  defaultTopShade?: number
+  defaultGradientHeight?: number
+  defaultTopBadgeScale?: number
+  defaultTopBadgeOffsetX?: number
+  defaultTopBadgeOffsetY?: number
+  defaultGenreBadgeScale?: number
+  defaultGenreBadgeOffsetX?: number
+  defaultGenreBadgeOffsetY?: number
+  defaultQualityBadgeScale?: number
+  defaultQualityBadgeOffsetX?: number
+  defaultQualityBadgeOffsetY?: number
+  defaultNetworkLogoScale?: number
+  defaultNetworkLogoOffsetX?: number
+  defaultNetworkLogoOffsetY?: number
+  defaultNetworkLogo?: boolean
+  defaultNetworkLogoPosition?: NetworkLogoPosition
+  defaultRibbonEnabled?: boolean
+  defaultRibbonSide?: "left" | "right"
+  defaultPosterShape?: PosterShape
+  defaultLogoAlign?: "left" | "center" | null
+  defaultDateFormat?: DateFormat | null
+  defaultRegion?: string
+}
+
+export const DEFAULTS_PREVIEW_DEMO_MEDIA = {
+  mediaType: "movie",
+  id: 19995,
+} as const
+
+export function buildDefaultsPreviewUrl(bp: DefaultsPreviewParams): string {
+  const params: string[] = [`rv=${RENDER_VERSION}`, "preview=1"]
+  if (bp.tmdbKey) params.push(`api_key=${encodeURIComponent(bp.tmdbKey)}`)
+  if (bp.userId) params.push(`u=${encodeURIComponent(bp.userId)}`)
+  // Explicit zero restores automatic sizing/no offset instead of inheriting a saved override.
+  params.push(`scale=${bp.defaultLogoScale ?? 0}`)
+  params.push(`ox=${bp.defaultLogoOffsetX ?? 0}`)
+  params.push(`oy=${bp.defaultLogoOffsetY ?? 0}`)
+  params.push(`badges=${bp.defaultGlobalBadges !== false ? "1" : "0"}`)
+  params.push(`ranking=${bp.defaultRankingBadges !== false ? "1" : "0"}`)
+  params.push(`bg=${bp.defaultBadgeGenre !== false ? "1" : "0"}`)
+  params.push(`by=${bp.defaultBadgeYear !== false ? "1" : "0"}`)
+  params.push(`br=${bp.defaultBadgeRating !== false ? "1" : "0"}`)
+  params.push(`bq=${bp.defaultBadgeQuality !== false ? "1" : "0"}`)
+  params.push(`cr=${bp.defaultCustomRatings === false ? "0" : "1"}`)
+  params.push(`sep=${bp.defaultSeparateRatings ? "1" : "0"}`)
+  if (bp.defaultRatingSources && bp.defaultRatingSources.length > 0) {
+    params.push(`rsrc=${encodeURIComponent(bp.defaultRatingSources.join(","))}`)
+  }
+  params.push(`bs=${bp.defaultBadgeStyle ?? "shadow"}`)
+  params.push(`rs=${bp.defaultRankingBadgeStyle ?? "default"}`)
+  params.push(`bfont=${bp.defaultBadgeFont ?? "inter"}`)
+  params.push(`qbs=${bp.defaultQualityBadgeStyle === "mono" || bp.defaultQualityBadgeStyle === "color" ? bp.defaultQualityBadgeStyle : "standard"}`)
+  if (bp.defaultVideoFormats !== undefined && bp.defaultVideoFormats !== null) {
+    params.push(`formats=${bp.defaultVideoFormats.length === 0 ? "none" : bp.defaultVideoFormats.join(",")}`)
+  }
+  params.push(`gradHeight=${bp.defaultGradientHeight ?? 30}`)
+  params.push(`blur=${bp.defaultBlurIntensity ?? 20}`)
+  params.push(`bf=${bp.defaultBlurFade ?? 50}`)
+  params.push(`bd=${bp.defaultBlurDarkness ?? 30}`)
+  params.push(`be=${bp.defaultBlurEnabled !== false ? "1" : "0"}`)
+  params.push(`tint=${bp.defaultTintStrength ?? 20}`)
+  params.push(`ts=${bp.defaultTopShade ?? 50}`)
+  params.push(`tscale=${bp.defaultTopBadgeScale ?? 100}`)
+  params.push(`tox=${bp.defaultTopBadgeOffsetX ?? 0}`)
+  params.push(`toy=${bp.defaultTopBadgeOffsetY ?? 0}`)
+  params.push(`gscale=${bp.defaultGenreBadgeScale ?? 100}`)
+  params.push(`gox=${bp.defaultGenreBadgeOffsetX ?? 0}`)
+  params.push(`goy=${bp.defaultGenreBadgeOffsetY ?? 0}`)
+  params.push(`qscale=${bp.defaultQualityBadgeScale ?? 100}`)
+  params.push(`qox=${bp.defaultQualityBadgeOffsetX ?? 0}`)
+  params.push(`qoy=${bp.defaultQualityBadgeOffsetY ?? 0}`)
+  params.push(`netscale=${bp.defaultNetworkLogoScale ?? 100}`)
+  params.push(`nox=${bp.defaultNetworkLogoOffsetX ?? 0}`)
+  params.push(`noy=${bp.defaultNetworkLogoOffsetY ?? 0}`)
+  params.push(`netLogo=${bp.defaultNetworkLogo !== false ? "1" : "0"}`)
+  params.push(`netPos=${bp.defaultNetworkLogoPosition === "top" ? "top" : "auto"}`)
+  params.push(`ribbon=${bp.defaultRibbonEnabled === false ? "0" : "1"}`)
+  if (bp.defaultRibbonSide) params.push(`side=${bp.defaultRibbonSide}`)
+  params.push(`shape=${bp.defaultPosterShape === "landscape" ? "landscape" : "poster"}`)
+  if (bp.defaultPosterShape === "landscape" && bp.defaultLogoAlign) {
+    params.push(`align=${bp.defaultLogoAlign === "left" ? "left" : "center"}`)
+  }
+  if (bp.lang) params.push(`lang=${encodeURIComponent(bp.lang)}`)
+  if (bp.defaultRegion) params.push(`region=${encodeURIComponent(bp.defaultRegion)}`)
+  if (bp.defaultDateFormat) params.push(`df=${bp.defaultDateFormat}`)
+
+  const qs = "?" + params.join("&")
+  return `${getDomain()}/api/poster/${DEFAULTS_PREVIEW_DEMO_MEDIA.mediaType}/${DEFAULTS_PREVIEW_DEMO_MEDIA.id}${qs}`
 }

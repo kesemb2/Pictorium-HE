@@ -8,11 +8,27 @@ import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { getWarmupCatalogs } from "@/lib/catalog-definitions"
 import { createLogger } from "@/lib/logger"
 import { z } from "zod"
-import { BADGE_STYLES, RANKING_BADGE_STYLES, QUALITY_BADGE_STYLES } from "@/lib/badge-styles"
+import { BADGE_STYLES, RANKING_BADGE_STYLES, QUALITY_BADGE_STYLES, BADGE_FONTS } from "@/lib/badge-styles"
 import { readJsonBody, BodyTooLargeError, DEFAULT_MAX_BODY_BYTES } from "@/lib/read-body"
 import { envWithFallback } from "@/lib/env-compat"
 
 const log = createLogger("defaults")
+
+const addonExtraSchema = z.object({
+  name: z.string().max(40),
+  isRequired: z.boolean().optional(),
+  options: z.array(z.string().max(40)).max(100).optional(),
+  optionsLimit: z.number().finite().optional(),
+})
+
+const addonSourceSchema = z.object({
+  manifestUrl: z.string().max(500),
+  catalogId: z.string().max(100),
+  catalogType: z.enum(["movie", "series"]),
+  extra: z.array(addonExtraSchema).max(20).optional(),
+  addonId: z.string().max(100).optional(),
+  addonName: z.string().max(100).optional(),
+})
 
 const customCatalogSchema = z.object({
   id: z.string().max(64),
@@ -21,11 +37,13 @@ const customCatalogSchema = z.object({
   url: z.string().max(500),
   enabled: z.boolean().optional(),
   datasetId: z.string().max(64).optional(),
+  addon: addonSourceSchema.optional(),
 })
 
 const defaultsSchema = z.object({
   badgeStyle: z.enum(BADGE_STYLES).optional(),
   rankingBadgeStyle: z.enum(RANKING_BADGE_STYLES).optional(),
+  badgeFont: z.enum(BADGE_FONTS).optional(),
   qualityBadgeStyle: z.enum(QUALITY_BADGE_STYLES).nullable().optional(),
   videoFormats: z.array(z.enum(["dv", "hdr", "hdr10plus", "atmos", "imax"])).nullable().optional(),
   defaultVideoFormats: z.array(z.enum(["dv", "hdr", "hdr10plus", "atmos", "imax"])).nullable().optional(),
@@ -137,6 +155,8 @@ const defaultsSchema = z.object({
     networkLogoOffsetY: z.number().optional(),
   }).optional(),
   customCatalogs: z.array(customCatalogSchema).optional(),
+  rankingSourceMovie: z.string().max(64).optional(),
+  rankingSourceSeries: z.string().max(64).optional(),
   disabledCatalogIds: z.array(z.string().max(80)).optional(),
   homeDisabledCatalogIds: z.array(z.string().max(80)).optional(),
   catalogOrder: z.array(z.string().max(80)).optional(),

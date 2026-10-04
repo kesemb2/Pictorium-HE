@@ -22,7 +22,7 @@ test("home loads and exposes main actions", async ({ page }) => {
   // Selettore preciso sul bottone manifest: il modale contiene DUE bottoni
   // "Copia" (manifest + riga template PatternRow) e il bare `Copia` causava
   // strict mode violation con 2 elementi.
-  await expect(page.getByRole("button", { name: /Copia Link Manifest|Copy manifest link/i })).toBeVisible()
+  await expect(page.getByRole("button", { name: /Copia link|Copia Link Manifest|Copy link|Copy manifest link/i })).toBeVisible()
   await page.keyboard.press("Escape")
   await expect(page.getByRole("button", { name: /I miei poster/i })).toBeVisible()
   await expect(page.getByRole("button", { name: /Impostazioni|settings/i }).first()).toBeVisible()
@@ -81,7 +81,7 @@ test("can open an editor from search", async ({ page }) => {
   // non ha heading visibile ("Poster" è solo nell'aria-label della sezione) e
   // i testi d'aiuto contengono la parola "poster" (strict mode violation).
   await expect(page.getByRole("heading", { name: "Anteprima" })).toBeVisible({ timeout: 10_000 })
-  await expect(page.getByRole("region", { name: /Poster selection/i })).toBeVisible()
+  await expect(page.getByRole("region", { name: /Poster selection|selezione poster/i })).toBeVisible()
   await expect(page.getByRole("tab", { name: "Loghi" })).toBeVisible()
 })
 

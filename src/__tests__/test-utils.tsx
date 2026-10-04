@@ -3,6 +3,7 @@ import { render } from "@testing-library/react"
 import { PictoriumProvider } from "@/lib/context"
 import type { PictoriumCtx } from "@/lib/context"
 import { PosterEditorProvider } from "@/lib/contexts/PosterEditorContext"
+import { ThemeProvider } from "@/lib/contexts/ThemeContext"
 import { t } from "@/lib/i18n"
 import { STREAMING_PLATFORMS } from "@/lib/utils"
 
@@ -141,6 +142,7 @@ export const MOCK_CTX: PictoriumCtx = {
   addCustomCatalog: stubFn,
   removeCustomCatalog: stubFn,
   toggleCustomCatalog: stubFn,
+  catalogsSyncNonce: 0,
   disabledCatalogIds: [],
   setDisabledCatalogIds: stubFn,
   toggleBuiltinCatalog: stubFn,
@@ -155,15 +157,24 @@ export const MOCK_CTX: PictoriumCtx = {
   renameCatalog: stubFn,
   resetCatalogNames: stubFn,
   resetCatalogOrder: stubFn,
+  rankingSourceMovie: "",
+  rankingSourceSeries: "",
+  setRankingSource: async () => true,
+  rankSourceNonce: 0,
+  refreshCurrentRank: stubFn,
+  localConfigToken: null,
+  localConfigTokenStatus: "off",
 }
 
 export function createWrapper(overrides?: Partial<PictoriumCtx>) {
   const ctx = { ...MOCK_CTX, ...overrides }
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <PosterEditorProvider>
-        <PictoriumProvider value={ctx}>{children}</PictoriumProvider>
-      </PosterEditorProvider>
+      <ThemeProvider>
+        <PosterEditorProvider>
+          <PictoriumProvider value={ctx}>{children}</PictoriumProvider>
+        </PosterEditorProvider>
+      </ThemeProvider>
     )
   }
 }

@@ -10,13 +10,29 @@ import { z } from "zod"
 // Batch B: clamp condiviso da image-utils.ts (semantica standard, senza round)
 import { clamp } from "@/lib/image-utils"
 import { envWithFallback } from "@/lib/env-compat"
-import { BADGE_STYLES, RANKING_BADGE_STYLES, QUALITY_BADGE_STYLES } from "@/lib/badge-styles"
+import { BADGE_STYLES, RANKING_BADGE_STYLES, QUALITY_BADGE_STYLES, BADGE_FONTS } from "@/lib/badge-styles"
 
 // ---- Zod schema (Batch C: sostituisce validazione manuale) ----
 
 const badgeStyleSchema = z.enum(BADGE_STYLES)
 const rankingBadgeStyleSchema = z.enum(RANKING_BADGE_STYLES)
 const ribbonSideSchema = z.enum(["left", "right"])
+
+const addonExtraSchema = z.object({
+  name: z.string().max(40),
+  isRequired: z.boolean().optional(),
+  options: z.array(z.string().max(40)).max(100).optional(),
+  optionsLimit: z.number().finite().optional(),
+})
+
+const addonSourceSchema = z.object({
+  manifestUrl: z.string().max(500),
+  catalogId: z.string().max(100),
+  catalogType: z.enum(["movie", "series"]),
+  extra: z.array(addonExtraSchema).max(20).optional(),
+  addonId: z.string().max(100).optional(),
+  addonName: z.string().max(100).optional(),
+})
 
 const customCatalogSchema = z.object({
   id: z.string().max(64),
@@ -25,6 +41,7 @@ const customCatalogSchema = z.object({
   url: z.string().max(500),
   enabled: z.boolean().optional(),
   datasetId: z.string().max(64).optional(),
+  addon: addonSourceSchema.optional(),
 })
 
 export const configTokenSchema = z.object({
@@ -39,6 +56,8 @@ export const configTokenSchema = z.object({
   separateRatings: z.boolean().optional(),
   badgeStyle: badgeStyleSchema,
   rankingBadgeStyle: rankingBadgeStyleSchema,
+  /** Font dei testi badge: opzionale (token vecchi senza campo restano validi). */
+  badgeFont: z.enum(BADGE_FONTS).nullable().optional(),
   // Stile icone qualità: opzionale+nullable (token vecchi senza campo restano validi).
   qualityBadgeStyle: z.enum(QUALITY_BADGE_STYLES).nullable().optional(),
   blurEnabled: z.boolean(),
@@ -94,6 +113,11 @@ export const configTokenSchema = z.object({
   catalogOrder: z.array(z.string().max(80)).optional(),
   catalogRenames: z.record(z.string().max(80), z.string().max(100)).optional(),
   customCatalogs: z.array(customCatalogSchema).optional(),
+  // Top 20 global ranking source (custom catalog id) per slot: absent =
+  // JustWatch (old tokens stay valid). The bound mirrors the custom id;
+  // existence and type compatibility are decided by the resolver.
+  rankingSourceMovie: z.string().max(64).optional(),
+  rankingSourceSeries: z.string().max(64).optional(),
   disabledCatalogIds: z.array(z.string().max(80)).optional(),
   homeDisabledCatalogIds: z.array(z.string().max(80)).optional(),
   episodeMetadataSource: z.enum(["tmdb", "tvdb"]).optional(),
@@ -104,6 +128,28 @@ export const configTokenSchema = z.object({
 })
 
 export type PictoriumUserConfig = z.infer<typeof configTokenSchema>
+
+/**
+ * Catalog-only token payload (no visuals): lets a device carry its catalog
+ * and Top 20 selection where the namespace is not enough (local-only /
+ * profileless spaces) through the existing `?config=` contract. Every
+ * consumer already merges missing fields from namespace/defaults, so absent
+ * visuals safely fall through to mapping > defaults. Keys are allowlisted
+ * (no numerics: nothing here can sway the render math), bounds mirror the
+ * full schema.
+ */
+export const partialCatalogTokenSchema = z.object({
+  customCatalogs: z.array(customCatalogSchema).optional(),
+  rankingSourceMovie: z.string().max(64).optional(),
+  rankingSourceSeries: z.string().max(64).optional(),
+  disabledCatalogIds: z.array(z.string().max(80)).optional(),
+  homeDisabledCatalogIds: z.array(z.string().max(80)).optional(),
+  catalogOrder: z.array(z.string().max(80)).optional(),
+  catalogRenames: z.record(z.string().max(80), z.string().max(100)).optional(),
+  region: z.string().max(32).optional(),
+}).strict()
+
+export type PartialCatalogUserConfig = z.infer<typeof partialCatalogTokenSchema>
 
 // ---- HMAC setup ----
 

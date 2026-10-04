@@ -65,14 +65,20 @@ function withTimeout(signal: AbortSignal | undefined, ms: number): AbortSignal {
 }
 
 /**
- * Immagini da analizzare per una fonte, dalla più leggera: path TMDB → w342;
- * asset fanart → anteprima, poi originale; artwork TVDB → l'URL. Altre fonti:
- * nessuna (mai clean).
+ * URL già risolti da analizzare per una fonte, dalla più leggera: path TMDB →
+ * w342; asset fanart → anteprima, poi originale; artwork TVDB → l'URL. Altre
+ * fonti: nessuna (mai clean). Ogni URL passa da `imgSrc` una volta sola: un
+ * URL TMDB già costruito non va riconvalidato contro la allowlist esterna
+ * (con una base immagini custom, es. il mock e2e, verrebbe rifiutato).
  */
 function analysisSources(source: string): string[] {
-  if (source.startsWith("/")) return [imgSrc(source, "w342")]
-  if (isFanartAssetUrl(source)) return [fanartPreviewUrl(source), source]
-  if (source.startsWith(`${ARTWORKS_BASE}/`)) return [source]
+  try {
+    if (source.startsWith("/")) return [imgSrc(source, "w342")]
+    if (isFanartAssetUrl(source)) return [imgSrc(fanartPreviewUrl(source)), imgSrc(source)]
+    if (source.startsWith(`${ARTWORKS_BASE}/`)) return [imgSrc(source)]
+  } catch {
+    // URL fuori allowlist: mai clean.
+  }
   return []
 }
 
@@ -87,7 +93,7 @@ export async function checkPosterText(source: string, signal?: AbortSignal): Pro
   const sig = withTimeout(signal, CHECK_TIMEOUT_MS)
   for (const candidate of candidates) {
     try {
-      buf = await fetchImg(imgSrc(candidate), sig)
+      buf = await fetchImg(candidate, sig)
       break
     } catch {
       // Anteprima assente: si riprova con l'originale; poi fail-closed.

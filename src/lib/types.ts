@@ -1,4 +1,4 @@
-import type { BadgeStyle, RankingBadgeStyle, QualityBadgeStyle } from "./badge-styles"
+import type { BadgeStyle, RankingBadgeStyle, QualityBadgeStyle, BadgeFont } from "./badge-styles"
 import type { VideoFormat } from "./av-specs"
 /** Formato canvas del poster: verticale standard o orizzontale 16:9 (Nuvio). */
 export type PosterShape = "poster" | "landscape"
@@ -31,6 +31,8 @@ export interface SearchResult {
   first_air_date?: string
   vote_average?: number
   imdb_id?: string | null
+  /** Local anime associations; multiple seasons may share a TMDB series. */
+  anime_ids?: { kitsu: number[]; mal: number[] }
 }
 
 export function toSearchResult(partial: { id?: number | null; media_type?: string; title?: string | null; name?: string | null; poster_path?: string | null; release_date?: string; first_air_date?: string; vote_average?: number; imdb_id?: string | null }): SearchResult {
@@ -146,6 +148,8 @@ export interface Mapping {
   wikidataId?: string | null
   badgeStyle?: BadgeStyle | null
   rankingBadgeStyle?: RankingBadgeStyle | null
+  /** Font dei testi badge per-titolo ("inter" = resa storica). */
+  badgeFont?: BadgeFont | null
   /** Stile icone del badge qualità per-titolo (standard = pill testuale). */
   qualityBadgeStyle?: QualityBadgeStyle | null
   /** Formati A/V abilitati per il badge qualità (dv, hdr, hdr10plus, atmos, imax). */
@@ -288,4 +292,9 @@ export interface CustomCatalogConfig {
   /** Riferimento allo snapshot CSV importato (namespace utente): gli item
    *  vivono server-side, mai nel config token. */
   datasetId?: string
+  /** Import da addon Stremio via manifest (MVP): riferimento alla sorgente +
+   *  catalogo originale + capacità dichiarate. Quando presente, il ramo
+   *  addon preserva ordine/duplicati/ID originali (niente normalizzazione
+   *  delle liste custom). */
+  addon?: import("./stremio-addon").StremioAddonSource
 }

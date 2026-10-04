@@ -1,11 +1,12 @@
 "use client"
 
-import { Globe, Palette, RectangleHorizontal, RectangleVertical, Sliders, Sparkles, Tv } from "lucide-react"
+import { Globe, Palette, RectangleHorizontal, RectangleVertical, Sliders, Sparkles, Tv, Sun } from "lucide-react"
 import { usePSelector } from "@/lib/context"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { usePosterEditor } from "@/lib/contexts/PosterEditorContext"
 import { Toggle } from "@/components/Toggle"
-import { REGIONS, regionLabel } from "@/lib/regions"
+import { ThemeToggle } from "@/components/ThemeToggle"
+import { CHART_REGIONS, GLOBAL_REGION_CODE, regionLabel } from "@/lib/regions"
 import { UI_LANGUAGES } from "@/lib/utils"
 
 /** Scheda Prefs (localizzazione, metadati episodi, automazioni). Estratta da SettingsPanel: solo JSX + context. */
@@ -56,9 +57,9 @@ export function PrefsPanel({ active }: { active: boolean }) {
               aria-label={t("ui.region")}
               className="max-w-[210px] truncate px-3 py-2 min-h-[40px] rounded-xl text-xs sm:text-sm font-medium bg-white/5 text-zinc-100 border border-white/10 hover:bg-white/10 focus:outline-none focus:border-accent-orange/50 cursor-pointer touch-manipulation"
             >
-              {REGIONS.map((r) => (
+              {CHART_REGIONS.map((r) => (
                 <option key={r.code} value={r.code} className="bg-zinc-900 text-zinc-100">
-                  {r.flag} {regionLabel(r, lang)}
+                  {r.flag} {r.code === GLOBAL_REGION_CODE ? t("ui.regionGlobal") : regionLabel(r, lang)}
                 </option>
               ))}
             </select>
@@ -254,6 +255,13 @@ export function PrefsPanel({ active }: { active: boolean }) {
                 <span>{t("ui.posterShapeLandscape")}</span>
               </button>
             </div>
+          </div>
+          <div className="flex items-center justify-between py-1.5">
+            <span className="text-zinc-200 text-xs sm:text-sm font-medium flex items-center gap-2">
+              <Sun className="w-4 h-4 text-accent-orange shrink-0" />
+              <span>{t("ui.theme")}</span>
+            </span>
+            <ThemeToggle showLabels />
           </div>
           <div className="flex items-center justify-between py-1.5">
             <span className="text-zinc-200 text-xs sm:text-sm font-medium flex items-center gap-2">

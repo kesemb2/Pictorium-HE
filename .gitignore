@@ -19,6 +19,7 @@
 /.next-e2e-probe/
 /.next-load/
 /.next-bench/
+/.next-tune/
 /out/
 
 # production
@@ -106,4 +107,7 @@ skills-lock.json
 # probe temporanei
 .probe-*
 .od-probe-*
+
+# review artifacts locali (log, png, zip, audit rigenerabili — mai nel repo)
+/artifacts/
 

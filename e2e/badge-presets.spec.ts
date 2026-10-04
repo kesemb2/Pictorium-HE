@@ -10,6 +10,16 @@ import { test, expect } from "@playwright/test"
 const MOVIE_TMDB = 19995 // Avatar (mock server)
 const POSTER_PATH = "/mocked/avatar.jpg"
 
+// Fork: l'interfaccia parte in ebraico; le asserzioni testuali qui sotto
+// usano inglese/italiano, quindi la lingua UI è fissata come negli altri spec.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("preferred_lang", "it")
+    } catch {}
+  })
+})
+
 function posterUrl(params: Record<string, string>): string {
   const qs = new URLSearchParams({ ...params, poster: POSTER_PATH, preview: "1" })
   return `/api/poster/movie/${MOVIE_TMDB}?${qs.toString()}`
@@ -24,18 +34,18 @@ test("Badge Lab renders with live preview", async ({ page }) => {
   await expect(page.getByText("8.5", { exact: false }).first()).toBeVisible({ timeout: 10_000 })
   // Azioni principali presenti.
   await expect(page.getByRole("button", { name: /Save preset|Salva preset|ui\.labSave/ })).toBeVisible()
-  await expect(page.getByText(/Import .json|Importa .json|ui\.labImport/)).toBeVisible()
-  await expect(page.getByRole("button", { name: /Export .json|Esporta .json|ui\.labExport/ })).toBeVisible()
+  await expect(page.getByText(/^(Import|Importa)( \.json)?$|ui\.labImport/).first()).toBeVisible()
+  await expect(page.getByRole("button", { name: /^(Export|Esporta)( \.json)?$|ui\.labExport/ })).toBeVisible()
   // Cambio template → la preview si aggiorna senza roundtrip (stesso tick).
   await page.getByRole("button", { name: "type", exact: true }).click()
-  const template = page.getByLabel(/Text template|Template testo|ui\.labTemplate/)
+  const template = page.getByLabel(/Text template|Template testo|Modello di testo|ui\.labTemplate/)
   await template.fill("HELLO")
   await expect(page.getByText("HELLO", { exact: false }).first()).toBeVisible({ timeout: 10_000 })
 })
 
 test("Community page renders with catalog controls", async ({ page }) => {
   await page.goto("/presets")
-  await expect(page.getByRole("heading", { name: /Community presets|Preset della community|ui\.presetsTitle/ })).toBeVisible({
+  await expect(page.getByRole("heading", { name: /Community presets|Preset della community|Preset dei badge|Badge presets|ui\.presetsTitle/ })).toBeVisible({
     timeout: 30_000,
   })
   await expect(page.getByLabel(/Sort|Ordina|ui\.presetsSort/)).toBeVisible()
