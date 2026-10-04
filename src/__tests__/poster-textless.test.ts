@@ -20,7 +20,7 @@ vi.mock("@/lib/poster-render-helpers", async (importOriginal) => {
   }
 })
 
-const { checkFanartPosterText, fanartPreviewUrl, verifiedTextlessPosters, fanartPostersAsTmdb, rejectTextedFanart } = await import("@/lib/fanart-textless")
+const { checkFanartPosterText, fanartPreviewUrl, verifiedTextlessPosters, fanartPostersAsTmdb, rejectTextedFanart } = await import("@/lib/poster-textless")
 
 const asset = (name: string) => `${FANART_ASSET_PREFIX}fanart/movies/1/movieposter/${name}.jpg`
 const preview = (name: string) => `${FANART_ASSET_PREFIX}preview/movies/1/movieposter/${name}.jpg`

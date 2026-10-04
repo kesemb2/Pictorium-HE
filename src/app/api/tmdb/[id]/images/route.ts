@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { getImages, getExternalIds, resolveRouteApiKey } from "@/lib/tmdb"
 import { getFanartMovie, getFanartTv, isFanartEnabled, toTmdbShape, type FanartArtwork } from "@/lib/fanart-artwork"
-import { fanartPostersAsTmdb } from "@/lib/fanart-textless"
+import { fanartPostersAsTmdb, verifyCleanPool, CLEAN_VERIFY_LIMIT, type PosterTextCheck } from "@/lib/poster-textless"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { cacheGet, cacheSet } from "@/lib/cache"
 import { jsonGzip } from "@/lib/json-response"
@@ -15,8 +15,6 @@ type RouteParams = { id: string }
  * qui non deve mai far fallire la richiesta: le immagini TMDB ci sono comunque,
  * e fanart è un di più.
  */
-/** Quanti poster "00" analizzare per titolo (in parallelo, anteprime piccole). */
-const FANART_VERIFY_LIMIT = 6
 
 async function fanartImages(type: "movie" | "tv", id: number, apiKey?: string, signal?: AbortSignal) {
   if (!isFanartEnabled()) return { posters: [], logos: [], backdrops: [] }
@@ -30,9 +28,9 @@ async function fanartImages(type: "movie" | "tv", id: number, apiKey?: string, s
     } else {
       art = await getFanartMovie(id)
     }
-    // Poster: clean SOLO se "00" e verificati senza testo (fanart-textless);
+    // Poster: clean SOLO se "00" e verificati senza testo (poster-textless);
     // gli altri restano visibili ma mai clean (niente auto-scelta/rotazione).
-    const posters = await fanartPostersAsTmdb(art.posters, { limit: FANART_VERIFY_LIMIT, signal })
+    const posters = await fanartPostersAsTmdb(art.posters, { limit: CLEAN_VERIFY_LIMIT, signal })
     return { posters, logos: toTmdbShape(art.logos), backdrops: toTmdbShape(art.backgrounds) }
   } catch {
     return { posters: [], logos: [], backdrops: [] }
@@ -51,9 +49,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   const apiKey = await resolveRouteApiKey(req)
   // La chiave di cache include fanart: accendere o spegnere la chiave d'istanza
   // deve cambiare la risposta, non riusare quella di prima.
-  // `ft2`: poster fanart clean solo se verificati senza testo; le liste in
-  // cache prima di questa regola non vanno riusate.
-  const cacheKey = `images:${type}:${id}:${languages}:${isFanartEnabled() ? "fa-ft2" : "x"}`
+  // `ft3`: poster clean (TMDB e fanart) solo se verificati senza testo; le
+  // liste in cache prima di questa regola non vanno riusate.
+  const cacheKey = `images:${type}:${id}:${languages}:ft3:${isFanartEnabled() ? "fa" : "x"}`
   const acceptEncoding = req.headers.get("accept-encoding")
   const cached = cacheGet(cacheKey)
   if (cached) return jsonGzip(cached, 200, undefined, acceptEncoding)
@@ -67,15 +65,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   } catch {
     return jsonGzip({ error: "TMDB images unavailable" }, 502, undefined, acceptEncoding)
   }
+  // Clean TMDB verificati come sul server (poster-textless): un "No Language"
+  // con il titolo stampato diventa "und" — visibile, mai clean, mai scelto in
+  // automatico né messo in rotazione. Stessa regola del render Stremio.
+  const textChecks: PosterTextCheck[] = []
+  const tmdbClean = data.posters.filter((p) => p.iso_639_1 === null).map((p) => p.file_path)
+  const verifiedClean = new Set(tmdbClean.length > 0
+    ? await verifyCleanPool(tmdbClean, { limit: CLEAN_VERIFY_LIMIT, signal: req.signal, checks: textChecks })
+    : [])
+  const tmdbPosters = data.posters.map((p) => (p.iso_639_1 === null && !verifiedClean.has(p.file_path) ? { ...p, iso_639_1: "und" } : p))
   // fanart va in CODA a TMDB in ogni lista: a parità di lingua l'artwork
   // ufficiale resta il primo che l'utente vede.
   const extra = await fanartImages(type as "movie" | "tv", Number(id), apiKey, req.signal)
   const merged = {
     ...data,
-    posters: [...data.posters, ...extra.posters],
+    posters: [...tmdbPosters, ...extra.posters],
     logos: [...data.logos, ...extra.logos],
     backdrops: [...data.backdrops, ...extra.backdrops],
   }
-  cacheSet(cacheKey, merged, ["tmdb", "images"])
+  // Un controllo non eseguito (CDN irraggiungibile, timeout) dà "non clean"
+  // ma NON si mette in cache: al prossimo caricamento si riprova.
+  if (!textChecks.some((c) => c.score === null)) cacheSet(cacheKey, merged, ["tmdb", "images"])
   return jsonGzip(merged, 200, undefined, acceptEncoding)
 }

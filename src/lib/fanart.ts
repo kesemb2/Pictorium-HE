@@ -12,7 +12,7 @@
 
 import { z } from "zod"
 import { createLogger } from "@/lib/logger"
-import { envWithFallback } from "@/lib/env-compat"
+import { fanartApiKey } from "@/lib/fanart-artwork"
 import { combineAbortSignals } from "./abort-signal"
 import { timedFetch } from "./outbound-stats"
 
@@ -97,8 +97,8 @@ export function normalizeFanartPosters(items: readonly unknown[]): FanartPoster[
 
 /** Chiave progetto Fanart d'istanza (server-only, fallback quando lo spazio non ne ha una). */
 export function fanartProjectKey(): string | undefined {
-  const key = envWithFallback("FANART_KEY")
-  return key && key.trim().length > 0 ? key.trim() : undefined
+  // Stessa risoluzione del livello server del fork (tutti i nomi accettati).
+  return fanartApiKey()
 }
 
 export interface FanartFetchOpts {

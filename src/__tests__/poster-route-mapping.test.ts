@@ -29,9 +29,13 @@ vi.mock("@/lib/custom-rating", async (importOriginal) => ({
 vi.mock("@/lib/multi-rating-renderer", () => ({ renderMultiRatings: vi.fn(async () => null) }))
 // Controllo "senza testo" dei poster fanart: di default passa (gli altri test
 // non usano asset fanart); i test dedicati lo fanno fallire.
-vi.mock("@/lib/fanart-textless", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/fanart-textless")>()
-  return { ...actual, checkFanartPosterText: vi.fn(async (url: string) => ({ url, textless: true, score: 0 })) }
+vi.mock("@/lib/poster-textless", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/poster-textless")>()
+  return {
+    ...actual,
+    checkFanartPosterText: vi.fn(async (url: string) => ({ url, textless: true, score: 0 })),
+    verifyCleanPool: vi.fn(actual.verifyCleanPool),
+  }
 })
 
 vi.mock("@/lib/rate-limit", () => ({
@@ -205,7 +209,7 @@ describe("GET /api/poster/[type]/[id] with saved mappings", () => {
   })
 
   it("drops the logo when a saved clean fanart base turns out to have text", async () => {
-    const { checkFanartPosterText } = await import("@/lib/fanart-textless")
+    const { checkFanartPosterText } = await import("@/lib/poster-textless")
     vi.mocked(checkFanartPosterText).mockImplementationOnce(async (url: string) => ({ url, textless: false, score: 1.6 }))
     const poster = await imageBuffer("#101010", 500, 750)
     const fanartUrl = "https://assets.fanart.tv/fanart/movies/46/movieposter/titled.jpg"
@@ -231,7 +235,7 @@ describe("GET /api/poster/[type]/[id] with saved mappings", () => {
     const body = await res.json()
     expect(checkFanartPosterText).toHaveBeenCalledWith(fanartUrl, expect.anything())
     expect(body.images.logo).toBeNull()
-    expect(body.fanartTextCheck).toEqual([{ url: fanartUrl, textless: false, score: 1.6 }])
+    expect(body.textCheck).toEqual([{ url: fanartUrl, textless: false, score: 1.6 }])
   })
 
   it("keeps the logo on a saved fanart base verified textless", async () => {
@@ -478,6 +482,68 @@ describe("GET /api/poster/[type]/[id] with saved mappings", () => {
       }),
     )
     expect(requestedUrls.some((url) => url.includes("/logo.png"))).toBe(true)
+  })
+
+  it("skips a TMDB \"clean\" poster with printed text and uses the next verified one", async () => {
+    const { verifyCleanPool } = await import("@/lib/poster-textless")
+    vi.mocked(verifyCleanPool).mockImplementationOnce(async (sources) => sources.filter((p) => p !== "/texted-clean.jpg"))
+    const poster = await imageBuffer("#101010", 500, 750)
+    const logo = await imageBuffer("#ffffff", 220, 80)
+    mockedGetById.mockResolvedValue(null)
+    mockedGetDetails.mockResolvedValue({ id: 48, title: "T", genres: [], vote_average: 7, vote_count: 10, original_language: "en", release_date: "2024-01-01", production_companies: [] })
+    mockedGetImages.mockResolvedValue({
+      id: 48,
+      posters: [
+        { file_path: "/texted-clean.jpg", iso_639_1: null, vote_average: 8, vote_count: 10, width: 500, height: 750, aspect_ratio: 0.667 },
+        { file_path: "/real-clean.jpg", iso_639_1: null, vote_average: 7, vote_count: 10, width: 500, height: 750, aspect_ratio: 0.667 },
+      ],
+      logos: [{ file_path: "/logo-48.png", iso_639_1: "en", vote_average: 0, vote_count: 0, width: 220, height: 80, aspect_ratio: 2.75 }],
+      backdrops: [],
+    })
+    mockedGetExternalIds.mockResolvedValue({ imdb_id: "tt0000048" })
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const body = String(input).includes("/logo-48.png") ? logo : poster
+      return new Response(new Uint8Array(body), { status: 200, headers: { "content-type": "image/png", "content-length": String(body.length) } })
+    })
+    const res = await GET(new NextRequest("http://localhost:3000/api/poster/movie/48?debug=1"), { params: Promise.resolve({ type: "movie", id: "48" }) })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.posterSource).toBe("tmdb-clean")
+    // Best-fit pesca solo dai clean verificati: quello con testo non c'è.
+    const fitInput = mockedSelectBestLogoFitPosterPath.mock.calls.at(-1)?.[0] as { posters: Array<{ file_path: string }> } | undefined
+    if (fitInput) expect(fitInput.posters.map((p) => p.file_path)).toEqual(["/real-clean.jpg"])
+    else expect(body.images.poster).toBe("/real-clean.jpg")
+    expect(body.images.poster).not.toBe("/texted-clean.jpg")
+    expect(body.images.logo).toBe("/logo-48.png")
+  })
+
+  it("never uses a TMDB \"clean\" with text: all texted → language poster, no logo", async () => {
+    const { verifyCleanPool } = await import("@/lib/poster-textless")
+    vi.mocked(verifyCleanPool).mockImplementationOnce(async () => [])
+    const poster = await imageBuffer("#101010", 500, 750)
+    const logo = await imageBuffer("#ffffff", 220, 80)
+    mockedGetById.mockResolvedValue(null)
+    mockedGetDetails.mockResolvedValue({ id: 49, title: "T", genres: [], vote_average: 7, vote_count: 10, original_language: "en", release_date: "2024-01-01", production_companies: [] })
+    mockedGetImages.mockResolvedValue({
+      id: 49,
+      posters: [
+        { file_path: "/texted-clean-49.jpg", iso_639_1: null, vote_average: 8, vote_count: 10, width: 500, height: 750, aspect_ratio: 0.667 },
+        { file_path: "/he-49.jpg", iso_639_1: "he", vote_average: 7, vote_count: 10, width: 500, height: 750, aspect_ratio: 0.667 },
+      ],
+      logos: [{ file_path: "/logo-49.png", iso_639_1: "en", vote_average: 0, vote_count: 0, width: 220, height: 80, aspect_ratio: 2.75 }],
+      backdrops: [],
+    })
+    mockedGetExternalIds.mockResolvedValue({ imdb_id: "tt0000049" })
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const body = String(input).includes("/logo-49.png") ? logo : poster
+      return new Response(new Uint8Array(body), { status: 200, headers: { "content-type": "image/png", "content-length": String(body.length) } })
+    })
+    const res = await GET(new NextRequest("http://localhost:3000/api/poster/movie/49?lang=he&debug=1"), { params: Promise.resolve({ type: "movie", id: "49" }) })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.posterSource).toBe("language")
+    expect(body.images.poster).toBe("/he-49.jpg")
+    expect(body.images.logo).toBeNull()
   })
 
   it("falls back to the language poster when no logo is available (clean without logo is useless)", async () => {

@@ -17,7 +17,15 @@ vi.mock("@/lib/tmdb", () => ({
   resolveRouteApiKey: vi.fn(async () => undefined),
 }))
 
+// Verifica "senza testo" dei clean: di default passa tutto (nessuna rete nei
+// test); il test dedicato la fa fallire per un poster.
+vi.mock("@/lib/poster-textless", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/poster-textless")>()
+  return { ...actual, verifyCleanPool: vi.fn(async (sources: readonly string[], opts: { limit: number }) => sources.slice(0, opts.limit)) }
+})
+
 const { GET } = await import("@/app/api/tmdb/[id]/images/route")
+const { verifyCleanPool } = await import("@/lib/poster-textless")
 const { getImages } = await import("@/lib/tmdb")
 const mockedGetImages = vi.mocked(getImages)
 
@@ -50,7 +58,7 @@ describe("GET /api/tmdb/[id]/images (H4: niente cache poisoning su errore upstre
     expect(res.status).toBe(502)
     // Nessun record in cache per la chiave della richiesta (prima il catch
     // cacettava la lista vuota per 30 minuti, avvelenando l'editor).
-    expect(cacheGet(`images:movie:42:en,null:x`)).toBeNull()
+    expect(cacheGet(`images:movie:42:en,null:ft3:x`)).toBeNull()
   })
 
   it("risponde 200 e mette in cache quando il fetch TMDB riesce (anche con liste vuote valide)", async () => {
@@ -67,14 +75,33 @@ describe("GET /api/tmdb/[id]/images (H4: niente cache poisoning su errore upstre
     expect(mockedGetImages).toHaveBeenCalledTimes(1)
   })
 
+  it("marks a TMDB \"clean\" with printed text as \"und\" (never clean in the editor)", async () => {
+    mockedGetImages.mockResolvedValue({
+      ...VALID_DATA,
+      posters: [
+        { ...VALID_DATA.posters[0], file_path: "/texted.jpg" },
+        { ...VALID_DATA.posters[0], file_path: "/clean.jpg" },
+        { ...VALID_DATA.posters[0], file_path: "/en.jpg", iso_639_1: "en" },
+      ],
+    } as never)
+    vi.mocked(verifyCleanPool).mockImplementationOnce(async (sources) => sources.filter((p) => p !== "/texted.jpg"))
+    const res = await GET(req("44"), { params: Promise.resolve({ id: "44" }) })
+    const body = await res.json()
+    expect(body.posters.map((p: { file_path: string; iso_639_1: string | null }) => [p.file_path, p.iso_639_1])).toEqual([
+      ["/texted.jpg", "und"],
+      ["/clean.jpg", null],
+      ["/en.jpg", "en"],
+    ])
+  })
+
   it("un errore dopo un successo NON sovrascrive la cache valida", async () => {
     mockedGetImages.mockResolvedValueOnce(VALID_DATA as never).mockRejectedValueOnce(new Error("boom"))
     await GET(req("42"), { params: Promise.resolve({ id: "42" }) })
 
     const res = await GET(req("43"), { params: Promise.resolve({ id: "43" }) })
     expect(res.status).toBe(502)
-    expect(cacheGet(`images:movie:43:en,null:x`)).toBeNull()
+    expect(cacheGet(`images:movie:43:en,null:ft3:x`)).toBeNull()
     // La cache chiave 42 resta valida.
-    expect(cacheGet(`images:movie:42:en,null:x`)).toEqual(VALID_DATA)
+    expect(cacheGet(`images:movie:42:en,null:ft3:x`)).toEqual(VALID_DATA)
   })
 })
