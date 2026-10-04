@@ -1072,5 +1072,7 @@
   "ui.themeSystem": "Sistema",
   "ui.themeLight": "Chiaro",
   "ui.themeDark": "Scuro",
-  "ui.rankCountryGlobal": "il mondo"
+  "ui.rankCountryGlobal": "il mondo",
+  "ui.hebrewFont": "Font ebraico",
+  "ui.hebrewFontHint": "Vale per tutto il testo ebraico del poster: riga genere, nastro classifica e titolo sotto il logo. L'arabo resta in Rubik."
 }

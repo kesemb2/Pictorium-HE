@@ -108,7 +108,7 @@ export const POSTER_CACHE_ALLOWLIST: ReadonlySet<string> = new Set([
   // di titolo sotto il logo. Senza, due poster che differiscono solo in questi
   // parametri condividerebbero una entry di cache.
   "ad", "bts", "bbs", "bto", "bbo", "lbo", "to", "tso", "tsb", "tsf",
-  "star", "dtx", "halo", "tul",
+  "star", "dtx", "halo", "tul", "hfont",
   // Segui-spazio: politica di rivalidazione (entra in chiave/ETag via serializzazione).
   "live",
 ])

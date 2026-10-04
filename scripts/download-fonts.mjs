@@ -74,6 +74,46 @@ const fonts = [
     name: "Oswald-Bold.ttf",
     url: "https://cdn.jsdelivr.net/npm/@expo-google-fonts/oswald@0.4.2/700Bold/Oswald_700Bold.ttf",
   },
+  // Fork: famiglie ebraiche del selettore "Font ebraico" (tutte SIL OFL 1.1,
+  // Google Fonts): Heebo, Karantina (condensed), Secular One (solo 400, è già
+  // un display pesante) e Frank Ruhl Libre (serif). Istanze statiche come
+  // Rubik, per lo stesso motivo (fontdb non seleziona l'asse wght).
+  {
+    name: "FrankRuhlLibre-Regular.ttf",
+    url: "https://fonts.gstatic.com/s/frankruhllibre/v23/j8_96_fAw7jrcalD7oKYNX0QfAnPcbzNEEB7OoicBw7FYVqQ.ttf",
+  },
+  {
+    name: "FrankRuhlLibre-Bold.ttf",
+    url: "https://fonts.gstatic.com/s/frankruhllibre/v23/j8_96_fAw7jrcalD7oKYNX0QfAnPcbzNEEB7OoicBw4iZlqQ.ttf",
+  },
+  {
+    name: "FrankRuhlLibre-Black.ttf",
+    url: "https://fonts.gstatic.com/s/frankruhllibre/v23/j8_96_fAw7jrcalD7oKYNX0QfAnPcbzNEEB7OoicBw5sZlqQ.ttf",
+  },
+  {
+    name: "Heebo-Regular.ttf",
+    url: "https://fonts.gstatic.com/s/heebo/v28/NGSpv5_NC0k9P_v6ZUCbLRAHxK1EiSyccg.ttf",
+  },
+  {
+    name: "Heebo-Bold.ttf",
+    url: "https://fonts.gstatic.com/s/heebo/v28/NGSpv5_NC0k9P_v6ZUCbLRAHxK1Ebiuccg.ttf",
+  },
+  {
+    name: "Heebo-Black.ttf",
+    url: "https://fonts.gstatic.com/s/heebo/v28/NGSpv5_NC0k9P_v6ZUCbLRAHxK1EICuccg.ttf",
+  },
+  {
+    name: "Karantina-Regular.ttf",
+    url: "https://fonts.gstatic.com/s/karantina/v13/buE0po24ccnh31GVMABJ8A.ttf",
+  },
+  {
+    name: "Karantina-Bold.ttf",
+    url: "https://fonts.gstatic.com/s/karantina/v13/buExpo24ccnh31GVMABxTC8f-A.ttf",
+  },
+  {
+    name: "SecularOne-Regular.ttf",
+    url: "https://fonts.gstatic.com/s/secularone/v14/8QINdiTajsj_87rMuMdKypDl.ttf",
+  },
 ]
 
 async function download(font) {

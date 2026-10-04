@@ -13,7 +13,7 @@ import { USER_UNLOCK_EVENT, currentPathUuid } from "./user-token"
 import { t } from "./i18n"
 import { normalizeSashOrder, DEFAULT_SASH_ORDER, type SashBucket } from "./badge-priority"
 import { DEFAULT_QUALITY_BADGE_STYLE, type QualityBadgeStyle } from "./badge-styles"
-import { DEFAULT_BADGE_FONT, isBadgeFont, type BadgeFont } from "./badge-styles"
+import { DEFAULT_BADGE_FONT, isBadgeFont, type BadgeFont, DEFAULT_HEBREW_FONT, isHebrewFont, type HebrewFont } from "./badge-styles"
 import { KNOWN_VIDEO_FORMATS, isVideoFormat, type VideoFormat } from "./av-specs"
 
 export type RibbonSide = "left" | "right"
@@ -23,6 +23,8 @@ export interface DefaultsState {
   defaultRankingBadgeStyle: RankingBadgeStyle
   /** Font dei testi badge di default ("inter" = resa storica). */
   defaultBadgeFont: BadgeFont
+  /** Fork: font del testo ebraico (impostazione globale, default Rubik). */
+  defaultHebrewFont: HebrewFont
   /** Stile icone del badge qualità di default (default "standard"). */
   defaultQualityBadgeStyle: QualityBadgeStyle
   /** Formati A/V abilitati di default (dv, atmos, imax, hdr, hdr10plus). */
@@ -191,6 +193,7 @@ const DEFAULTS: DefaultsState = {
   defaultBadgeStyle: "shadow",
   defaultRankingBadgeStyle: "default",
   defaultBadgeFont: DEFAULT_BADGE_FONT,
+  defaultHebrewFont: DEFAULT_HEBREW_FONT,
   defaultQualityBadgeStyle: DEFAULT_QUALITY_BADGE_STYLE,
   defaultVideoFormats: [...KNOWN_VIDEO_FORMATS],
   defaultBlurEnabled: true,
@@ -374,6 +377,7 @@ interface StoredDefaults {
   defaultBadgeStyle?: BadgeStyle
   defaultRankingBadgeStyle?: RankingBadgeStyle
   defaultBadgeFont?: BadgeFont
+  hebrewFont?: HebrewFont
   defaultQualityBadgeStyle?: QualityBadgeStyle
   defaultBlurEnabled?: boolean
   defaultBlurIntensity?: number
@@ -498,6 +502,7 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     defaultBadgeStyle: d.defaultBadgeStyle ?? d.badgeStyle ?? "shadow",
     defaultRankingBadgeStyle: d.defaultRankingBadgeStyle ?? d.rankingBadgeStyle ?? "default",
     defaultBadgeFont: isBadgeFont(d.defaultBadgeFont) ? d.defaultBadgeFont : (isBadgeFont(d.badgeFont) ? d.badgeFont : DEFAULT_BADGE_FONT),
+    defaultHebrewFont: isHebrewFont(d.hebrewFont) ? d.hebrewFont : DEFAULT_HEBREW_FONT,
     defaultQualityBadgeStyle: d.defaultQualityBadgeStyle ?? d.qualityBadgeStyle ?? DEFAULT_QUALITY_BADGE_STYLE,
     defaultVideoFormats: Array.isArray(d.defaultVideoFormats)
       ? d.defaultVideoFormats.filter(isVideoFormat)
@@ -647,6 +652,7 @@ function defaultsToPayload(d: DefaultsState): Record<string, unknown> {
     badgeStyle: d.defaultBadgeStyle,
     rankingBadgeStyle: d.defaultRankingBadgeStyle,
     badgeFont: d.defaultBadgeFont,
+    hebrewFont: d.defaultHebrewFont,
     qualityBadgeStyle: d.defaultQualityBadgeStyle,
     blurEnabled: d.defaultBlurEnabled,
     blurIntensity: d.defaultBlurIntensity,

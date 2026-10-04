@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server"
 import { cacheGet, cacheGetStale, cacheSet } from "@/lib/cache"
 import { createLogger } from "@/lib/logger"
 import { envWithFallback } from "@/lib/env-compat"
-import { isBadgeStyle, isRankingBadgeStyle, isBadgeFont } from "@/lib/badge-styles"
+import { isBadgeStyle, isRankingBadgeStyle, isBadgeFont, isHebrewFont } from "@/lib/badge-styles"
 import { POSTER_CACHE_ALLOWLIST } from "./poster-params-hardening"
 
 const log = createLogger("poster-cache")
@@ -133,6 +133,11 @@ export function normalizePosterCacheParams(searchParams: URLSearchParams): URLSe
     // Cancellarlo collasserebbe le due chiavi e la prima richiesta
     // avvelenerebbe le successive (stessa chiave, immagini diverse).
     params.set("bfont", "inter")
+  }
+  // Fork: stessa regola per il font ebraico (invalido → Rubik esplicito).
+  const hfont = params.get("hfont")
+  if (hfont !== null && !isHebrewFont(hfont)) {
+    params.set("hfont", "rubik")
   }
 
   return params

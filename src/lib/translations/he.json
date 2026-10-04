@@ -1072,5 +1072,7 @@
   "ui.themeSystem": "מערכת",
   "ui.themeLight": "בהיר",
   "ui.themeDark": "כהה",
-  "ui.rankCountryGlobal": "כל העולם"
+  "ui.rankCountryGlobal": "כל העולם",
+  "ui.hebrewFont": "גופן עברי",
+  "ui.hebrewFontHint": "חל על כל הטקסט העברי בפוסטר: שורת הז'אנר, סרט הדירוג והכותרת מתחת ללוגו."
 }

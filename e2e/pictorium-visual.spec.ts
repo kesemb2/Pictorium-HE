@@ -696,4 +696,14 @@ test.describe("poster API — visual regression", () => {
     const poster = await renderPoster(page, url)
     await expect(poster).toHaveScreenshot("poster-font-barlow-landscape.png", { maxDiffPixelRatio: 0.10 })
   })
+
+  // Fork: font del testo ebraico (`hfont`). Genere, nastro e dicitura in
+  // ebraico, così ogni famiglia copre tutti i testi che governa.
+  for (const hfont of ["heebo", "karantina", "secular-one", "frank-ruhl-libre"]) {
+    test(`hebrew font ${hfont} — screenshot`, async ({ page }) => {
+      const url = posterUrl({ genreName: "מדע בדיוני", voteAverage: "8.7", badges: "1", ranking: "1", extra: "עונה חדשה", lang: "he", hfont })
+      const poster = await renderPoster(page, url)
+      await expect(poster).toHaveScreenshot(`poster-hebrew-font-${hfont}.png`, { maxDiffPixelRatio: 0.10 })
+    })
+  }
 })

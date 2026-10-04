@@ -12,6 +12,8 @@ import { RENDER_VERSION } from "@/lib/render-version"
 import { recordPosterUrl } from "@/lib/poster-url-log"
 import { createLogger } from "@/lib/logger"
 import { validatePosterQuery } from "@/lib/validation"
+import { getServerDefaultsChecked } from "@/lib/server-defaults"
+import { DEFAULT_HEBREW_FONT, isHebrewFont } from "@/lib/badge-styles"
 import type { TMDBImage } from "@/lib/types"
 
 const log = createLogger("logo")
@@ -73,7 +75,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   const titleOverride = req.nextUrl.searchParams.get("title")
   const contentType = wantsWebp ? "image/webp" : "image/png"
 
-  const cacheKey = `logo:${RENDER_VERSION}:${mediaType}:${tmdbId}:${lang}:${wantsWebp ? "webp" : "png"}:${titleOverride || ""}`
+  // Fork: font del titolo ebraico, come nel poster: query `hfont` > default
+  // dell'istanza > Rubik. Entra nella chiave cache.
+  const rawHfont = req.nextUrl.searchParams.get("hfont") ?? (await getServerDefaultsChecked().catch(() => null))?.hebrewFont
+  const hebrewFont = isHebrewFont(rawHfont) ? rawHfont : DEFAULT_HEBREW_FONT
+  const cacheKey = `logo:${RENDER_VERSION}:${mediaType}:${tmdbId}:${lang}:${wantsWebp ? "webp" : "png"}:${titleOverride || ""}${hebrewFont === DEFAULT_HEBREW_FONT ? "" : `:${hebrewFont}`}`
   const cached = cacheGet<Buffer>(cacheKey)
   if (cached) {
     return new Response(new Uint8Array(cached), { headers: logoHeaders(`"${cacheKey.length}-${cached.length}"`, contentType) })
@@ -123,7 +129,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         mediaType, tmdbId, lang, logoLang: choice.lang, hasDetails: !!details,
       })
     }
-    const { png: composed, titleRendered } = await composeLogoImage({ logoBuf, title })
+    const { png: composed, titleRendered } = await composeLogoImage({ logoBuf, title, hebrewFont })
     // Titolo chiesto ma non disegnato: quasi sempre resvg senza i file dei
     // font, che non solleva e rende trasparente. Vedi outputFileTracingIncludes.
     if (title && !titleRendered) {

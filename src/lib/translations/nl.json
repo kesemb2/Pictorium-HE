@@ -1072,5 +1072,7 @@
   "ui.themeSystem": "Systeem",
   "ui.themeLight": "Licht",
   "ui.themeDark": "Donker",
-  "ui.rankCountryGlobal": "the world"
+  "ui.rankCountryGlobal": "the world",
+  "ui.hebrewFont": "Hebrew font",
+  "ui.hebrewFontHint": "Used for all Hebrew text on the poster: genre line, ranking ribbon and the title under the logo. Arabic stays in Rubik."
 }

@@ -25,6 +25,7 @@ const USER_SAVED = {
   badgeStyle: "shadow",
   rankingBadgeStyle: "default",
   badgeFont: "inter",
+  hebrewFont: "rubik",
   qualityBadgeStyle: "standard",
   videoFormats: ["dv", "hdr", "hdr10plus", "atmos", "imax"],
   blurEnabled: true,

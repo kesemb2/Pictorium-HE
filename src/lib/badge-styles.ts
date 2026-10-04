@@ -55,6 +55,54 @@ export const DEFAULT_BADGE_FONT: BadgeFont = "inter"
 export function isBadgeFont(v: string | null | undefined): v is BadgeFont {
   return !!v && (BADGE_FONTS as readonly string[]).includes(v)
 }
+
+/**
+ * Fork: font del testo ebraico, scelto nelle Impostazioni e indipendente dal
+ * font latino dei badge. Catena: query `hfont` > config token > server
+ * defaults > "rubik". Vale per il solo ebraico: l'arabo resta in Rubik (queste
+ * famiglie non hanno glifi arabi).
+ */
+export const HEBREW_FONTS = ["rubik", "heebo", "karantina", "secular-one", "frank-ruhl-libre"] as const
+export type HebrewFont = (typeof HEBREW_FONTS)[number]
+
+export const DEFAULT_HEBREW_FONT: HebrewFont = "rubik"
+
+export function isHebrewFont(v: string | null | undefined): v is HebrewFont {
+  return !!v && (HEBREW_FONTS as readonly string[]).includes(v)
+}
+
+/** Famiglia SVG (nome nella tabella `name` del TTF) per ogni font ebraico. */
+export const HEBREW_FONT_FAMILY: Readonly<Record<HebrewFont, string>> = {
+  rubik: "Rubik",
+  heebo: "Heebo",
+  karantina: "Karantina",
+  "secular-one": "Secular One",
+  "frank-ruhl-libre": "Frank Ruhl Libre",
+}
+
+/**
+ * Font effettivo passato ai renderer: il font latino, più il font ebraico
+ * quando non è quello di default ("oswald+heebo"). Con Rubik il valore resta
+ * il BadgeFont nudo, quindi chiavi cache e SVG sono byte-identici a prima.
+ */
+export type BadgeFontSpec = BadgeFont | `${BadgeFont}+${Exclude<HebrewFont, "rubik">}`
+
+export function withHebrewFont(font: BadgeFont, hebrew: HebrewFont | null | undefined): BadgeFontSpec {
+  if (!hebrew || hebrew === DEFAULT_HEBREW_FONT) return font
+  return `${font}+${hebrew}` as BadgeFontSpec
+}
+
+/** Parte latina di un BadgeFontSpec (o di un valore libero). */
+export function latinFontOf(spec: string | null | undefined): BadgeFont {
+  const latin = (spec ?? "").split("+")[0]
+  return isBadgeFont(latin) ? latin : DEFAULT_BADGE_FONT
+}
+
+/** Parte ebraica di un BadgeFontSpec (assente/invalida → Rubik). */
+export function hebrewFontOf(spec: string | null | undefined): HebrewFont {
+  const hebrew = (spec ?? "").split("+")[1]
+  return isHebrewFont(hebrew) ? hebrew : DEFAULT_HEBREW_FONT
+}
 export function isRibbonRankingStyle(v: string | null | undefined): boolean {
   return v === "netflix" || v === "netflix-color" || v === "colored"
 }
@@ -69,4 +117,23 @@ export function isRibbonRankingStyle(v: string | null | undefined): boolean {
 export function nonRibbonRankingStyle(v: RankingBadgeStyle): RankingBadgeStyle {
   if (v === "netflix" || v === "netflix-color" || v === "colored") return "default"
   return v
+}
+
+/**
+ * Avanzamento medio dell'ebraico rispetto a Rubik, misurato con resvg (ink
+ * bbox, pesi 700/800, 7 stringhe da badge a fs=100). Serve a `estimateTextWidth`:
+ * i badge fissano la larghezza con `textLength`, e una stima tarata su Rubik
+ * stirerebbe Karantina del +57%.
+ */
+export const HEBREW_FONT_WIDTH: Readonly<Record<HebrewFont, number>> = {
+  rubik: 1,
+  heebo: 1.01,
+  karantina: 0.635,
+  "secular-one": 0.935,
+  "frank-ruhl-libre": 0.85,
+}
+
+/** Normalizza un valore libero a BadgeFontSpec (parti invalide → default). */
+export function normalizeBadgeFontSpec(v: string | null | undefined): BadgeFontSpec {
+  return withHebrewFont(latinFontOf(v), hebrewFontOf(v))
 }
