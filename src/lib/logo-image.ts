@@ -17,6 +17,7 @@
 import sharp, { type OverlayOptions } from "sharp"
 import { logoInkProfile, type InkProfile } from "./logo-contrast"
 import { pickReadableLogo, selectLogoTier } from "./logo-selection"
+import { withHebrewFont, type HebrewFont } from "./badge-styles"
 import { buildTitleTextSvg, titleStripHeight, titleTextFontSize, titleTextMaxW } from "./badge-svg-shared"
 import { renderSVG } from "./svg-badge"
 import type { TMDBImage } from "./types"
@@ -139,8 +140,8 @@ async function hasInk(png: Buffer): Promise<boolean> {
  * titolo ebraico spariva senza una riga di log — riservare spazio al nulla è
  * peggio che non riservarlo.
  */
-async function renderTitleStrip(title: string, width: number) {
-  const built = buildTitleTextSvg(title, titleTextMaxW(width), titleTextFontSize(width), "#ffffff")
+async function renderTitleStrip(title: string, width: number, hebrewFont?: HebrewFont | null) {
+  const built = buildTitleTextSvg(title, titleTextMaxW(width), titleTextFontSize(width), "#ffffff", undefined, withHebrewFont("inter", hebrewFont))
   if (!built) return null
   const png = await renderSVG(built.svg, built.w)
   if (!(await hasInk(png))) return null
@@ -160,6 +161,8 @@ export async function composeLogoImage(input: {
   readonly logoBuf: Buffer
   readonly title?: string | null
   readonly width?: number
+  /** Fork: font del titolo ebraico (default Rubik). */
+  readonly hebrewFont?: HebrewFont | null
 }): Promise<ComposedLogo> {
   const width = input.width ?? LOGO_CANVAS_W
   const logo = await sharp(input.logoBuf)
@@ -175,7 +178,7 @@ export async function composeLogoImage(input: {
   // prima di passare da noi, solo schiarita.
   if (!title) return { png: logo, titleRendered: false }
 
-  const strip = await renderTitleStrip(title, width).catch(() => null)
+  const strip = await renderTitleStrip(title, width, input.hebrewFont).catch(() => null)
   if (!strip) return { png: logo, titleRendered: false }
 
   const ink = await inkBox(logo, logoW, logoH)

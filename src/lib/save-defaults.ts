@@ -70,6 +70,7 @@ export async function saveDefaults(ed: PosterEditorCtx): Promise<boolean> {
     ratingStar: ed.defaultRatingStar,
     autoDarkText: ed.defaultAutoDarkText,
     textHalo: ed.defaultTextHalo,
+    hebrewFont: ed.defaultHebrewFont,
     autoRotateClean: ed.defaultAutoRotateClean,
     defaultAutoRotateBackdrop: ed.defaultAutoRotateBackdrop,
     disableCleanPosters: ed.defaultDisableCleanPosters,

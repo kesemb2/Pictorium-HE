@@ -18,6 +18,9 @@ import {
   isRankingBadgeStyle,
   isQualityBadgeStyle,
   isBadgeFont,
+  isHebrewFont,
+  DEFAULT_HEBREW_FONT,
+  type HebrewFont,
   nonRibbonRankingStyle,
   DEFAULT_BADGE_STYLE,
   DEFAULT_RANKING_BADGE_STYLE,
@@ -81,6 +84,8 @@ export interface PosterRenderConfig {
   rankingBadgeStyle: RankingBadgeStyle
   /** Font dei testi badge ("inter" = resa storica). */
   badgeFont: BadgeFont
+  /** Fork: font del testo ebraico (query `hfont` > config token > server defaults > Rubik). */
+  hebrewFont: HebrewFont
   /** Stile icone del badge qualità (standard = pill testuale). */
   qualityBadgeStyle: QualityBadgeStyle
   blurEnabled: boolean
@@ -429,6 +434,12 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
     sd.badgeFont
   const badgeFont: BadgeFont = isBadgeFont(rawBfont) ? rawBfont : DEFAULT_BADGE_FONT
 
+  // Fork: font del testo ebraico. Impostazione globale (niente override per
+  // titolo): query `hfont` > config token > server defaults > Rubik. Valore
+  // invalido → Rubik, come `bfont` → Inter.
+  const rawHfont = q.get("hfont") ?? configOverride?.hebrewFont ?? sd.hebrewFont
+  const hebrewFont: HebrewFont = isHebrewFont(rawHfont) ? rawHfont : DEFAULT_HEBREW_FONT
+
   const qScale = q.get("scale")
   const qOx = q.get("ox")
   const qOy = q.get("oy")
@@ -650,6 +661,7 @@ const qSide = q.get("side")
     badgeStyle,
     rankingBadgeStyle,
     badgeFont,
+    hebrewFont,
     qualityBadgeStyle,
     blurEnabled,
     blurHeight,

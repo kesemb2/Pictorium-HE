@@ -46,3 +46,23 @@ export const FONT_FILES = [
   FONT_OSWALD_SEMIBOLD,
   FONT_OSWALD_BOLD,
 ] as const
+
+// Fork: famiglie del selettore "Font ebraico". Non stanno in FONT_FILES: resvg
+// legge e indicizza ogni file a ogni render, e il render di default (Rubik)
+// non deve pagare ~550KB di font che non usa. `fontFilesFor` le aggiunge solo
+// quando l'SVG dichiara la famiglia.
+export const HEBREW_FONT_FILES: Readonly<Record<string, readonly string[]>> = {
+  Heebo: [fontPath("Heebo-Regular.ttf"), fontPath("Heebo-Bold.ttf"), fontPath("Heebo-Black.ttf")],
+  Karantina: [fontPath("Karantina-Regular.ttf"), fontPath("Karantina-Bold.ttf")],
+  "Secular One": [fontPath("SecularOne-Regular.ttf")],
+  "Frank Ruhl Libre": [fontPath("FrankRuhlLibre-Regular.ttf"), fontPath("FrankRuhlLibre-Bold.ttf"), fontPath("FrankRuhlLibre-Black.ttf")],
+}
+
+/** Font da passare a resvg per un SVG: la base più le famiglie ebraiche dichiarate. */
+export function fontFilesFor(svg: string): string[] {
+  const files: string[] = [...FONT_FILES]
+  for (const [family, paths] of Object.entries(HEBREW_FONT_FILES)) {
+    if (svg.includes(`font-family="${family}"`)) files.push(...paths)
+  }
+  return files
+}

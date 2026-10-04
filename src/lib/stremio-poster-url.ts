@@ -125,6 +125,7 @@ export function buildStremioPosterUrl(input: BuildStremioPosterUrlInput): URL {
     badgeStyle: mapping?.badgeStyle ?? sd.badgeStyle,
     rankingBadgeStyle: mapping?.rankingBadgeStyle ?? sd.rankingBadgeStyle,
     badgeFont: mapping?.badgeFont ?? sd.badgeFont ?? undefined,
+    hebrewFont: sd.hebrewFont ?? undefined,
     qualityBadgeStyle: mapping?.qualityBadgeStyle ?? sd.qualityBadgeStyle,
     videoFormats: mapping?.videoFormats ?? sd.videoFormats,
     topBadgeScale: eff?.topBadgeScale ?? sd.topBadgeScale,

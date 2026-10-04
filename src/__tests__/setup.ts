@@ -15,6 +15,12 @@ vi.mock("next/font/google", () => {
   return {
     Barlow_Condensed: stub("Barlow_Condensed"),
     Oswald: stub("Oswald"),
+    // Fork: campioni del selettore "Font ebraico".
+    Rubik: stub("Rubik"),
+    Heebo: stub("Heebo"),
+    Karantina: stub("Karantina"),
+    Secular_One: stub("Secular_One"),
+    Frank_Ruhl_Libre: stub("Frank_Ruhl_Libre"),
   }
 })
 
@@ -273,6 +279,8 @@ const itDict: Record<string, string> = {
   "ui.provider": "Provider",
   "ui.prefsLangRegionTitle": "Lingua e regione",
   "ui.rankCountryGlobal": "il mondo",
+  "ui.hebrewFont": "Font ebraico",
+  "ui.hebrewFontHint": "Vale per tutto il testo ebraico del poster: riga genere, nastro classifica e titolo sotto il logo. L'arabo resta in Rubik.",
 }
 
 function mockT(key: string, params?: Record<string, string | number>): string {

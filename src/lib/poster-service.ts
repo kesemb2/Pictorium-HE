@@ -42,7 +42,8 @@ import type { ServerDefaults } from "./server-defaults"
 import type { WikidataResult } from "./awards"
 import type { BadgeT } from "./poster-badge"
 import { isBadgeStyle, isRankingBadgeStyle, isRibbonRankingStyle, type BadgeStyle, type RankingBadgeStyle } from "./badge-styles"
-import type { BadgeFont } from "./badge-styles"
+import type { BadgeFont, BadgeFontSpec, HebrewFont } from "./badge-styles"
+import { latinFontOf, withHebrewFont } from "./badge-styles"
 import { normalizeBadgeFont } from "./badge-svg-shared"
 import type { PosterImageFormat } from "@/lib/poster-runtime-cache"
 import { getPresetForUser } from "./badge-preset-store"
@@ -129,6 +130,8 @@ export interface GenerationInput {
   quality?: string | null
   /** Font dei testi badge ("inter" = resa storica; i preset custom/house e i loghi restano invariati). */
   badgeFont?: BadgeFont | null
+  /** Fork: font del testo ebraico (badge, nastro, titolo). Assente → Rubik. */
+  hebrewFont?: HebrewFont | null
   /** Stile icone del badge qualità (standard = pill testuale). */
   qualityBadgeStyle?: QualityBadgeStyle | null
   /** Formati A/V da affiancare alla qualità (dv, atmos, imax, hdr, hdr10plus). */
@@ -548,7 +551,7 @@ export async function renderQualityBadgeGroup(
   /** Fork: stile applicato alle icone, che stanno sull'artwork come il testo. */
   iconStyle?: TextStyle,
   /** Font della pill testuale (default "inter" = resa storica; le icone mono/color restano invariate). */
-  font: BadgeFont = "inter",
+  font: BadgeFontSpec = "inter",
 ): Promise<{ png: Buffer; w: number; h: number; shadowPad: number } | null> {
   // `shadowPad`: padding d'ombra incluso nel bitmap, che il posizionamento
   // sottrae. Le icone e la colonna A/V sono di upstream e lo portano
@@ -745,7 +748,7 @@ async function loadNetworkLogoForPillUncached(networkKey: string, targetH: numbe
   } catch { return null }
 }
 
-export async function renderCombinedRankNetworkPill(rank: number, label: string, networkKey: string, pw: number, topLight: boolean, _accentColor: string | undefined, _isAnime: boolean | undefined, font: BadgeFont = "inter"): Promise<{ png: Buffer; w: number; h: number } | null> {
+export async function renderCombinedRankNetworkPill(rank: number, label: string, networkKey: string, pw: number, topLight: boolean, _accentColor: string | undefined, _isAnime: boolean | undefined, font: BadgeFontSpec = "inter"): Promise<{ png: Buffer; w: number; h: number } | null> {
   const fs = Math.round(Math.max(20 * pw / 380, 13))
   const px = Math.round(fs * 0.75)
   const pt = Math.round(fs * 0.35)
@@ -788,7 +791,7 @@ export async function renderNetworkOnlyLargePill(networkKey: string, pw: number,
   return { png, w: pillW, h: pillH }
 }
 
-export async function renderCombinedExtraNetworkPill(label: string, networkKey: string, pw: number, topLight: boolean, font: BadgeFont = "inter"): Promise<{ png: Buffer; w: number; h: number } | null> {
+export async function renderCombinedExtraNetworkPill(label: string, networkKey: string, pw: number, topLight: boolean, font: BadgeFontSpec = "inter"): Promise<{ png: Buffer; w: number; h: number } | null> {
   const fs = Math.round(Math.max(20 * pw / 380, 13))
   const px = Math.round(fs * 0.75)
   const pt = Math.round(fs * 0.35)
@@ -966,7 +969,9 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // vecchi/test diretti che non passano bottomLight ricadono sul top.
   const bottomLight = bottomLightOpt ?? topLight
   // Font badge normalizzato (assente/invalido → "inter" = resa storica).
-  const badgeFont = normalizeBadgeFont(input.badgeFont)
+  // Fork: col font ebraico non di default diventa "oswald+heebo" e così entra
+  // nelle chiavi cache dei badge e in ogni renderer; con Rubik resta identico.
+  const badgeFont: BadgeFontSpec = withHebrewFont(latinFontOf(normalizeBadgeFont(input.badgeFont)), input.hebrewFont)
 
   // Dimensioni canvas: portrait (default, byte-identico al passato) o
   // landscape 16:9 (prova ?shape=landscape, base = backdrop TMDB).
@@ -1036,7 +1041,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   const showTitleUnderLogo = !!titleUnderLogo && !!title?.trim() && !!logoFetch && !hideLogo
   const titleMaxW = titleTextMaxW(badgePw)
   const titleFit = showTitleUnderLogo
-    ? fitTitleText(title!, titleMaxW, titleTextFontSize(badgePw))
+    ? fitTitleText(title!, titleMaxW, titleTextFontSize(badgePw), badgeFont)
     : null
   // In 16:9 il logo poggia sul fondo (margine 0) e la riga del genere sta
   // nell'angolo in basso a destra, alla stessa altezza: un titolo centrato
@@ -1258,7 +1263,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // centrato (ritratto, 16:9 centrale), a filo del suo bordo sinistro in
   // Cinematic Left, dove tutta la colonna parte dallo stesso margine.
   if (titleFit && logoResult) {
-    const titleBadge = await renderTitleText(title!, titleMaxW, titleFit.fs, titleTreatment.color || undefined, titleTextStyle).catch(() => null)
+    const titleBadge = await renderTitleText(title!, titleMaxW, titleFit.fs, titleTreatment.color || undefined, titleTextStyle, badgeFont).catch(() => null)
     if (titleBadge) {
       const logoCenterX = logoResult.left + logoResult.w / 2
       // Più largo del logo: centrato comunque, per non sbordare da un lato solo.

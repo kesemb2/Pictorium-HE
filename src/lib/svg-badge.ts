@@ -1,8 +1,8 @@
 import { textColorForBg } from "./accent-color"
-import { FONT_FILES } from "./fonts"
+import { fontFilesFor } from "./fonts"
 import { buildTitleTextSvg, textShadowBox, type TextStyle, estimateTextWidth, fontFamilyFor, genreBadgeSafePad, genreBadgeSvgDims, genrePillMaxW, buildGenreBarSvg, buildGenrePillSvg, buildGenreTextSvg, buildGenreBorderedSvg, buildGenreGlassSvg, buildRankingBarSvg, buildRankingDefaultSvg, buildRankingPillSvg, buildRankingGlassSvg, buildRankingBorderedSvg, buildExtraBarSvg, buildExtraDefaultSvg, buildExtraPillSvg, buildExtraGlassSvg, buildExtraBorderedSvg, buildQualityBadgeSvg, escSvg, satinPillStops, containsHebrew, rtlSafe, type RibbonWords } from "./badge-svg-shared"
 import type { GenreParts } from "./badge-svg-shared"
-import type { BadgeStyle, RankingBadgeStyle, ExtraBadgeStyle, BadgeFont } from "./badge-styles"
+import type { BadgeStyle, RankingBadgeStyle, ExtraBadgeStyle, BadgeFontSpec } from "./badge-styles"
 // Renderer di upstream, solo per i tipi di badge che il fork non ha costruito
 // da sé (preset house/custom, nastro `netflix-color`): vedi badge-svg-upstream.ts.
 import { buildCustomBadgeSvg, buildHousePresetSvg, buildHouseRankingSvg, buildQualityBadgeSvg as buildQualityBadgeSvgUpstream, type HousePresetScene } from "./badge-svg-upstream"
@@ -38,7 +38,7 @@ export async function renderSVG(svgStr: string, w: number): Promise<Buffer> {
   const resvg = new Resvg(svgStr, {
     fitTo: { mode: "width", value: w },
     font: {
-      fontFiles: [...FONT_FILES],
+      fontFiles: fontFilesFor(svgStr),
       loadSystemFonts: false,
     },
   })
@@ -56,7 +56,7 @@ export async function buildExtraBadgeSVG(
   /** Scala % applicata al font solo per lo stile barra (gli altri scalano via bitmap nel service). */
   scale = 100,
   /** Font dei testi (default "inter" = resa storica). */
-  font: BadgeFont = "inter",
+  font: BadgeFontSpec = "inter",
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
   const s = badgeStyle || "default"
   // Cap estetico per gli stili compatti: oltre il 65% di pw il testo si
@@ -111,7 +111,7 @@ export async function buildGenreBadgeSVG(
   scale = 100,
   textStyle?: TextStyle,
   /** Font dei testi (default "inter" = resa storica). */
-  font: BadgeFont = "inter",
+  font: BadgeFontSpec = "inter",
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
   const s = style || "shadow"
   const voteStr = voteAverage ? voteAverage.toFixed(1) : ""
@@ -190,7 +190,7 @@ export async function renderGenreBadge(
   year?: string, style?: BadgeStyle, accentColor?: string, bottomLight?: boolean, parts?: GenreParts,
   scale = 100,
   textStyle?: TextStyle,
-  font: BadgeFont = "inter",
+  font: BadgeFontSpec = "inter",
 ): Promise<{ png: Buffer; w: number; h: number }> {
   const r = await buildGenreBadgeSVG(genreName, voteAverage, pw, year, style, accentColor, bottomLight, parts, scale, textStyle, font)
   if (r) return r
@@ -215,7 +215,7 @@ export function netflixRibbonFontSize(pw: number): number {
   return Math.round(Math.max(27 * pw / 380, 16))
 }
 
-export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boolean, side: "left" | "right" = "left", isAnime?: boolean, label?: string, words?: RibbonWords, font: BadgeFont = "inter") {
+export function buildNetflixRankBadgeSVG(rank: number, pw: number, topLight: boolean, side: "left" | "right" = "left", isAnime?: boolean, label?: string, words?: RibbonWords, font: BadgeFontSpec = "inter") {
   // Leggermente ridotto (-11%): fs base 24, w proporzionale 2.65
   const fs = Math.round(Math.max(24 * pw / 380, 16))
   const w = Math.round(fs * 2.65)
@@ -323,7 +323,7 @@ export async function buildRankingBadgeSVG(
    */
   ribbonLabel?: string,
   /** Font dei testi (default "inter" = resa storica). */
-  font: BadgeFont = "inter",
+  font: BadgeFontSpec = "inter",
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
   const s = badgeStyle || "default"
   const periodText = label || words?.today || "Oggi"
@@ -381,7 +381,7 @@ export async function renderRankingBadge(
   words?: RibbonWords,
   /** Sottotitolo dei nastri (vedi buildRankingBadgeSVG). */
   ribbonLabel?: string,
-  font: BadgeFont = "inter",
+  font: BadgeFontSpec = "inter",
 ): Promise<{ png: Buffer; w: number; h: number }> {
   const r = await buildRankingBadgeSVG(rank, pw, label, topLight, badgeStyle, accentColor, side, isAnime, scale, words, ribbonLabel, font)
   if (r) return r
@@ -392,7 +392,7 @@ export async function renderExtraBadge(
   label: string, pw: number, topLight?: boolean,
   badgeStyle?: ExtraBadgeStyle, accentColor?: string,
   scale = 100,
-  font: BadgeFont = "inter",
+  font: BadgeFontSpec = "inter",
 ): Promise<{ png: Buffer; w: number; h: number }> {
   const r = await buildExtraBadgeSVG(label, pw, topLight, badgeStyle, accentColor, scale, font)
   if (r) return r
@@ -405,9 +405,9 @@ export async function renderExtraBadge(
  * nulla senza casi speciali.
  */
 export async function renderTitleText(
-  title: string, maxW: number, fs: number, textColor?: string, textStyle?: TextStyle,
+  title: string, maxW: number, fs: number, textColor?: string, textStyle?: TextStyle, font?: BadgeFontSpec,
 ): Promise<{ png: Buffer; w: number; h: number } | null> {
-  const built = buildTitleTextSvg(title, maxW, fs, textColor, textStyle)
+  const built = buildTitleTextSvg(title, maxW, fs, textColor, textStyle, font)
   if (!built) return null
   const png = await renderSVG(built.svg, built.w)
   return { png, w: built.w, h: built.h }
@@ -442,7 +442,7 @@ export async function renderComingSoonRibbon(
   label: string,
   pw: number,
   side: "left" | "right" = "left",
-  font: BadgeFont = "inter",
+  font: BadgeFontSpec = "inter",
 ): Promise<{ png: Buffer; w: number; h: number }> {
   const s = pw / 380
   const layout = comingSoonRibbonLayout(pw)
@@ -488,7 +488,7 @@ export async function renderQualityBadge(
   topLight?: boolean,
   /** Applicata a valle come resize bitmap in poster-service, non qui. */
   _scale = 100,
-  font: BadgeFont = "inter",
+  font: BadgeFontSpec = "inter",
 ): Promise<{ png: Buffer; w: number; h: number }> {
   // Base al 120% nativa (come il badge genere): lo slider `qscale` parte da 100.
   const fs = Math.round(Math.max(14 * 1.2 * pw / 380, 10))

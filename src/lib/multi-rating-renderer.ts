@@ -2,7 +2,7 @@ import { escSvg, estimateTextWidth, fontFamilyFor, normalizeBadgeFont } from "./
 import { renderSVG } from "./svg-badge"
 import { formatRating } from "./custom-rating/formatter"
 import type { RatingItem } from "./custom-rating/types"
-import type { BadgeFont } from "./badge-styles"
+import type { BadgeFontSpec } from "./badge-styles"
 
 /** Display cap: oltre, le pill diventerebbero illeggibili su 380px. I dati restano completi. */
 export const MAX_CUSTOM_RATINGS = 5
@@ -18,7 +18,7 @@ const PILL_GAP = 8
  * light pill on dark ones); text uses per-label font + textLength stabilization
  * like every other badge (Windows/local vs Linux metrics).
  */
-export async function renderMultiRatings(ratings: RatingItem[], maxWidth: number, topLight = true, font: BadgeFont = "inter") {
+export async function renderMultiRatings(ratings: RatingItem[], maxWidth: number, topLight = true, font: BadgeFontSpec = "inter") {
   const items = ratings.filter(item => Number.isFinite(item.value)).slice(0, MAX_CUSTOM_RATINGS)
   if (!items.length) return null
   const f = normalizeBadgeFont(font)

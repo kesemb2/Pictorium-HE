@@ -10,7 +10,7 @@ import { z } from "zod"
 // Batch B: clamp condiviso da image-utils.ts (semantica standard, senza round)
 import { clamp } from "@/lib/image-utils"
 import { envWithFallback } from "@/lib/env-compat"
-import { BADGE_STYLES, RANKING_BADGE_STYLES, QUALITY_BADGE_STYLES, BADGE_FONTS } from "@/lib/badge-styles"
+import { BADGE_STYLES, RANKING_BADGE_STYLES, QUALITY_BADGE_STYLES, BADGE_FONTS, HEBREW_FONTS } from "@/lib/badge-styles"
 
 // ---- Zod schema (Batch C: sostituisce validazione manuale) ----
 
@@ -58,6 +58,8 @@ export const configTokenSchema = z.object({
   rankingBadgeStyle: rankingBadgeStyleSchema,
   /** Font dei testi badge: opzionale (token vecchi senza campo restano validi). */
   badgeFont: z.enum(BADGE_FONTS).nullable().optional(),
+  /** Fork: font del testo ebraico (opzionale: token vecchi restano validi). */
+  hebrewFont: z.enum(HEBREW_FONTS).nullable().optional(),
   // Stile icone qualità: opzionale+nullable (token vecchi senza campo restano validi).
   qualityBadgeStyle: z.enum(QUALITY_BADGE_STYLES).nullable().optional(),
   blurEnabled: z.boolean(),

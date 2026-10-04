@@ -3,12 +3,12 @@ import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { DATA_DIR } from "@/lib/data-dir"
 import { createLogger } from "@/lib/logger"
-import type { BadgeStyle, RankingBadgeStyle, QualityBadgeStyle, BadgeFont } from "@/lib/badge-styles"
+import type { BadgeStyle, RankingBadgeStyle, QualityBadgeStyle, BadgeFont, HebrewFont } from "@/lib/badge-styles"
 import type { StreamQuality } from "@/lib/quality-tiers"
 import type { SashBucket } from "@/lib/badge-priority"
 import type { VideoFormat } from "@/lib/av-specs"
 import { isVideoFormat } from "@/lib/av-specs"
-import { isBadgeStyle, isRankingBadgeStyle, isQualityBadgeStyle, isBadgeFont } from "@/lib/badge-styles"
+import { isBadgeStyle, isRankingBadgeStyle, isQualityBadgeStyle, isBadgeFont, isHebrewFont } from "@/lib/badge-styles"
 import type { DateFormat } from "@/lib/release-badge"
 import { normalizeRegion } from "@/lib/regions"
 import { envWithFallback } from "@/lib/env-compat"
@@ -75,6 +75,8 @@ export interface ServerDefaults {
   rankingBadgeStyle?: RankingBadgeStyle
   /** Font dei testi badge ("inter" = resa storica). */
   badgeFont?: BadgeFont | null
+  /** Fork: font del testo ebraico (assente = Rubik). */
+  hebrewFont?: HebrewFont | null
   /** Stile icone del badge qualità (standard = pill testuale). */
   qualityBadgeStyle?: QualityBadgeStyle | null
   /** Formati A/V abilitati di default (dv, hdr, hdr10plus, atmos, imax). */
@@ -299,6 +301,7 @@ function defaultsFromEnv(): ServerDefaults {
   const rbs = getEnv("RANKING_BADGE_STYLE")?.trim()
   const qbs = getEnv("QUALITY_BADGE_STYLE")?.trim()
   const bfEnv = getEnv("BADGE_FONT")?.trim().toLowerCase()
+  const hfEnv = getEnv("HEBREW_FONT")?.trim().toLowerCase()
   const side = getEnv("RIBBON_SIDE")?.trim().toLowerCase()
   const shapeEnv = getEnv("POSTER_SHAPE")?.trim().toLowerCase()
   if (shapeEnv === "poster" || shapeEnv === "landscape") d.posterShape = shapeEnv
@@ -337,6 +340,7 @@ function defaultsFromEnv(): ServerDefaults {
   if (rbs && isRankingBadgeStyle(rbs)) d.rankingBadgeStyle = rbs
   if (qbs && isQualityBadgeStyle(qbs)) d.qualityBadgeStyle = qbs
   if (bfEnv && isBadgeFont(bfEnv)) d.badgeFont = bfEnv
+  if (hfEnv && isHebrewFont(hfEnv)) d.hebrewFont = hfEnv
   if (side === "left" || side === "right") d.ribbonSide = side
   if (blurI !== undefined) d.blurIntensity = blurI
   if (blurF !== undefined) d.blurFade = blurF

@@ -10,7 +10,7 @@ import { hexLuminance, computeBottomLight } from "./accent-color"
 import { normalizeGenreName } from "./genre-normalize"
 import type { SearchResult, TMDBImage } from "./types"
 import type { EnrichedAnimeItem } from "./validation"
-import type { BadgeStyle, RankingBadgeStyle, QualityBadgeStyle, BadgeFont } from "./badge-styles"
+import type { BadgeStyle, RankingBadgeStyle, QualityBadgeStyle, BadgeFont, HebrewFont } from "./badge-styles"
 import type { VideoFormat } from "./av-specs"
 import type { PosterShape, NetworkLogoPosition } from "./types"
 import { BADGE_PRESET_ID_RE, BADGE_PRESET_REV_RE } from "./badge-preset"
@@ -23,6 +23,8 @@ interface BadgeParams {
   rankingBadgeStyle: RankingBadgeStyle
   /** Font dei testi badge (default "inter" = resa storica). */
   badgeFont?: BadgeFont | null
+  /** Fork: font del testo ebraico (impostazione globale; default Rubik). */
+  hebrewFont?: HebrewFont | null
   /** Stile icone del badge qualità (default "standard"). */
   qualityBadgeStyle?: QualityBadgeStyle | null
   /** Formati A/V abilitati (dv, atmos, imax, hdr, hdr10plus). */
@@ -210,6 +212,7 @@ export function buildUrlPattern(bp: BadgeParams & {
     badgeStyle: bp.badgeStyle,
     rankingBadgeStyle: bp.rankingBadgeStyle,
     badgeFont: bp.badgeFont ?? undefined,
+    hebrewFont: bp.hebrewFont ?? undefined,
     qualityBadgeStyle: bp.qualityBadgeStyle,
     gradientHeight: bp.gradientHeight,
     blurIntensity: bp.blurIntensity,
@@ -389,6 +392,9 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams, configToken?: 
   // Font badge SEMPRE esplicito in preview (come bs/rs): senza, un mapping
   // salvato con font diverso scavalcerebbe la scelta editor (desync WYSIWYG).
   params.push(`bfont=${bp.badgeFont ?? "inter"}`)
+  // Fork: font ebraico esplicito in preview, così la scelta nelle Impostazioni
+  // si vede subito anche prima che i default arrivino al server.
+  params.push(`hfont=${bp.hebrewFont ?? "rubik"}`)
   // Stile icone qualità SEMPRE esplicito in preview (come bs/rs): senza, un
   // mapping salvato con stile diverso scavalcerebbe la scelta editor (desync).
   params.push(`qbs=${bp.qualityBadgeStyle === "mono" || bp.qualityBadgeStyle === "color" ? bp.qualityBadgeStyle : "standard"}`)
@@ -553,6 +559,7 @@ export interface DefaultsPreviewParams {
   defaultBadgeStyle?: BadgeStyle
   defaultRankingBadgeStyle?: RankingBadgeStyle
   defaultBadgeFont?: BadgeFont | null
+  defaultHebrewFont?: HebrewFont | null
   defaultQualityBadgeStyle?: QualityBadgeStyle | null
   defaultVideoFormats?: readonly VideoFormat[] | null
   defaultBlurEnabled?: boolean
@@ -611,6 +618,7 @@ export function buildDefaultsPreviewUrl(bp: DefaultsPreviewParams): string {
   params.push(`bs=${bp.defaultBadgeStyle ?? "shadow"}`)
   params.push(`rs=${bp.defaultRankingBadgeStyle ?? "default"}`)
   params.push(`bfont=${bp.defaultBadgeFont ?? "inter"}`)
+  params.push(`hfont=${bp.defaultHebrewFont ?? "rubik"}`)
   params.push(`qbs=${bp.defaultQualityBadgeStyle === "mono" || bp.defaultQualityBadgeStyle === "color" ? bp.defaultQualityBadgeStyle : "standard"}`)
   if (bp.defaultVideoFormats !== undefined && bp.defaultVideoFormats !== null) {
     params.push(`formats=${bp.defaultVideoFormats.length === 0 ? "none" : bp.defaultVideoFormats.join(",")}`)

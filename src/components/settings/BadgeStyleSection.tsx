@@ -4,7 +4,7 @@ import { Palette } from "lucide-react"
 import { usePSelector } from "@/lib/context"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { usePosterEditor } from "@/lib/contexts/PosterEditorContext"
-import { BadgeStyleSelector, VideoFormatSelector, BadgeFontSelector } from "@/components/ui"
+import { BadgeStyleSelector, VideoFormatSelector, BadgeFontSelector, HebrewFontSelector } from "@/components/ui"
 import { KNOWN_VIDEO_FORMATS } from "@/lib/av-specs"
 
 /** Stili grafici predefiniti (tab Badge). Estratto da SettingsPanel: solo JSX + context, nessuno stato locale. */
@@ -58,6 +58,18 @@ export function BadgeStyleSection() {
             ed.setDefaultBadgeFont(v)
           }}
         />
+      </div>
+
+      <div className="pt-2 border-t border-surface2/50 space-y-1.5">
+        <label className="text-[11px] text-muted font-medium block">
+          {t("ui.hebrewFont")}
+        </label>
+        <HebrewFontSelector
+          value={ed.defaultHebrewFont}
+          onChange={(v) => ed.setDefaultHebrewFont(v)}
+          label={t("ui.hebrewFont")}
+        />
+        <p className="text-[11px] text-zinc-500 leading-snug">{t("ui.hebrewFontHint")}</p>
       </div>
 
       {ed.defaultBadgeQuality && (

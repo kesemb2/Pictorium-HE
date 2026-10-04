@@ -1,5 +1,5 @@
-import type { BadgeFont } from "./badge-styles"
-import { isBadgeFont } from "./badge-styles"
+import type { BadgeFontSpec } from "./badge-styles"
+import { HEBREW_FONT_FAMILY, HEBREW_FONT_WIDTH, hebrewFontOf, latinFontOf, normalizeBadgeFontSpec } from "./badge-styles"
 
 const TEXT_SAFE_PAD = 1.15
 const GENRE_TEXT_MAX_RATIO = 0.84
@@ -118,16 +118,22 @@ export function bidiIsolate(text: string): string {
  * Barlow Condensed e Oswald non hanno quei glifi. Con font "inter" (default)
  * l'SVG resta byte-identico a prima del selettore.
  */
-export function fontFamilyFor(text: string, font: BadgeFont | string | null | undefined = "inter"): string {
-  if (needsRubik(text)) return "Rubik"
-  if (font === "barlow-condensed") return "Barlow Condensed"
-  if (font === "oswald") return "Oswald"
+export function fontFamilyFor(text: string, font: BadgeFontSpec | string | null | undefined = "inter"): string {
+  if (needsRubik(text)) {
+    // Fork: l'ebraico segue il font ebraico scelto; l'arabo resta in Rubik
+    // (le altre famiglie ebraiche non hanno glifi arabi).
+    return HEBREW_RE.test(text) && !ARABIC_RE.test(text) ? HEBREW_FONT_FAMILY[hebrewFontOf(font)] : "Rubik"
+  }
+  const latin = latinFontOf(font)
+  if (latin === "barlow-condensed") return "Barlow Condensed"
+  if (latin === "oswald") return "Oswald"
   return "Inter"
 }
 
 /** Normalizza un valore libero al font badge (assente/invalido → "inter"). */
-export function normalizeBadgeFont(font: string | null | undefined): BadgeFont {
-  return isBadgeFont(font) ? font : "inter"
+export function normalizeBadgeFont(font: string | null | undefined): BadgeFontSpec {
+  // Fork: conserva la parte ebraica ("oswald+heebo"); senza, identico a prima.
+  return normalizeBadgeFontSpec(font)
 }
 
 function charWidthFactor(char: string): number {
@@ -152,14 +158,19 @@ function charWidthFactor(char: string): number {
   return 0.62
 }
 
-export function estimateTextWidth(text: string, fs: number, font: BadgeFont | string | null | undefined = "inter"): number {
+export function estimateTextWidth(text: string, fs: number, font: BadgeFontSpec | string | null | undefined = "inter"): number {
   let units = 0
   for (const char of text) units += charWidthFactor(char)
   const w = Math.max(units * fs, fs * 0.35)
   // Larghezza ottica dei condensed (misurata da upstream con resvg):
   // Barlow Condensed ≈ 0.73× Inter, Oswald ≈ 0.80×. Ebraico/arabo escono
   // sempre in Rubik, quindi nessuna scala.
-  const condensed = needsRubik(text) ? 1 : font === "barlow-condensed" ? 0.73 : font === "oswald" ? 0.80 : 1
+  // Fork: l'ebraico nel font ebraico scelto scala sull'avanzamento misurato
+  // (Rubik = 1, quindi il default resta identico).
+  const latin = latinFontOf(font)
+  const condensed = needsRubik(text)
+    ? (HEBREW_RE.test(text) && !ARABIC_RE.test(text) ? HEBREW_FONT_WIDTH[hebrewFontOf(font)] : 1)
+    : latin === "barlow-condensed" ? 0.73 : latin === "oswald" ? 0.80 : 1
   return Math.round(w * condensed)
 }
 
@@ -358,10 +369,10 @@ type GenreTextFlowArgs = GenreBadgeText & {
   readonly parts?: GenreParts
   readonly style?: string
   /** Font dei testi (default "inter" = resa storica). */
-  readonly font?: BadgeFont
+  readonly font?: BadgeFontSpec
 }
 
-export function genreBadgeSvgDims(fs: number, genreName: string, voteStr: string, yearStr: string, parts?: GenreParts, style?: string, font: BadgeFont = "inter") {
+export function genreBadgeSvgDims(fs: number, genreName: string, voteStr: string, yearStr: string, parts?: GenreParts, style?: string, font: BadgeFontSpec = "inter") {
   const isMinimal = style === "minimal"
   const opts = normalizeParts(parts)
   const gap = Math.round(fs / 3)
@@ -433,7 +444,9 @@ function buildGenreTextFlow({ genreName, voteStr, yearStr, fs, centerX, y, parts
   // segue contenuto non-Inter nello stesso <text> (misurato da upstream). Lì
   // il flusso si spezza in due testi e la ★ diventa un path. Rubik (ebraico/
   // arabo) resta sul flusso unico del fork, verificato con le misure bidi.
-  if (hasStar && flowFamily !== "Inter" && flowFamily !== "Rubik") {
+  // Solo i condensed latini: le famiglie ebraiche restano nel flusso unico
+  // verificato per il bidi (vedi bidiIsolate), come Rubik.
+  if (hasStar && (flowFamily === "Barlow Condensed" || flowFamily === "Oswald")) {
     return splitGenreFlow({ genreName, voteStr, yearStr, fs, centerX, y, dims, bullet, hasGenre, hasYear, starDy, flowFamily })
   }
   // Ogni separatore tra segmenti contribuisce gap*2 ai dx (gap prima e dopo il
@@ -494,7 +507,7 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
-export function buildGenreBarSvg(genreName: string, voteStr: string, yearStr: string, pw: number, fs: number, textColor: string, topLight: boolean, textOffsetX = 0, parts?: GenreParts, font: BadgeFont = "inter") {
+export function buildGenreBarSvg(genreName: string, voteStr: string, yearStr: string, pw: number, fs: number, textColor: string, topLight: boolean, textOffsetX = 0, parts?: GenreParts, font: BadgeFontSpec = "inter") {
   // Padding verticale allineato alle altre barre (ranking/extra): la barra
   // genere era più alta (0.5) e copriva troppo poster.
   const barPad = Math.round(fs * 0.35)
@@ -511,7 +524,7 @@ export function buildGenreBarSvg(genreName: string, voteStr: string, yearStr: st
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${barH}">${defs}${inner}${borderLine}${textEl}</svg>`, w: pw, h: barH }
 }
 
-export function buildGenrePillSvg(genreName: string, voteStr: string, yearStr: string, fs: number, bgColor: string, textColor: string, textOffsetX = 0, parts?: GenreParts, font: BadgeFont = "inter") {
+export function buildGenrePillSvg(genreName: string, voteStr: string, yearStr: string, fs: number, bgColor: string, textColor: string, textOffsetX = 0, parts?: GenreParts, font: BadgeFontSpec = "inter") {
   const pillPad = Math.round(fs * 0.35)
   const safePad = genreBadgeSafePad(fs)
   const pillR = Math.round(fs * 0.8)
@@ -566,15 +579,15 @@ export function titleStripHeight(fs: number): number {
  * a-capo e una riga di sottotitolo non lo giustifica: la fascia sotto il logo
  * è alta ~150px in tutto e due righe se la mangerebbero.
  */
-export function fitTitleText(title: string, maxW: number, fs: number): { text: string; fs: number } {
+export function fitTitleText(title: string, maxW: number, fs: number, font?: BadgeFontSpec): { text: string; fs: number } {
   const clean = title.trim().replace(/\s+/g, " ")
   if (!clean) return { text: "", fs }
   let size = fs
-  while (size > TITLE_TEXT_MIN_FONT_SIZE && estimateTextWidth(clean, size) > maxW) size -= 1
-  if (estimateTextWidth(clean, size) <= maxW) return { text: clean, fs: size }
+  while (size > TITLE_TEXT_MIN_FONT_SIZE && estimateTextWidth(clean, size, font) > maxW) size -= 1
+  if (estimateTextWidth(clean, size, font) <= maxW) return { text: clean, fs: size }
   // Ancora troppo lungo al corpo minimo: taglia carattere per carattere.
   const chars = [...clean]
-  while (chars.length > 1 && estimateTextWidth(`${chars.join("")}\u2026`, size) > maxW) chars.pop()
+  while (chars.length > 1 && estimateTextWidth(`${chars.join("")}\u2026`, size, font) > maxW) chars.pop()
   return { text: `${chars.join("")}\u2026`, fs: size }
 }
 
@@ -583,18 +596,19 @@ export function fitTitleText(title: string, maxW: number, fs: number): { text: s
  * genere "shadow": il testo cade su artwork, non su una pill, e senza ombra
  * sparirebbe sui poster chiari.
  */
-export function buildTitleTextSvg(title: string, maxW: number, fs: number, textColor = "#ffffff", textStyle?: TextStyle) {
-  const fit = fitTitleText(title, maxW, fs)
+/** `font`: solo la parte ebraica conta (il titolo è sempre ebraico). */
+export function buildTitleTextSvg(title: string, maxW: number, fs: number, textColor = "#ffffff", textStyle?: TextStyle, font?: BadgeFontSpec) {
+  const fit = fitTitleText(title, maxW, fs, font)
   if (!fit.text) return null
   const { pad: shadowPad } = textShadowBox(textStyle)
-  const renderW = Math.min(Math.round(estimateTextWidth(fit.text, fit.fs)) + shadowPad * 2, maxW + shadowPad * 2)
+  const renderW = Math.min(Math.round(estimateTextWidth(fit.text, fit.fs, font)) + shadowPad * 2, maxW + shadowPad * 2)
   const renderH = titleStripHeight(fit.fs)
   const defs = textShadowDefs("ts", textStyle)
-  const textEl = `<text x="${renderW / 2}" y="${renderH / 2}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(fit.text)}" font-weight="700" font-size="${fit.fs}" fill="${textColor}" filter="url(#ts)"${textOpacityAttr(textStyle)}>${escSvg(rtlSafe(fit.text))}</text>`
+  const textEl = `<text x="${renderW / 2}" y="${renderH / 2}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(fit.text, font)}" font-weight="700" font-size="${fit.fs}" fill="${textColor}" filter="url(#ts)"${textOpacityAttr(textStyle)}>${escSvg(rtlSafe(fit.text))}</text>`
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${renderH}">${defs}${textEl}</svg>`, w: renderW, h: renderH }
 }
 
-export function buildGenreTextSvg(genreName: string, voteStr: string, yearStr: string, fs: number, textColor: string, style: string, textOffsetX = 0, parts?: GenreParts, textStyle?: TextStyle, font: BadgeFont = "inter") {
+export function buildGenreTextSvg(genreName: string, voteStr: string, yearStr: string, fs: number, textColor: string, style: string, textOffsetX = 0, parts?: GenreParts, textStyle?: TextStyle, font: BadgeFontSpec = "inter") {
   const isMinimal = style === "minimal"
   const dims = genreBadgeSvgDims(fs, genreName, voteStr, yearStr, parts, style, font)
   const box = textShadowBox(textStyle)
@@ -620,7 +634,7 @@ export function buildGenreTextSvg(genreName: string, voteStr: string, yearStr: s
   return { svg, w: renderW, h: renderH }
 }
 
-export function buildGenreBorderedSvg(genreName: string, voteStr: string, yearStr: string, fs: number, textColor: string, topLight: boolean, textOffsetX = 0, parts?: GenreParts, font: BadgeFont = "inter") {
+export function buildGenreBorderedSvg(genreName: string, voteStr: string, yearStr: string, fs: number, textColor: string, topLight: boolean, textOffsetX = 0, parts?: GenreParts, font: BadgeFontSpec = "inter") {
   const dims = genreBadgeSvgDims(fs, genreName, voteStr, yearStr, parts, undefined, font)
   const safePad = genreBadgeSafePad(fs)
   const borderPad = Math.max(Math.round(fs * 0.4), 6)
@@ -636,7 +650,7 @@ export function buildGenreBorderedSvg(genreName: string, voteStr: string, yearSt
   return { svg, w: renderW, h: renderH }
 }
 
-export function buildGenreGlassSvg(genreName: string, voteStr: string, yearStr: string, fs: number, textColor: string, topLight: boolean, textOffsetX = 0, parts?: GenreParts, font: BadgeFont = "inter") {
+export function buildGenreGlassSvg(genreName: string, voteStr: string, yearStr: string, fs: number, textColor: string, topLight: boolean, textOffsetX = 0, parts?: GenreParts, font: BadgeFontSpec = "inter") {
   const dims = genreBadgeSvgDims(fs, genreName, voteStr, yearStr, parts, undefined, font)
   const safePad = genreBadgeSafePad(fs)
   const glassPad = Math.max(Math.round(fs * 0.45), 8)
@@ -673,7 +687,7 @@ export function satinPillStops(topLight: boolean): string {
     : `<stop offset="0%" stop-color="rgba(255,255,255,0.95)"/><stop offset="30%" stop-color="rgba(255,255,255,0.82)"/><stop offset="62%" stop-color="rgba(255,255,255,0.66)"/><stop offset="100%" stop-color="rgba(255,255,255,0.50)"/>`
 }
 
-export function buildRankingBarSvg(fullText: string, pw: number, fs: number, textColor: string, bg: string, font: BadgeFont = "inter") {
+export function buildRankingBarSvg(fullText: string, pw: number, fs: number, textColor: string, bg: string, font: BadgeFontSpec = "inter") {
   const pt = Math.round(fs * 0.35)
   const pb = pt
   const svgH = fs + pt + pb
@@ -688,7 +702,7 @@ export function buildRankingBarSvg(fullText: string, pw: number, fs: number, tex
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${svgH}">${defs}${inner}${textEl}</svg>`, w: pw, h: svgH }
 }
 
-export function buildRankingDefaultSvg(fullText: string, fs: number, textColor: string, _bg: string, topLight = false, flatBg?: string, font: BadgeFont = "inter") {
+export function buildRankingDefaultSvg(fullText: string, fs: number, textColor: string, _bg: string, topLight = false, flatBg?: string, font: BadgeFontSpec = "inter") {
   const px = Math.round(fs * 1.0)
   const pt = Math.round(fs * 0.5)
   const pb = pt
@@ -711,7 +725,7 @@ export function buildRankingDefaultSvg(fullText: string, fs: number, textColor: 
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${renderH}">${defs}<path d="${pathD}" fill="${flatBg ?? "url(#rdg)"}" stroke="rgba(255,255,255,0.15)" stroke-width="1" filter="url(#ds)"/>${textEl}</svg>`, w: renderW, h: renderH }
 }
 
-export function buildRankingPillSvg(fullText: string, fs: number, textColor: string, bg: string, font: BadgeFont = "inter") {
+export function buildRankingPillSvg(fullText: string, fs: number, textColor: string, bg: string, font: BadgeFontSpec = "inter") {
   const px = Math.round(fs * 0.75)
   const pt = Math.round(fs * 0.35)
   const pb = pt
@@ -727,7 +741,7 @@ export function buildRankingPillSvg(fullText: string, fs: number, textColor: str
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${svgH}">${bgEl}${textEl}</svg>`, w: renderW, h: svgH }
 }
 
-export function buildRankingGlassSvg(fullText: string, fs: number, textColor: string, _bg: string, topLight: boolean, font: BadgeFont = "inter") {
+export function buildRankingGlassSvg(fullText: string, fs: number, textColor: string, _bg: string, topLight: boolean, font: BadgeFontSpec = "inter") {
   const px = Math.round(fs * 1.0)
   const pt = Math.round(fs * 0.4)
   const pb = pt
@@ -746,7 +760,7 @@ export function buildRankingGlassSvg(fullText: string, fs: number, textColor: st
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${renderH}">${defs}${bgEl}${textEl}</svg>`, w: renderW, h: renderH }
 }
 
-export function buildRankingBorderedSvg(fullText: string, fs: number, textColor: string, topLight: boolean, font: BadgeFont = "inter") {
+export function buildRankingBorderedSvg(fullText: string, fs: number, textColor: string, topLight: boolean, font: BadgeFontSpec = "inter") {
   const px = Math.round(fs * 1.0)
   const pt = Math.round(fs * 0.45)
   const pb = pt
@@ -763,7 +777,7 @@ export function buildRankingBorderedSvg(fullText: string, fs: number, textColor:
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${svgH}">${bgEl}${textEl}</svg>`, w: renderW, h: svgH }
 }
 
-export function buildExtraBarSvg(label: string, pw: number, fs: number, textColor: string, bg: string, font: BadgeFont = "inter") {
+export function buildExtraBarSvg(label: string, pw: number, fs: number, textColor: string, bg: string, font: BadgeFontSpec = "inter") {
   const pt = Math.round(fs * 0.35)
   const pb = pt
   const svgH = fs + pt + pb
@@ -778,7 +792,7 @@ export function buildExtraBarSvg(label: string, pw: number, fs: number, textColo
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${svgH}">${defs}${inner}${textEl}</svg>`, w: pw, h: svgH }
 }
 
-export function buildExtraDefaultSvg(label: string, fs: number, textColor: string, bg: string, font: BadgeFont = "inter") {
+export function buildExtraDefaultSvg(label: string, fs: number, textColor: string, bg: string, font: BadgeFontSpec = "inter") {
   const px = Math.round(fs * 1.0)
   const pt = Math.round(fs * 0.5)
   const pb = pt
@@ -800,7 +814,7 @@ export function buildExtraDefaultSvg(label: string, fs: number, textColor: strin
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${renderH}">${defs}<path d="${pathD}" fill="${bg}" stroke="rgba(255,255,255,0.15)" stroke-width="1" filter="url(#ds)"/>${textEl}</svg>`, w: renderW, h: renderH }
 }
 
-export function buildExtraPillSvg(label: string, fs: number, textColor: string, bg: string, font: BadgeFont = "inter") {
+export function buildExtraPillSvg(label: string, fs: number, textColor: string, bg: string, font: BadgeFontSpec = "inter") {
   const px = Math.round(fs * 1.0)
   const pt = Math.round(fs * 0.4)
   const pb = pt
@@ -814,7 +828,7 @@ export function buildExtraPillSvg(label: string, fs: number, textColor: string, 
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${renderW}" height="${svgH}">${bgEl}${textEl}</svg>`, w: renderW, h: svgH }
 }
 
-export function buildExtraGlassSvg(label: string, fs: number, textColor: string, _bg: string, topLight: boolean, font: BadgeFont = "inter") {
+export function buildExtraGlassSvg(label: string, fs: number, textColor: string, _bg: string, topLight: boolean, font: BadgeFontSpec = "inter") {
   const px = Math.round(fs * 1.0)
   const pt = Math.round(fs * 0.4)
   const pb = pt
@@ -834,7 +848,7 @@ export function buildExtraGlassSvg(label: string, fs: number, textColor: string,
 }
 
 /** Bordo per i badge "extra": stessa scatola della pill, solo contorno. */
-export function buildExtraBorderedSvg(label: string, fs: number, textColor: string, topLight: boolean, font: BadgeFont = "inter") {
+export function buildExtraBorderedSvg(label: string, fs: number, textColor: string, topLight: boolean, font: BadgeFontSpec = "inter") {
   const px = Math.round(fs * 0.75)
   const textW = Math.max(estimateTextWidth(label, fs, font), fs)
   const totalW = textW + px * 2
@@ -848,7 +862,7 @@ export function buildExtraBorderedSvg(label: string, fs: number, textColor: stri
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${boxH}">${bgEl}${textEl}</svg>`, w: totalW, h: boxH }
 }
 
-export function buildNetflixRankSvg(rank: number, pw: number, font: BadgeFont = "inter") {
+export function buildNetflixRankSvg(rank: number, pw: number, font: BadgeFontSpec = "inter") {
   const fs = Math.round(Math.max(23 * pw / 380, 14))
   const w = Math.round(fs * 2.4)
   const h = Math.round(fs * 2.0)
@@ -861,7 +875,7 @@ export function buildNetflixRankSvg(rank: number, pw: number, font: BadgeFont = 
   return { svg, w, h }
 }
 
-export function buildQualityBadgeSvg(quality: string, fs: number, _textColor: string, _bg: string, topLight: boolean = false, font: BadgeFont = "inter") {
+export function buildQualityBadgeSvg(quality: string, fs: number, _textColor: string, _bg: string, topLight: boolean = false, font: BadgeFontSpec = "inter") {
   // Pill satinata traslucida a polarità pill (chiara su top scuro, grafite su
   // top chiaro): geometria e testo invariati.
   const px = Math.round(fs * 0.75)

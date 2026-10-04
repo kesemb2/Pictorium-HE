@@ -4,7 +4,7 @@ import sharp from "sharp"
 import { escSvg, estimateTextWidth, fontFamilyFor, normalizeBadgeFont, satinPillStops, scaledDropShadow, type TextStyle } from "./badge-svg-shared"
 import { renderSVG } from "./svg-badge"
 import { formatSeparateValue } from "./ratings"
-import type { BadgeFont } from "./badge-styles"
+import type { BadgeFontSpec } from "./badge-styles"
 
 /** Mappa fonte → asset logo (stesso riuso di RatingSourceIcon: metacriticuser→metacritic, filmwebcritics→filmweb). */
 const SEPARATE_RATING_ICON_FILES: Record<string, string> = {
@@ -87,7 +87,7 @@ export async function renderSeparateRatingStack(
   /** Controlli del testo del fork (ombra) e alone della zona: le pill stanno sull'artwork. */
   style?: TextStyle,
   /** Font dei punteggi (default "inter" = resa storica; i loghi provider restano invariati). */
-  font: BadgeFont = "inter",
+  font: BadgeFontSpec = "inter",
 ): Promise<SeparateRatingStack | null> {
   // Pill compatte in stile moderno: proporzioni solide e bilanciate col badge 4K.
   const f = normalizeBadgeFont(font)
