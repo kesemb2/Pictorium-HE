@@ -77,6 +77,11 @@ export async function withRotationLock<T>(key: string, fn: () => Promise<T>): Pr
 export async function tryRotatePoster(
   mapping: Mapping,
   rotationState: EffectiveRotationState,
+  /**
+   * Percorsi da escludere al momento della rotazione (es. poster fanart con
+   * testo: vedi fanart-textless). Invocato solo quando la rotazione scatta.
+   */
+  rejectPaths?: (paths: readonly string[]) => Promise<ReadonlySet<string>>,
 ): Promise<Mapping | null> {
   if (!rotationState.isRotating || rotationState.availablePosters.length < 2) {
     return null
@@ -98,8 +103,12 @@ export async function tryRotatePoster(
 
     // Recompute rotation state with current data
     const excludedSet = new Set(currentMapping.excludedPosters || [])
-    const currentAvailable = (currentMapping.cleanPosters || [])
+    let currentAvailable = (currentMapping.cleanPosters || [])
       .filter((path) => !excludedSet.has(path))
+    if (rejectPaths) {
+      const rejected = await rejectPaths(currentAvailable).catch(() => new Set<string>())
+      if (rejected.size > 0) currentAvailable = currentAvailable.filter((path) => !rejected.has(path))
+    }
     if (currentAvailable.length < 2) return null
 
     const currentIdx = currentMapping.cleanPosterIndex ?? -1

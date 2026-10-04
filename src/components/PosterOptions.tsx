@@ -490,7 +490,7 @@ export function PosterOptions({ posters, posterActivePath, lang, selectPoster, a
               {fanart.posters.map((tile, i) => {
                 const m = fanart.meta[i]
                 const lang = m?.lang ?? null
-                const langLabel = !lang || lang === "00" ? t("ui.fanartLangUnknown") : LANG_NAMES[lang] || lang
+                const langLabel = m?.textless ? t("ui.clean") : !lang || lang === "00" ? t("ui.fanartLangUnknown") : LANG_NAMES[lang] || lang
                 return (
                   <PosterBtn
                     key={tile.file_path}

@@ -5,6 +5,10 @@ import { getScopedUserId, extractUserParam } from "@/lib/user-auth"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { cacheGet, cacheSet } from "@/lib/cache"
 import { jsonGzip } from "@/lib/json-response"
+import { checkFanartPosterText } from "@/lib/fanart-textless"
+
+/** Poster "00" analizzati per titolo (in parallelo, anteprime piccole). */
+const VERIFY_LIMIT = 6
 
 type RouteParams = { id: string }
 
@@ -35,7 +39,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       { status: 503 },
     )
   }
-  const cacheKey = `fanart:images:${type}:${id}`
+  // `v2`: ogni poster porta `textless` (tag "00" + controllo visivo).
+  const cacheKey = `fanart:images:v2:${type}:${id}`
   const acceptEncoding = req.headers.get("accept-encoding")
   const cached = cacheGet<{ posters: unknown[]; source: string }>(cacheKey)
   if (cached) return jsonGzip(cached, 200, undefined, acceptEncoding)
@@ -54,7 +59,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     }
     return jsonGzip({ error: "Fanart.tv unavailable", code: "fanart_unavailable" }, 502, undefined, acceptEncoding)
   }
-  const data = { posters, source: "fanart" }
+  // `textless` true SOLO per "00" verificati senza testo: la tab non deve mai
+  // presentare come clean un poster con il titolo stampato (fail-closed).
+  const toVerify = new Set(posters.filter((p) => p.lang === "00").slice(0, VERIFY_LIMIT).map((p) => p.url))
+  const verdicts = new Map((await Promise.all([...toVerify].map((u) => checkFanartPosterText(u, req.signal)))).map((v) => [v.url, v.textless]))
+  const data = { posters: posters.map((p) => ({ ...p, textless: verdicts.get(p.url) === true })), source: "fanart" }
   // Hit 24h, assenza 10min (stessi TTL del client, senza segreti nella chiave).
   cacheSet(cacheKey, data, ["fanart", "images"], posters.length > 0 ? 24 * 60 * 60 * 1000 : 10 * 60 * 1000)
   return jsonGzip(data, 200, undefined, acceptEncoding)

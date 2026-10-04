@@ -8,6 +8,8 @@ import { userFetch } from "@/lib/http"
 export interface FanartTabMeta {
   readonly lang: string | null
   readonly likes: number
+  /** Verificato senza testo dal server (tag "00" + controllo visivo). */
+  readonly textless: boolean
 }
 
 export type FanartTabStatus = "idle" | "loading" | "ready" | "empty" | "unavailable" | "not_configured"
@@ -23,6 +25,13 @@ interface FanartApiPoster {
   url: string
   lang: string | null
   likes: number
+  textless?: boolean
+}
+
+/** Lingua del tile Fanart: null (clean) solo se verificato senza testo. */
+export function fanartTileIso(p: { lang: string | null; textless?: boolean }): string | null {
+  if (p.textless === true) return null
+  return p.lang && p.lang !== "00" ? p.lang : "und"
 }
 
 /**
@@ -78,12 +87,14 @@ export function useFanartPosters(enabled: boolean): FanartTabData {
       const items = data.posters.filter((p) => typeof p?.url === "string")
       setPosters(items.map((p) => ({
         file_path: p.url,
-        iso_639_1: null,
+        // Clean (null) SOLO se verificato senza testo: un poster con il titolo
+        // stampato salvato come clean riceverebbe il logo sopra il titolo.
+        iso_639_1: fanartTileIso(p),
         vote_average: 0,
         width: 0,
         height: 0,
       })))
-      setMeta(items.map((p) => ({ lang: p.lang ?? null, likes: p.likes ?? 0 })))
+      setMeta(items.map((p) => ({ lang: p.lang ?? null, likes: p.likes ?? 0, textless: p.textless === true })))
       setStatus("ready")
     } catch {
       if (ctrl.signal.aborted || keyRef.current !== current) return

@@ -65,7 +65,8 @@ describe("GET /api/fanart/[id]/images", () => {
     const res = await GET(makeRequest("322", "movie"), params("322"))
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({
-      posters: [{ url: "https://assets.fanart.tv/fanart/movies/322/movieposter/a.jpg", lang: "it", likes: 5 }],
+      // "it" ha testo per definizione: mai clean, nessun controllo visivo.
+      posters: [{ url: "https://assets.fanart.tv/fanart/movies/322/movieposter/a.jpg", lang: "it", likes: 5, textless: false }],
       source: "fanart",
     })
   })

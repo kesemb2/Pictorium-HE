@@ -64,9 +64,14 @@ export function isFanartEnabled(): boolean {
   return !!fanartApiKey()
 }
 
-/** Immagini textless (lingua "None"). fanart omette il campo su record vecchi. */
+/**
+ * Candidati textless: SOLO lingua "None" ("00"). Una lingua assente non dice
+ * nulla sul testo (record vecchi, upload incompleti) e non conta. È una
+ * condizione necessaria, non sufficiente: per i poster serve anche il
+ * controllo visivo (fanart-textless.ts).
+ */
 export function textlessOnly(images: readonly FanartImage[]): readonly FanartImage[] {
-  return images.filter((i) => i.lang === TEXTLESS_LANG || i.lang === "")
+  return images.filter((i) => i.lang === TEXTLESS_LANG)
 }
 
 /** Solo URL sul CDN fanart: un record manomesso non deve farci uscire altrove. */
@@ -148,9 +153,10 @@ export interface FanartAsTmdbImage {
 }
 
 /**
- * `lang` "00" (senza testo) diventa `iso_639_1: null`, che è esattamente come
- * TMDB marca i poster puliti: così i filtri "clean" dell'editor funzionano sui
- * due insiemi senza sapere da dove vengono.
+ * Loghi e sfondi fanart in forma TMDB: `lang` "00"/assente → `iso_639_1: null`
+ * (per un logo significa "neutro", per uno sfondo è la regola di fanart: niente
+ * testo sugli sfondi). NON usarla per i poster: lì `null` significa "clean" e
+ * serve la verifica di fanart-textless.ts (`fanartPostersAsTmdb`).
  */
 export function toTmdbShape(images: readonly FanartImage[]): FanartAsTmdbImage[] {
   return images.map((i) => ({

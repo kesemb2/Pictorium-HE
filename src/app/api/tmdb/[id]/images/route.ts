@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { getImages, getExternalIds, resolveRouteApiKey } from "@/lib/tmdb"
-import { getFanartMovie, getFanartTv, isFanartEnabled, toTmdbShape } from "@/lib/fanart-artwork"
+import { getFanartMovie, getFanartTv, isFanartEnabled, toTmdbShape, type FanartArtwork } from "@/lib/fanart-artwork"
+import { fanartPostersAsTmdb } from "@/lib/fanart-textless"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { cacheGet, cacheSet } from "@/lib/cache"
 import { jsonGzip } from "@/lib/json-response"
@@ -14,18 +15,25 @@ type RouteParams = { id: string }
  * qui non deve mai far fallire la richiesta: le immagini TMDB ci sono comunque,
  * e fanart è un di più.
  */
-async function fanartImages(type: "movie" | "tv", id: number, apiKey?: string) {
+/** Quanti poster "00" analizzare per titolo (in parallelo, anteprime piccole). */
+const FANART_VERIFY_LIMIT = 6
+
+async function fanartImages(type: "movie" | "tv", id: number, apiKey?: string, signal?: AbortSignal) {
   if (!isFanartEnabled()) return { posters: [], logos: [], backdrops: [] }
   try {
+    let art: FanartArtwork
     if (type === "tv") {
       // fanart indicizza le serie per id TheTVDB, non TMDB.
       const ext = await getExternalIds("tv", id, apiKey).catch(() => ({ imdb_id: null, tvdb_id: null }))
       if (!ext.tvdb_id) return { posters: [], logos: [], backdrops: [] }
-      const art = await getFanartTv(ext.tvdb_id)
-      return { posters: toTmdbShape(art.posters), logos: toTmdbShape(art.logos), backdrops: toTmdbShape(art.backgrounds) }
+      art = await getFanartTv(ext.tvdb_id)
+    } else {
+      art = await getFanartMovie(id)
     }
-    const art = await getFanartMovie(id)
-    return { posters: toTmdbShape(art.posters), logos: toTmdbShape(art.logos), backdrops: toTmdbShape(art.backgrounds) }
+    // Poster: clean SOLO se "00" e verificati senza testo (fanart-textless);
+    // gli altri restano visibili ma mai clean (niente auto-scelta/rotazione).
+    const posters = await fanartPostersAsTmdb(art.posters, { limit: FANART_VERIFY_LIMIT, signal })
+    return { posters, logos: toTmdbShape(art.logos), backdrops: toTmdbShape(art.backgrounds) }
   } catch {
     return { posters: [], logos: [], backdrops: [] }
   }
@@ -43,7 +51,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   const apiKey = await resolveRouteApiKey(req)
   // La chiave di cache include fanart: accendere o spegnere la chiave d'istanza
   // deve cambiare la risposta, non riusare quella di prima.
-  const cacheKey = `images:${type}:${id}:${languages}:${isFanartEnabled() ? "fa" : "x"}`
+  // `ft2`: poster fanart clean solo se verificati senza testo; le liste in
+  // cache prima di questa regola non vanno riusate.
+  const cacheKey = `images:${type}:${id}:${languages}:${isFanartEnabled() ? "fa-ft2" : "x"}`
   const acceptEncoding = req.headers.get("accept-encoding")
   const cached = cacheGet(cacheKey)
   if (cached) return jsonGzip(cached, 200, undefined, acceptEncoding)
@@ -59,7 +69,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   }
   // fanart va in CODA a TMDB in ogni lista: a parità di lingua l'artwork
   // ufficiale resta il primo che l'utente vede.
-  const extra = await fanartImages(type as "movie" | "tv", Number(id), apiKey)
+  const extra = await fanartImages(type as "movie" | "tv", Number(id), apiKey, req.signal)
   const merged = {
     ...data,
     posters: [...data.posters, ...extra.posters],
