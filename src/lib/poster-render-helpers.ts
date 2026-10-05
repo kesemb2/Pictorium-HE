@@ -345,6 +345,23 @@ export async function extractBadgeColor(
 export const MIN_FITTED_BAND_PCT = 18
 
 /**
+ * Regola del fork: con un logo la fascia lo copre. Il bordo alto della fascia
+ * sta almeno `LOGO_BAND_REACH` altezze-logo sopra la cima del logo, così il
+ * logo (e il titolo sotto) poggia tutto sul blur anche quando la fascia si è
+ * ritirata dall'artwork o l'altezza salvata è bassa. Cap a `MAX_LOGO_BAND_PCT`:
+ * un logo enorme non deve sfocare tutto il poster.
+ */
+export const LOGO_BAND_REACH = 0.25
+export const MAX_LOGO_BAND_PCT = 75
+
+/** Altezza minima della fascia (in % della tela) per coprire il logo; 0 senza logo. */
+export function bandHeightForLogo(logo: { readonly top: number; readonly height: number } | null, canvasH: number): number {
+  if (!logo || !(canvasH > 0) || !(logo.height > 0)) return 0
+  const bandTop = Math.max(0, logo.top - LOGO_BAND_REACH * logo.height)
+  return Math.min(MAX_LOGO_BAND_PCT, Math.ceil(((canvasH - bandTop) / canvasH) * 100))
+}
+
+/**
  * Deviazione standard di luma oltre la quale una riga conta come "occupata".
  * Una riga piatta o con un gradiente dolce sta molto sotto; una riga che
  * attraversa un volto, un titolo o un blocco chiaro sta molto sopra.

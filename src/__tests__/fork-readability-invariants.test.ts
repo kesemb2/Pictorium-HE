@@ -19,6 +19,7 @@ import {
   zoneTextTreatment,
 } from "@/lib/logo-contrast"
 import { generatePosterBuffer, type GenerationInput, type ReadabilityReport } from "@/lib/poster-service"
+import { LOGO_BAND_REACH, MAX_LOGO_BAND_PCT, bandHeightForLogo } from "@/lib/poster-render-helpers"
 
 const W = 500
 const H = 750
@@ -40,11 +41,11 @@ async function whiteLogo(): Promise<Buffer> {
   return sharp(Buffer.from(svg)).png().toBuffer()
 }
 
-async function render(posterBuf: Buffer, logoFetch: Buffer | null, blurEnabled: boolean): Promise<ReadabilityReport> {
+async function render(posterBuf: Buffer, logoFetch: Buffer | null, blurEnabled: boolean, blurHeight = 45): Promise<ReadabilityReport> {
   const readabilityReport: ReadabilityReport = {}
   await generatePosterBuffer({
     posterBuf, logoFetch, backdropFetch: null, backdropScale: 100, backdropOffsetX: 0, backdropOffsetY: 0,
-    blurEnabled, blurHeight: 45, blurIntensity: 20, blurFade: 50, blurDarkness: 30, tintStrength: 20, topShade: 50,
+    blurEnabled, blurHeight, blurIntensity: 20, blurFade: 50, blurDarkness: 30, tintStrength: 20, topShade: 50,
     badgesEnabled: true, rankingEnabled: false, genreName: "Drama", voteAverage: 7.9,
     badgeStyle: "shadow", rankingBadgeStyle: "default", badgeGenre: true, badgeYear: true, badgeRating: true,
     topLight: false, targetCenter: 65, ribbonSide: "left", logoScale: null, logoOffsetX: null, logoOffsetY: null,
@@ -101,5 +102,31 @@ describe("fork readability invariants", () => {
   it("a full render veils a white logo on a light zone beyond upstream's 0.25", async () => {
     const report = await render(await poster((_, y) => (y < 300 ? 60 : 228)), await whiteLogo(), true)
     expect(report.logoScrim).toBeGreaterThan(0.25)
+  })
+
+  it("keeps the logo floor constants", () => {
+    expect(LOGO_BAND_REACH).toBe(0.25)
+    expect(MAX_LOGO_BAND_PCT).toBe(75)
+    expect(bandHeightForLogo(null, 750)).toBe(0)
+    // Logo da 500 a 600 su 750: fascia dalla y 475 → 37%.
+    expect(bandHeightForLogo({ top: 500, height: 100 }, 750)).toBe(37)
+    expect(bandHeightForLogo({ top: 10, height: 600 }, 750)).toBe(75)
+  })
+
+  it("with a logo the band covers it, even at a low height on busy art", async () => {
+    const busy = await poster((x, y) => Math.round(120 + 90 * Math.sin(x / 9) * Math.cos(y / 13)))
+    const report = await render(busy, await whiteLogo(), true, 20)
+    const band = report.band!
+    expect(band.requested).toBe(20)
+    expect(band.logoTop).not.toBeNull()
+    const bandTop = 750 - (750 * band.final) / 100
+    expect(bandTop).toBeLessThanOrEqual(band.logoTop! - LOGO_BAND_REACH * band.logoH! + 1)
+  })
+
+  it("without a logo the band is exactly what the retreat left", async () => {
+    const busy = await poster((x, y) => Math.round(120 + 90 * Math.sin(x / 9) * Math.cos(y / 13)))
+    const band = (await render(busy, null, true, 30)).band!
+    expect(band.logoTop).toBeNull()
+    expect(band.final).toBe(band.retreated)
   })
 })
