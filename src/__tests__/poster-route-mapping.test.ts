@@ -27,13 +27,14 @@ vi.mock("@/lib/custom-rating", async (importOriginal) => ({
   fetchCustomRatings: vi.fn(async () => []),
 }))
 vi.mock("@/lib/multi-rating-renderer", () => ({ renderMultiRatings: vi.fn(async () => null) }))
-// Controllo "senza testo" dei poster fanart: di default passa (gli altri test
-// non usano asset fanart); i test dedicati lo fanno fallire.
+// Controllo "senza testo" delle basi esterne (fanart, TVDB): di default è il
+// vero controllo (le immagini dei test sono tinte unite → senza testo); i
+// test dedicati lo fanno fallire.
 vi.mock("@/lib/poster-textless", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/poster-textless")>()
   return {
     ...actual,
-    checkFanartPosterText: vi.fn(async (url: string) => ({ url, textless: true, score: 0 })),
+    checkPosterText: vi.fn(actual.checkPosterText),
     verifyCleanPool: vi.fn(actual.verifyCleanPool),
   }
 })
@@ -209,8 +210,8 @@ describe("GET /api/poster/[type]/[id] with saved mappings", () => {
   })
 
   it("drops the logo when a saved clean fanart base turns out to have text", async () => {
-    const { checkFanartPosterText } = await import("@/lib/poster-textless")
-    vi.mocked(checkFanartPosterText).mockImplementationOnce(async (url: string) => ({ url, textless: false, score: 1.6 }))
+    const { checkPosterText } = await import("@/lib/poster-textless")
+    vi.mocked(checkPosterText).mockImplementationOnce(async (url: string) => ({ url, textless: false, score: 1.6 }))
     const poster = await imageBuffer("#101010", 500, 750)
     const fanartUrl = "https://assets.fanart.tv/fanart/movies/46/movieposter/titled.jpg"
     mockedGetById.mockResolvedValue({
@@ -233,7 +234,7 @@ describe("GET /api/poster/[type]/[id] with saved mappings", () => {
     const res = await GET(new NextRequest("http://localhost:3000/api/poster/movie/46?debug=1"), { params: Promise.resolve({ type: "movie", id: "46" }) })
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(checkFanartPosterText).toHaveBeenCalledWith(fanartUrl, expect.anything())
+    expect(checkPosterText).toHaveBeenCalledWith(fanartUrl, expect.anything())
     expect(body.images.logo).toBeNull()
     expect(body.textCheck).toEqual([{ url: fanartUrl, textless: false, score: 1.6 }])
   })
@@ -260,6 +261,37 @@ describe("GET /api/poster/[type]/[id] with saved mappings", () => {
     const res = await GET(new NextRequest("http://localhost:3000/api/poster/movie/47?debug=1"), { params: Promise.resolve({ type: "movie", id: "47" }) })
     expect(res.status).toBe(200)
     expect((await res.json()).images.logo).toBe("/logo-fanart-47.png")
+  })
+
+  it.each([
+    ["verified textless", true, "/logo-tvdb-48.png"],
+    ["with printed text", false, null],
+  ])("a saved TVDB base from the clean pool, %s", async (_label, textless, expectedLogo) => {
+    const { checkPosterText } = await import("@/lib/poster-textless")
+    const tvdbUrl = "https://artworks.thetvdb.com/banners/v4/movie/48/posters/clean.jpg"
+    if (!textless) vi.mocked(checkPosterText).mockImplementationOnce(async (url: string) => ({ url, textless: false, score: 1.4 }))
+    const poster = await imageBuffer("#101010", 500, 750)
+    mockedGetById.mockResolvedValue({
+      tmdbId: 48,
+      mediaType: "movie",
+      title: "TVDB base",
+      posterPath: "/tmdb-fallback.jpg",
+      customPosterUrl: tvdbUrl,
+      logoPath: "/logo-tvdb-48.png",
+      originalPosterPath: null,
+      language: null,
+      showBadges: false,
+      rankingBadges: false,
+      updatedAt: "2026-10-05T10:00:00.000Z",
+    })
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array(poster), {
+      status: 200,
+      headers: { "content-type": "image/png", "content-length": String(poster.length) },
+    }))
+    const res = await GET(new NextRequest("http://localhost:3000/api/poster/movie/48?debug=1"), { params: Promise.resolve({ type: "movie", id: "48" }) })
+    expect(res.status).toBe(200)
+    expect(checkPosterText).toHaveBeenCalledWith(tvdbUrl, expect.anything())
+    expect((await res.json()).images.logo).toBe(expectedLogo)
   })
 
   it("keeps the logo over the backdrop in landscape without a clean poster (portrait drops it)", async () => {

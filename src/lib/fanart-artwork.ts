@@ -110,8 +110,10 @@ function pick(body: Record<string, unknown>, ...keys: string[]): FanartImage[] {
     .sort((a, b) => b.likes - a.likes)
 }
 
-async function fetchArtwork(path: string, cacheKey: string, signal?: AbortSignal): Promise<FanartArtwork> {
-  const apiKey = fanartApiKey()
+async function fetchArtwork(path: string, cacheKey: string, signal?: AbortSignal, keyOverride?: string): Promise<FanartArtwork> {
+  // Chiave dello spazio utente (editor) o d'istanza: l'artwork è lo stesso,
+  // quindi la cache resta per titolo.
+  const apiKey = keyOverride?.trim() || fanartApiKey()
   if (!apiKey) return EMPTY
   const cached = cacheGet<FanartArtwork>(cacheKey)
   if (cached) return cached
@@ -172,14 +174,14 @@ export function toTmdbShape(images: readonly FanartImage[]): FanartAsTmdbImage[]
 }
 
 /** Artwork di un film, per id TMDB o IMDb (fanart accetta entrambi). */
-export function getFanartMovie(id: string | number, signal?: AbortSignal): Promise<FanartArtwork> {
-  return fetchArtwork(`/movies/${encodeURIComponent(String(id))}`, `fanart:movie:${id}`, signal)
+export function getFanartMovie(id: string | number, signal?: AbortSignal, apiKey?: string): Promise<FanartArtwork> {
+  return fetchArtwork(`/movies/${encodeURIComponent(String(id))}`, `fanart:movie:${id}`, signal, apiKey)
 }
 
 /**
  * Artwork di una serie. fanart indicizza le serie per id TheTVDB, NON TMDB:
  * il chiamante lo ricava da `external_ids`. Senza quell'id il livello si salta.
  */
-export function getFanartTv(tvdbId: string | number, signal?: AbortSignal): Promise<FanartArtwork> {
-  return fetchArtwork(`/tv/${encodeURIComponent(String(tvdbId))}`, `fanart:tv:${tvdbId}`, signal)
+export function getFanartTv(tvdbId: string | number, signal?: AbortSignal, apiKey?: string): Promise<FanartArtwork> {
+  return fetchArtwork(`/tv/${encodeURIComponent(String(tvdbId))}`, `fanart:tv:${tvdbId}`, signal, apiKey)
 }

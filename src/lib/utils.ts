@@ -66,6 +66,16 @@ export function splitCustomPosterSave(previewFilePath: string, tmdbRef: string |
   return { posterPath: previewFilePath, customPosterUrl: null }
 }
 
+/**
+ * Fork: i poster che il selettore mostra. Il pool clean (verificato senza
+ * testo, da tutte le fonti) quando esiste; altrimenti i poster in lingua.
+ * "und" (scartati dal controllo testo) mai.
+ */
+export function pickerPosters<T extends { iso_639_1: string | null }>(posters: readonly T[]): T[] {
+  const clean = posters.filter((p) => p.iso_639_1 === null)
+  return clean.length > 0 ? clean : posters.filter((p) => p.iso_639_1 !== "und")
+}
+
 export function titleOf(r: SearchResult) {
   return r.title || r.name || "Unknown"
 }

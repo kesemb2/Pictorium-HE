@@ -16,7 +16,7 @@
 import { cacheGet, cacheSet } from "@/lib/cache"
 import { FANART_ASSET_PREFIX, textlessOnly, type FanartAsTmdbImage, type FanartImage } from "@/lib/fanart-artwork"
 import { fetchImg, imgSrc } from "@/lib/poster-render-helpers"
-import { ARTWORKS_BASE } from "@/lib/tvdb"
+import { ARTWORKS_BASE, type TvdbArtwork } from "@/lib/tvdb"
 import { detectPosterText } from "@/lib/poster-text-detect"
 import { createLogger } from "@/lib/logger"
 
@@ -26,11 +26,20 @@ const log = createLogger("poster-textless")
 const VERDICT_TTL = 30 * 24 * 60 * 60 * 1000
 const VERDICT_TAG = "fanart"
 /**
- * Quanti candidati clean per fonte si analizzano (server ed editor usano lo
- * stesso numero, così il pannello "clean" coincide con ciò che Stremio vede).
- * Oltre il limite un candidato non è verificato e quindi non è clean.
+ * Quanti candidati clean per fonte analizza il render (Stremio rende i
+ * cataloghi a raffiche: qui conta solo il primo clean, che è lo stesso
+ * dell'editor perché l'ordine è identico). Oltre il limite un candidato non è
+ * verificato e quindi non è clean.
  */
 export const CLEAN_VERIFY_LIMIT = 6
+/**
+ * Fork: l'editor verifica tutto il pool di ogni fonte (TMDB, fanart, TVDB):
+ * la griglia "clean" mostra solo i verificati, e con 6 restavano fuori poster
+ * senza testo solo perché arrivavano dopo. Verdetti in cache 30 giorni.
+ */
+export const EDITOR_CLEAN_VERIFY_LIMIT = 30
+/** Controlli in volo insieme (anteprime piccole; un pool da 30 non deve aprire 30 fetch). */
+const VERIFY_CONCURRENCY = 8
 /** Tetto per singolo controllo (anteprima piccola: di solito < 1s). */
 const CHECK_TIMEOUT_MS = 4000
 
@@ -48,6 +57,25 @@ export type FanartTextCheck = PosterTextCheck
 
 export function isFanartAssetUrl(url: string | null | undefined): boolean {
   return typeof url === "string" && url.startsWith(FANART_ASSET_PREFIX)
+}
+
+/** URL esterno che il controllo sa analizzare (fanart o artwork TVDB). */
+export function isVerifiableUrl(url: string | null | undefined): url is string {
+  return isFanartAssetUrl(url) || (typeof url === "string" && url.startsWith(`${ARTWORKS_BASE}/`))
+}
+
+/** `fn` su ogni elemento con al più `limit` chiamate in volo; ordine preservato. */
+async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length)
+  let next = 0
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++
+      out[i] = await fn(items[i]!)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return out
 }
 
 /**
@@ -127,33 +155,44 @@ export async function verifyCleanPool(
   opts: { limit: number; signal?: AbortSignal; checks?: PosterTextCheck[] },
 ): Promise<string[]> {
   const candidates = sources.slice(0, opts.limit)
-  const verdicts = await Promise.all(candidates.map((c) => checkPosterText(c, opts.signal)))
+  const verdicts = await mapLimit(candidates, VERIFY_CONCURRENCY, (c) => checkPosterText(c, opts.signal))
   opts.checks?.push(...verdicts)
   return candidates.filter((_, i) => verdicts[i]!.textless)
 }
 
 /**
- * Poster fanart davvero senza testo, nell'ordine di fanart (likes): tag "00" +
- * controllo visivo. Solo i primi `limit` candidati vengono analizzati (in
+ * Candidati clean fanart: "00" (lingua "None") e lingua assente. La lingua
+ * assente da sola non dice nulla sul testo, ma il controllo visivo decide:
+ * un poster senza testo non resta fuori solo perché chi l'ha caricato non ha
+ * compilato la lingua. Una lingua vera vuol dire titolo stampato: non si
+ * analizza.
+ */
+export function fanartCleanCandidates(images: readonly FanartImage[]): readonly FanartImage[] {
+  return [...textlessOnly(images), ...images.filter((i) => !i.lang)]
+}
+
+/**
+ * Poster fanart davvero senza testo, nell'ordine di fanart (likes, prima i
+ * "00"): candidato clean + controllo visivo. Solo i primi `limit` candidati vengono analizzati (in
  * parallelo); `checks` raccoglie i verdetti per debug=1.
  */
 export async function verifiedTextlessPosters(
   images: readonly FanartImage[],
   opts: { limit: number; signal?: AbortSignal; checks?: FanartTextCheck[] },
 ): Promise<FanartImage[]> {
-  const candidates = textlessOnly(images)
+  const candidates = fanartCleanCandidates(images)
   const ok = new Set(await verifyCleanPool(candidates.map((c) => c.url), opts))
   return candidates.filter((c) => ok.has(c.url))
 }
 
 /**
  * Poster fanart nella forma TMDB per l'editor. `iso_639_1: null` (clean) SOLO
- * per i verificati; "00" non verificato o lingua assente → "und" (visibile,
- * mai clean); le lingue vere restano tali.
+ * per i verificati; candidati non verificati → "und" (mai clean, fuori dalla
+ * griglia); le lingue vere restano tali.
  */
 export async function fanartPostersAsTmdb(
   images: readonly FanartImage[],
-  opts: { limit: number; signal?: AbortSignal },
+  opts: { limit: number; signal?: AbortSignal; checks?: PosterTextCheck[] },
 ): Promise<FanartAsTmdbImage[]> {
   const verified = new Set((await verifiedTextlessPosters(images, opts)).map((i) => i.url))
   return images.map((i) => ({
@@ -166,12 +205,49 @@ export async function fanartPostersAsTmdb(
   }))
 }
 
+/** Artwork TVDB in forma TMDB (`source: "tvdb"`), solo clean verificati. */
+export interface ExternalPosterImage {
+  readonly file_path: string
+  readonly iso_639_1: string | null
+  readonly width: number
+  readonly height: number
+  readonly vote_average: number
+  readonly source: "fanart" | "tvdb"
+}
+
 /**
- * Filtro per percorsi salvati (rotazione, base custom): gli URL fanart passano
- * solo se verificati; i path TMDB passano invariati (TMDB separa già i clean).
+ * Poster TVDB clean per l'editor: verticali (o misure ignote) marcati
+ * `includesText: false` E verificati senza testo, per score TVDB. Quelli con
+ * testo non servono: la griglia mostra solo il pool clean.
  */
-export async function rejectTextedFanart(paths: readonly string[], signal?: AbortSignal): Promise<Set<string>> {
-  const fanart = paths.filter(isFanartAssetUrl)
-  const verdicts = await Promise.all(fanart.map((p) => checkPosterText(p, signal)))
+export async function tvdbCleanPosters(
+  arts: readonly TvdbArtwork[],
+  opts: { limit: number; signal?: AbortSignal; checks?: PosterTextCheck[] },
+): Promise<ExternalPosterImage[]> {
+  const candidates = arts
+    .filter((a) => a.image && a.includesText === false && !((a.width ?? 0) > 0 && (a.height ?? 0) > 0 && (a.width ?? 0) >= (a.height ?? 0)))
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+  const ok = new Set(await verifyCleanPool(candidates.map((a) => a.image), opts))
+  return candidates.filter((a) => ok.has(a.image)).map((a) => ({
+    file_path: a.image,
+    iso_639_1: null,
+    width: a.width ?? 0,
+    height: a.height ?? 0,
+    vote_average: a.score ?? 0,
+    source: "tvdb" as const,
+  }))
+}
+
+/**
+ * Filtro per percorsi salvati (rotazione, base custom): gli URL esterni
+ * (fanart, TVDB) passano solo se verificati; i path TMDB passano invariati
+ * (sono entrati nel pool già verificati dall'editor).
+ */
+export async function rejectTextedUrls(paths: readonly string[], signal?: AbortSignal): Promise<Set<string>> {
+  const external = paths.filter(isVerifiableUrl)
+  const verdicts = await mapLimit(external, VERIFY_CONCURRENCY, (p) => checkPosterText(p, signal))
   return new Set(verdicts.filter((v) => !v.textless).map((v) => v.url))
 }
+
+/** Alias storico (prima il filtro copriva solo fanart). */
+export const rejectTextedFanart = rejectTextedUrls

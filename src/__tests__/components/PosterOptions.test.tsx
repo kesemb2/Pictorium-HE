@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
-import { screen, waitFor } from "@testing-library/react"
+import { screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { PosterOptions } from "@/components/PosterOptions"
 import { renderWithCtx } from "@/__tests__/test-utils"
@@ -20,27 +20,29 @@ describe("PosterOptions", () => {
     expect(screen.getAllByText("ui.loading").length).toBeGreaterThan(0)
   })
 
-  it("renders clean posters tab by default", () => {
-    renderWithCtx(<PosterOptions posters={mockPosters} posterActivePath={null} lang="it" selectPoster={() => {}} />)
-    expect(screen.getByText(/Clean/)).toBeInTheDocument()
+  it("shows only the clean pool when there are clean posters", () => {
+    const { container } = renderWithCtx(<PosterOptions posters={mockPosters} posterActivePath={null} lang="it" selectPoster={() => {}} />)
+    // Una sola tab (il pool) non si disegna: la griglia è il pool.
+    expect(container.querySelectorAll(".tab-chip")).toHaveLength(0)
+    expect(container.querySelectorAll("img")).toHaveLength(2)
+    // Le lingue servono solo quando non c'è nessun clean.
+    expect(screen.queryByText(/Italiano/)).toBeNull()
+    expect(screen.queryByText(/English/)).toBeNull()
   })
 
-  it("shows language-specific tab", () => {
-    renderWithCtx(<PosterOptions posters={mockPosters} posterActivePath={null} lang="it" selectPoster={() => {}} />)
-    expect(screen.getByText(/Italiano/)).toBeInTheDocument()
-  })
-
-  it("shows English tab for en posters", () => {
-    renderWithCtx(<PosterOptions posters={mockPosters} posterActivePath={null} lang="it" selectPoster={() => {}} />)
-    expect(screen.getByText(/English/)).toBeInTheDocument()
-  })
-
-  it("switches tab on click", async () => {
+  it("falls back to the language tabs when there is no clean poster, never showing \"und\"", async () => {
     const u = userEvent.setup()
-    renderWithCtx(<PosterOptions posters={mockPosters} posterActivePath={null} lang="it" selectPoster={() => {}} />)
+    const noClean = [
+      ...mockPosters.filter((p) => p.iso_639_1 !== null),
+      { file_path: "/rejected.jpg", iso_639_1: "und", vote_average: 0, width: 1000, height: 1500 },
+    ]
+    const { container } = renderWithCtx(<PosterOptions posters={noClean} posterActivePath={null} lang="it" selectPoster={() => {}} />)
     const itTab = screen.getByText(/Italiano/)
+    expect(screen.getByText(/English/)).toBeInTheDocument()
     await u.click(itTab)
     expect(itTab.closest("button")).toHaveClass("tab-chip-active")
+    expect(container.querySelector("img[src*='rejected']")).toBeNull()
+    expect(screen.queryByText(/^und/)).toBeNull()
   })
 
   it("showTabs=false hides tabs", () => {
@@ -95,84 +97,35 @@ describe("PosterOptions", () => {
     expect(screen.queryByRole("button", { name: "ui.remove" })).toBeNull()
   })
 
-  it("hides the Fanart.tv tab without a selected title", () => {
-    renderWithCtx(<PosterOptions posters={mockPosters} posterActivePath={null} lang="it" selectPoster={() => {}} />)
-    expect(screen.queryByTestId("fanart-tab-panel")).toBeNull()
-    expect(screen.queryByRole("button", { name: "ui.fanartTitle" })).toBeNull()
-  })
-
-  it("shows the Fanart.tv tab next to the language tabs when selected", () => {
-    renderWithCtx(
-      <PosterOptions posters={mockPosters} posterActivePath={null} lang="it" selectPoster={() => {}} />,
-      { selected: { ...SELECTED, media_type: "movie" } },
-    )
-    expect(screen.getByRole("button", { name: "ui.fanartTitle" })).toBeInTheDocument()
-    // Le tab esistenti restano invariate
-    expect(screen.getByText(/Clean/)).toBeInTheDocument()
-    expect(screen.getByText(/Italiano/)).toBeInTheDocument()
-  })
-
-  it("loads fanart posters on tab click and selects a tile", async () => {
+  it("puts verified fanart and TVDB posters in the clean pool with a source chip", async () => {
     const u = userEvent.setup()
-    const onSelect = vi.fn()
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((async (url: unknown) => {
-      if (String(url).includes("/api/fanart/")) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            posters: [
-              { url: "https://assets.fanart.tv/fanart/movies/7/movieposter/a.jpg", lang: "it", likes: 42 },
-              { url: "https://assets.fanart.tv/fanart/movies/7/movieposter/b.jpg", lang: "00", likes: 3 },
-            ],
-            source: "fanart",
-          }),
-        }
-      }
-      return { ok: false, status: 404, json: async () => ({}) }
-    }) as unknown as typeof fetch)
-
+    const selectPoster = vi.fn()
+    const fanart: TMDBImage = { file_path: "https://assets.fanart.tv/fanart/movies/7/movieposter/b.jpg", iso_639_1: null, vote_average: 3, width: 0, height: 0, source: "fanart" }
+    const tvdb: TMDBImage = { file_path: "https://artworks.thetvdb.com/banners/v4/movie/7/posters/c.jpg", iso_639_1: null, vote_average: 1, width: 0, height: 0, source: "tvdb" }
+    const rejected: TMDBImage = { file_path: "https://assets.fanart.tv/fanart/movies/7/movieposter/t.jpg", iso_639_1: "und", vote_average: 9, width: 0, height: 0, source: "fanart" }
     const { container } = renderWithCtx(
-      <PosterOptions posters={mockPosters} posterActivePath={null} lang="it" selectPoster={onSelect} />,
+      <PosterOptions posters={[...mockPosters, fanart, tvdb, rejected]} posterActivePath={null} lang="it" selectPoster={selectPoster} />,
       { selected: { ...SELECTED, media_type: "movie" } },
     )
-    // Nessuna chiamata Fanart prima dell'apertura (lazy)
-    expect(fetchSpy.mock.calls.map((c) => String(c[0])).filter((u) => u.includes("/api/fanart/"))).toHaveLength(0)
-    await u.click(screen.getByRole("button", { name: "ui.fanartTitle" }))
-
-    await waitFor(() => {
-      const imgs = Array.from(container.querySelectorAll("[data-testid='fanart-tab-panel'] img"))
-      expect(imgs.length).toBeGreaterThan(0)
-    })
-    const panel = screen.getByTestId("fanart-tab-panel")
-    const imgs = panel.querySelectorAll("img")
-    expect(imgs[0]?.getAttribute("src")).toBe("https://assets.fanart.tv/fanart/movies/7/movieposter/a.jpg")
-    // Didascalia lingua + likes; "00" resta lingua sconosciuta, mai textless
-    expect(panel.textContent).toContain("ui.fanartLangUnknown")
-
-    const tiles = panel.querySelectorAll("button")
-    await u.click(tiles[0])
-    expect(onSelect).toHaveBeenCalledWith(
-      expect.objectContaining({ file_path: "https://assets.fanart.tv/fanart/movies/7/movieposter/a.jpg" }),
-    )
+    const srcs = Array.from(container.querySelectorAll("img")).map((i) => i.getAttribute("src"))
+    expect(srcs).toContain(fanart.file_path)
+    expect(srcs).toContain(tvdb.file_path)
+    expect(srcs).not.toContain(rejected.file_path)
+    const chips = screen.getAllByTestId("poster-source").map((c) => c.textContent)
+    expect(chips).toEqual(["TMDB", "TMDB", "Fanart", "TVDB"])
+    // Niente più tab Fanart.tv separata: è nel pool.
+    expect(screen.queryByRole("button", { name: "ui.fanartTitle" })).toBeNull()
+    const tile = container.querySelector(`img[src="${tvdb.file_path}"]`)!.closest("button")!
+    await u.click(tile)
+    expect(selectPoster).toHaveBeenCalledWith(expect.objectContaining({ file_path: tvdb.file_path, iso_639_1: null }))
   })
 
-  it("fanart tab shows the not-configured state on 503", async () => {
-    const u = userEvent.setup()
-    vi.spyOn(globalThis, "fetch").mockImplementation((async () => ({
-      ok: false,
-      status: 503,
-      json: async () => ({ error: "nope", code: "fanart_not_configured" }),
-    })) as unknown as typeof fetch)
-
-    renderWithCtx(
-      <PosterOptions posters={mockPosters} posterActivePath={null} lang="it" selectPoster={() => {}} />,
-      { selected: { ...SELECTED, media_type: "movie" } },
+  it("shows a saved custom base that is also in the pool only once", () => {
+    const fanart: TMDBImage = { file_path: "https://assets.fanart.tv/fanart/movies/7/movieposter/b.jpg", iso_639_1: null, vote_average: 3, width: 0, height: 0, source: "fanart" }
+    const { container } = renderWithCtx(
+      <PosterOptions posters={[...mockPosters, fanart]} posterActivePath={null} lang="it" selectPoster={() => {}} savedCustomPoster={{ ...fanart, source: undefined }} />,
     )
-    await u.click(screen.getByRole("button", { name: "ui.fanartTitle" }))
-    await waitFor(() => {
-      expect(screen.getByTestId("fanart-tab-panel").textContent).toContain("ui.fanartNotConfigured")
-    })
+    expect(container.querySelectorAll(`img[src="${fanart.file_path}"]`)).toHaveLength(1)
   })
 })
 

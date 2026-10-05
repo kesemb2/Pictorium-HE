@@ -86,7 +86,7 @@ import { generatePosterBuffer, type GenerationInput, type ReadabilityReport } fr
 import { computeTopBadge } from "@/lib/poster-badge"
 import { containsHebrew } from "@/lib/badge-svg-shared"
 import { getFanartMovie, getFanartTv, isFanartEnabled, type FanartImage } from "@/lib/fanart-artwork"
-import { checkFanartPosterText, checkPosterText, isFanartAssetUrl, rejectTextedFanart, verifiedTextlessPosters, verifyCleanPool, CLEAN_VERIFY_LIMIT, type PosterTextCheck } from "@/lib/poster-textless"
+import { checkPosterText, isVerifiableUrl, rejectTextedUrls, verifiedTextlessPosters, verifyCleanPool, CLEAN_VERIFY_LIMIT, type PosterTextCheck } from "@/lib/poster-textless"
 import { logoContrast, logoInkLuminance, posterLogoZoneLuminance } from "@/lib/logo-contrast"
 import { isTmdbTrending } from "@/lib/tmdb-trending-badge"
 import { parseDateFormat } from "@/lib/release-badge"
@@ -396,7 +396,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         // La rotazione non deve mai cadere su un poster fanart con testo
         // (liste salvate prima della verifica): il filtro gira solo quando la
         // rotazione scatta davvero, con i verdetti in cache.
-        const rotated = await tryRotatePoster(mapping, posterState, (paths) => rejectTextedFanart(paths, req.signal))
+        const rotated = await tryRotatePoster(mapping, posterState, (paths) => rejectTextedUrls(paths, req.signal))
         if (rotated) mapping = rotated
       }
     } catch (error) {
@@ -905,14 +905,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     // sovrapporre il logo in portrait. In landscape la base è il backdrop
     // (senza testo): il logo resta sempre, anche senza poster clean.
     let isMappingClean = mapping.language === null
-    // Base fanart salvata come clean (rotazione o tile Fanart.tv, anche da
+    // Base esterna salvata come clean (pool fanart/TVDB, rotazione, anche da
     // prima della verifica): se il controllo visivo vede testo, non è clean →
     // niente logo sopra il titolo stampato.
-    const mappedFanartBase = !isLandscape
-      ? [mapping.customPosterUrl, mapping.posterPath].find((u) => isFanartAssetUrl(u))
+    const mappedExternalBase = !isLandscape
+      ? [mapping.customPosterUrl, mapping.posterPath].find((u) => isVerifiableUrl(u))
       : undefined
-    if (isMappingClean && mappedFanartBase) {
-      const check = await checkFanartPosterText(mappedFanartBase, req.signal)
+    if (isMappingClean && mappedExternalBase) {
+      const check = await checkPosterText(mappedExternalBase, req.signal)
       posterTextChecks.push(check)
       if (!check.textless) isMappingClean = false
     }

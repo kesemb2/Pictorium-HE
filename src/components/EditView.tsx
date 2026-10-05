@@ -18,7 +18,7 @@ import { CustomPosterUrl } from "@/components/CustomPosterUrl"
 import { LogoOptions } from "@/components/LogoOptions"
 import { EditorPanel } from "@/components/EditorPanel"
 import { copyText } from "@/lib/clipboard"
-import { isCustomPosterUrl } from "@/lib/utils"
+import { isCustomPosterUrl, pickerPosters } from "@/lib/utils"
 import { loadCustomTiles, storeCustomTiles } from "@/lib/custom-tiles-store"
 import { userFetch } from "@/lib/http"
 import { SearchBar } from "@/components/SearchBar"
@@ -686,7 +686,7 @@ export default function EditView() {
                 }`}
               >
                 <span>{isLandscape ? (t("ui.backdrops")) : t("ui.poster")}</span>
-                <span className="text-[10px] opacity-75 font-mono">({isLandscape ? ed.backdrops.length : posters.length})</span>
+                <span className="text-[10px] opacity-75 font-mono">({isLandscape ? ed.backdrops.length : pickerPosters(posters).length})</span>
               </button>
               <button
                 type="button"
@@ -717,7 +717,7 @@ export default function EditView() {
 
             {/* LEFT: Poster (verticale) o Sfondi (orizzontale) */}
             <div className={mobileSection === "poster" ? "block w-full" : "hidden lg:block h-full min-w-0"}>
-              <EditorPanel className="animate-fade-scale-in-panel-left h-full" aria-label={t("ui.posterSelectionAria", { title: selected?.title || "" })} title={isLandscape ? t("ui.backdropAvailable") : t("ui.posterAvailable")} headerRight={<span className="text-[10px] font-mono text-muted px-1.5 py-0.5 rounded-md bg-white/[0.05] border border-white/10 tabular-nums">{isLandscape ? ed.backdrops.length : posters.length}</span>}>
+              <EditorPanel className="animate-fade-scale-in-panel-left h-full" aria-label={t("ui.posterSelectionAria", { title: selected?.title || "" })} title={isLandscape ? t("ui.backdropAvailable") : t("ui.posterAvailable")} headerRight={<span className="text-[10px] font-mono text-muted px-1.5 py-0.5 rounded-md bg-white/[0.05] border border-white/10 tabular-nums">{isLandscape ? ed.backdrops.length : pickerPosters(posters).length}</span>}>
                 {loadingImages ? (
                   <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-8 rounded-lg skeleton-shimmer" />)}</div>
                 ) : isLandscape ? (

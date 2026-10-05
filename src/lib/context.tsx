@@ -1319,7 +1319,9 @@ export function usePictorium(): PictoriumCtx {
     // Niente retry qui: i dati si ricaricano al tick dopo, e un retry
     // triplicherebbe la coda peggiore (30s × 3) proprio sul path critico.
     const defaultImageLangs = `${lang},en,null`
-    const imagesUrl = (langs: string) => `/api/tmdb/${itemId}/images?type=${itemType}&languages=${langs}&api_key=${tmdbKey}`
+    // Fork: la chiave TVDB del dispositivo porta i poster TVDB clean nel pool.
+    const tvdbParam = tvdbApiKey ? "&tvdb_key=" + encodeURIComponent(tvdbApiKey) : ""
+    const imagesUrl = (langs: string) => `/api/tmdb/${itemId}/images?type=${itemType}&languages=${langs}&api_key=${tmdbKey}${tvdbParam}`
     const emptyLists: ImageLists = { posters: [], logos: [], backdrops: [] }
     type AwardPayload = { awards: string[]; nominations: string[]; studios: string[]; director: string | null; keywords: string[] }
     const noAwards: AwardPayload = { awards: [], nominations: [], studios: [], director: null, keywords: [] }
