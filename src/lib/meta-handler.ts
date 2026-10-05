@@ -6,10 +6,8 @@ import { getServerDefaultsChecked, getServerDefaultsForUser, type ServerDefaults
 import { POSTER_URL_VERSION } from "@/lib/render-version"
 import { getById } from "@/lib/store"
 import { decodeConfig, type PictoriumUserConfig } from "@/lib/config-token"
-import { selectBestLogo } from "@/lib/logo-selection"
 import {
   getFullDetails,
-  getImages,
   getTVSeason,
   getTVEpisodeGroup,
   type TMDBEpisodeGroupDetails,
@@ -26,7 +24,7 @@ import { resolveCatalogRegionWithDefaults } from "@/lib/catalog-handler"
 import { isSupportedUiLang, contentLanguageForUiLang } from "@/lib/regions"
 import { getScopedUserId, userExists, userRateLimitKey } from "@/lib/user-auth"
 import { touchUserActivity } from "@/lib/user-activity"
-import { buildStremioPosterUrl, stremioPosterShape } from "@/lib/stremio-poster-url"
+import { buildStremioLogoUrl, buildStremioPosterUrl, stremioPosterShape } from "@/lib/stremio-poster-url"
 import { getOriginFromRequest } from "@/lib/poster-public-url"
 import { enrichVideosWithTvdb } from "@/lib/tvdb"
 import { buildVideosFromAnizip, buildVideosFromGroups, buildVideosFromTvdb, concurrentMap } from "@/lib/episode-ordering"
@@ -60,8 +58,7 @@ export interface StremioMetaDetail {
   poster: string | null
   posterShape?: "poster" | "landscape"
   background?: string
-  /** Render landscape con logo baked-in (solo titoli landscape, vedi
-   *  catalog-handler: NuvioTV non deve sovrapporre il logo separato). */
+  /** Render landscape con logo baked-in (solo titoli landscape). */
   landscapePoster?: string
   logo?: string
   description?: string
@@ -119,7 +116,7 @@ async function pictoriumPosterUrl(
   userParam?: string | null,
   posterLang = "it",
   posterRegion?: string,
-): Promise<{ poster: string; posterShape: "poster" | "landscape" }> {
+): Promise<{ poster: string; posterShape: "poster" | "landscape"; hebrewFont?: string | null }> {
   const scopedUser = getScopedUserId(userParam)
   const serverDefaults = scopedUser ? await getServerDefaultsForUser(scopedUser) : await getServerDefaultsChecked()
   const userConfig = configParam ? decodeConfig(configParam) : null
@@ -138,7 +135,7 @@ async function pictoriumPosterUrl(
     user: userParam || undefined,
     forceShape: posterShape,
   }).toString()
-  return { poster, posterShape }
+  return { poster, posterShape, hebrewFont: defaults.hebrewFont }
 }
 
 
@@ -291,29 +288,18 @@ export async function pictoriumMeta(
     }
 
     const primaryId = imdbId || `tmdb:${tmdbId}`
-    const { poster, posterShape } = await pictoriumPosterUrl(req, stType, tmdbId, configParam, userParam, posterLang, region.code)
+    const { poster, posterShape, hebrewFont } = await pictoriumPosterUrl(req, stType, tmdbId, configParam, userParam, posterLang, region.code)
     // NuvioTV: per i titoli landscape, URL del render con logo baked-in
     // (stesso profilo del poster), inclusi i titoli forzati dal default.
     const landscapePoster = posterShape === "landscape" ? poster : undefined
     const background = details.backdrop_path ? posterUrlOriginal(details.backdrop_path) : undefined
 
-    // Risoluzione Logo
-    let logo: string | undefined
-    try {
-      const images = await getImages(tmdbMediaType, tmdbId, `${posterLang},en,null`, apiKey)
-      if (images?.logos && images.logos.length > 0) {
-        // Stessa scala del render poster (lingua → inglese → lingua originale
-        // → primo): prima si prendeva il PRIMO logo disponibile appena mancava
-        // quello locale, servendo a un utente ebraico un logo giapponese o
-        // coreano al posto di quello inglese.
-        const langLogo = selectBestLogo(images.logos, posterLang, details.original_language)
-        if (langLogo?.file_path) {
-          logo = posterUrlOriginal(langLogo.file_path)
-        }
-      }
-    } catch {
-      // Logo opzionale
-    }
+    // Fork: logo = il nostro endpoint, come AIOMetadata col pattern
+    // "חיבור Pictorium" (ebraico, o inglese col titolo tradotto). In ogni
+    // forma: è il logo delle pagine dettaglio di NuvioTV, non il baked-in.
+    const logo = buildStremioLogoUrl({
+      origin: getOriginFromRequest(req), type: stType, id: imdbId || tmdbId, lang: posterLang, hebrewFont,
+    })
 
     const cast = (details.credits?.cast || []).slice(0, 10).map((c) => c.name)
     const director = (details.credits?.crew || []).filter((c) => c.job === "Director").map((c) => c.name)
@@ -452,10 +438,7 @@ export async function pictoriumMeta(
       posterShape,
       background,
       landscapePoster,
-      // Titoli landscape: il logo è già baked-in nel landscapePoster —
-      // esporlo separato farebbe sovrapporre a Nuvio un secondo logo
-      // (anche via arricchimento card dal dettaglio).
-      logo: posterShape === "landscape" ? undefined : logo,
+      logo,
       description: details.overview || details.tagline || undefined,
       releaseInfo: (details.release_date || details.first_air_date || "").slice(0, 4) || undefined,
       released: details.release_date ? `${details.release_date}T00:00:00.000Z` : undefined,

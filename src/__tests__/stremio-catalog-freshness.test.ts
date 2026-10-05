@@ -53,10 +53,6 @@ function tmdbShowResponse(tmdbId: number, name: string): Response {
   })
 }
 
-function emptyImagesResponse(): Response {
-  return Response.json({ posters: [], logos: [], backdrops: [] })
-}
-
 function catalogRequest() {
   return new NextRequest("http://localhost:3000/catalog/series/pictorium-jw-series.json?api_key=settings-key")
 }
@@ -71,7 +67,6 @@ function mockPhase(tmdbId: number, name: string) {
   vi.spyOn(globalThis, "fetch")
     .mockResolvedValueOnce(justWatchResponse(tmdbId))
     .mockResolvedValueOnce(tmdbShowResponse(tmdbId, name))
-    .mockResolvedValueOnce(emptyImagesResponse())
 }
 
 async function catalogName(): Promise<string> {

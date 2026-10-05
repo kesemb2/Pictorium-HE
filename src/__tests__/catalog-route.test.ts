@@ -97,14 +97,10 @@ describe("GET /catalog/[type]/[id]", () => {
     // Il banner è il rendering Pictorium in canvas landscape SENZA logo
     // baked-in (hideLogo): resta per i client che leggono `banner`.
     // NuvioTV legge invece `landscapePoster` (con logo): i titoli portrait
-    // non lo emettono e mantengono il `logo` separato.
+    // non lo emettono.
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(justWatchResponse(94997, "tt11198330"))
       .mockResolvedValueOnce(tmdbShowResponse(94997))
-      .mockResolvedValueOnce(Response.json({
-        id: 94997,
-        logos: [{ file_path: "/hotd-logo.png", iso_639_1: "it" }],
-      }))
 
     const req = new NextRequest("http://localhost:3000/catalog/series/pictorium-jw-series.json?api_key=settings-key")
     const res = await GET(req, { params: Promise.resolve({ type: "series", id: "pictorium-jw-series.json" }) })
@@ -119,16 +115,15 @@ describe("GET /catalog/[type]/[id]", () => {
     expect(body.metas[0].poster).not.toContain("shape=landscape")
     expect(body.metas[0].poster).not.toContain("hideLogo")
     expect(body.metas[0].posterShape).toBe("poster")
-    // Titolo portrait: niente landscapePoster, logo separato presente.
+    // Titolo portrait: niente landscapePoster. Il logo è il nostro endpoint
+    // (come il pattern "חיבור Pictorium" in AIOMetadata), id IMDB.
     expect(body.metas[0].landscapePoster).toBeUndefined()
-    expect(body.metas[0].logo).toContain("/hotd-logo.png")
+    expect(body.metas[0].logo).toBe("http://localhost:3000/api/logo/series/tt11198330?lang=he")
   })
 
-  it("serves landscapePoster with baked-in logo and no separate logo for landscape titles", async () => {
-    // NuvioTV sovrappone il `logo` del catalogo alle card landscape: per i
-    // titoli landscape l'immagine deve arrivare intoccabile (logo già
-    // baked-in nel landscapePoster) e il `logo` va omesso — altrimenti il
-    // secondo logo finisce sopra il nostro.
+  it("serves landscapePoster with baked-in logo, and our logo URL, for landscape titles", async () => {
+    // Come AIOMetadata: il `logo` (pagine dettaglio di NuvioTV) arriva dal
+    // nostro endpoint in ogni forma, landscape compreso.
     mockedGetById.mockResolvedValue({
       tmdbId: 94997,
       mediaType: "tv",
@@ -143,10 +138,6 @@ describe("GET /catalog/[type]/[id]", () => {
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(justWatchResponse(94997, "tt11198330"))
       .mockResolvedValueOnce(tmdbShowResponse(94997))
-      .mockResolvedValueOnce(Response.json({
-        id: 94997,
-        logos: [{ file_path: "/hotd-logo.png", iso_639_1: "it" }],
-      }))
 
     const req = new NextRequest("http://localhost:3000/catalog/series/pictorium-jw-series.json?api_key=settings-key")
     const res = await GET(req, { params: Promise.resolve({ type: "series", id: "pictorium-jw-series.json" }) })
@@ -162,8 +153,7 @@ describe("GET /catalog/[type]/[id]", () => {
     const landscapeUrl = new URL(body.metas[0].landscapePoster)
     expect(landscapeUrl.searchParams.get("shape")).toBe("landscape")
     expect(landscapeUrl.searchParams.has("hideLogo")).toBe(false)
-    // Niente logo separato: Nuvio non ha nulla da sovrapporre.
-    expect(body.metas[0].logo).toBeUndefined()
+    expect(body.metas[0].logo).toBe("http://localhost:3000/api/logo/series/tt11198330?lang=he")
     // Il banner pulito resta per gli altri client.
     expect(body.metas[0].banner).toContain("hideLogo=1")
   })
