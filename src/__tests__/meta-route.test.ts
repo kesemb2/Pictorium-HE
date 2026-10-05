@@ -77,11 +77,6 @@ describe("GET /meta/[type]/[id]", () => {
           results: [{ site: "YouTube", key: "trailer123", type: "Trailer", name: "Trailer Ufficiale" }],
         },
       }))
-      // /movie/550/images for logo
-      .mockResolvedValueOnce(Response.json({
-        id: 550,
-        logos: [{ file_path: "/fight-club-logo.png", iso_639_1: "it" }],
-      }))
 
     const req = new NextRequest("http://localhost:3000/meta/movie/tt0137523.json?api_key=settings-key")
     const res = await GET(req, {
@@ -105,7 +100,8 @@ describe("GET /meta/[type]/[id]", () => {
     expect(body.meta.poster).toContain("/api/poster/movie/550")
     expect(body.meta.poster).toContain(`rv=${POSTER_URL_VERSION}`)
     expect(body.meta.background).toContain("/backdrop.jpg")
-    expect(body.meta.logo).toContain("/fight-club-logo.png")
+    // Il nostro endpoint logo, come il pattern "חיבור Pictorium" in AIOMetadata.
+    expect(body.meta.logo).toBe("http://localhost:3000/api/logo/movie/tt0137523?lang=he")
     expect(body.meta.trailers).toEqual([{ source: "trailer123", type: "Trailer" }])
   })
 
@@ -119,7 +115,6 @@ describe("GET /meta/[type]/[id]", () => {
     })
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(Response.json({ id: 550, title: "Fight Club", external_ids: { imdb_id: "tt0137523" } }))
-      .mockResolvedValueOnce(Response.json({ id: 550, logos: [] }))
     const req = new NextRequest("http://localhost:3000/meta/movie/tmdb:550.json?api_key=settings-key")
     const res = await GET(req, { params: Promise.resolve({ type: "movie", id: "tmdb:550.json" }) })
     const { meta } = await res.json()
@@ -147,8 +142,6 @@ describe("GET /meta/[type]/[id]", () => {
           cast: [{ name: "Matt Smith" }, { name: "Emma D'Arcy" }],
         },
       }))
-      // /tv/94997/images
-      .mockResolvedValueOnce(Response.json({ logos: [] }))
       // /tv/94997/episode_groups (default automatico: nessun gruppo → standard)
       .mockResolvedValueOnce(Response.json({ results: [] }))
       // /tv/94997/season/1
@@ -251,8 +244,6 @@ describe("GET /meta/[type]/[id]", () => {
           { season_number: 3, episode_count: 10 },
         ],
       }))
-      // /tv/714401/images
-      .mockResolvedValueOnce(Response.json({ logos: [] }))
       // /tv/714401/episode_groups
       .mockResolvedValueOnce(Response.json({
         results: [
@@ -301,8 +292,6 @@ describe("GET /meta/[type]/[id]", () => {
         external_ids: { imdb_id: "tt6468322" },
         seasons: [{ season_number: 1 }, { season_number: 2 }],
       }))
-      // /tv/71446/images
-      .mockResolvedValueOnce(Response.json({ logos: [] }))
       // /tv/episode_group/grp_netflix_5
       .mockResolvedValueOnce(Response.json({
         id: "grp_netflix_5",
@@ -377,8 +366,6 @@ describe("GET /meta/[type]/[id]", () => {
         external_ids: { imdb_id: "tt0903747" },
         seasons: [{ season_number: 1, episode_count: 7 }],
       }))
-      // /tv/1396/images
-      .mockResolvedValueOnce(Response.json({ logos: [] }))
       // /tv/1396/episode_groups (default automatico: nessun gruppo → standard)
       .mockResolvedValueOnce(Response.json({ results: [] }))
       // /tv/1396/season/1
@@ -415,7 +402,6 @@ describe("GET /meta/[type]/[id]", () => {
         external_ids: { imdb_id: "tt6468001" },
         seasons: [{ season_number: 1, episode_count: 2 }],
       }))
-      .mockResolvedValueOnce(Response.json({ logos: [] }))
       .mockResolvedValueOnce(Response.json({
         id: "grp_parts",
         name: "Original Parts",
@@ -446,7 +432,6 @@ describe("GET /meta/[type]/[id]", () => {
         external_ids: { imdb_id: "tt6468002" },
         seasons: [{ season_number: 1, episode_count: 1 }],
       }))
-      .mockResolvedValueOnce(Response.json({ logos: [] }))
       .mockResolvedValueOnce(Response.json({ results: [] }))
       .mockResolvedValueOnce(Response.json({
         id: 715002,
@@ -473,7 +458,6 @@ describe("GET /meta/[type]/[id]", () => {
         overview: "Un oficinista insomne...",
         external_ids: { imdb_id: "tt0137523" },
       }))
-      .mockResolvedValueOnce(Response.json({ id: 550, logos: [] }))
 
     const req = new NextRequest("http://localhost:3000/meta/movie/tt0137523.json?api_key=k&region=MX")
     const res = await GET(req, { params: Promise.resolve({ type: "movie", id: "tt0137523.json" }) })
@@ -576,16 +560,6 @@ describe("GET /meta/[type]/[id]", () => {
         overview: "פקיד נדודי שינה...",
         external_ids: { imdb_id: "tt0137523" },
       }))
-      .mockResolvedValueOnce(Response.json({
-        id: 550,
-        // Nessun logo ebraico: deve vincere l'inglese, non l'italiano né il
-        // primo della lista (giapponese).
-        logos: [
-          { file_path: "/ja.png", iso_639_1: "ja", vote_average: 5, width: 500, height: 200 },
-          { file_path: "/it.png", iso_639_1: "it", vote_average: 5, width: 500, height: 200 },
-          { file_path: "/en.png", iso_639_1: "en", vote_average: 5, width: 500, height: 200 },
-        ],
-      }))
 
     const req = new NextRequest("http://localhost:3000/meta/movie/tt0137523.json?api_key=k&region=IL")
     const res = await GET(req, { params: Promise.resolve({ type: "movie", id: "tt0137523.json" }) })
@@ -594,17 +568,16 @@ describe("GET /meta/[type]/[id]", () => {
     expect(res.status).toBe(200)
     expect(body.meta.name).toBe("מועדון קרב")
     expect(body.meta.description).toBe("פקיד נדודי שינה...")
-    expect(body.meta.logo).toContain("/en.png")
+    expect(body.meta.logo).toBe("http://localhost:3000/api/logo/movie/tt0137523?lang=he")
     const detailsCall = fetchSpy.mock.calls.find((call) => typeof call[0] === "string" && call[0].includes("/movie/550?"))
     expect(detailsCall?.[0]).toContain("language=he-IL")
-    const imagesCall = fetchSpy.mock.calls.find((call) => typeof call[0] === "string" && call[0].includes("/images"))
-    expect(imagesCall?.[0]).toContain("include_image_language=he%2Cen%2Cnull")
+    // Il logo non passa più da TMDB /images: lo sceglie l'endpoint logo.
+    expect(fetchSpy.mock.calls.some((call) => String(call[0]).includes("/images"))).toBe(false)
   })
 
-  it("omits the separate logo and serves landscapePoster for landscape titles", async () => {
-    // Come nei cataloghi: il logo è già baked-in nel landscapePoster, Nuvio
-    // non deve riceverne uno separato da sovrapporre (nemmeno via
-    // arricchimento card dal dettaglio).
+  it("serves our logo URL and landscapePoster for landscape titles", async () => {
+    // Come AIOMetadata: il logo delle pagine dettaglio arriva dal nostro
+    // endpoint in ogni forma, landscape compreso.
     mockedGetById.mockResolvedValue({
       tmdbId: 550,
       mediaType: "movie",
@@ -631,11 +604,6 @@ describe("GET /meta/[type]/[id]", () => {
         backdrop_path: "/backdrop.jpg",
         external_ids: { imdb_id: "tt0137523" },
       }))
-      // /movie/550/images for logo
-      .mockResolvedValueOnce(Response.json({
-        id: 550,
-        logos: [{ file_path: "/fight-club-logo.png", iso_639_1: "it" }],
-      }))
 
     const req = new NextRequest("http://localhost:3000/meta/movie/tt0137523.json?api_key=settings-key")
     const res = await GET(req, {
@@ -650,6 +618,6 @@ describe("GET /meta/[type]/[id]", () => {
     expect(body.meta.landscapePoster).toContain("/api/poster/movie/550")
     expect(body.meta.landscapePoster).toContain("shape=landscape")
     expect(body.meta.landscapePoster).not.toContain("hideLogo")
-    expect(body.meta.logo).toBeUndefined()
+    expect(body.meta.logo).toBe("http://localhost:3000/api/logo/movie/tt0137523?lang=he")
   })
 })

@@ -4,6 +4,7 @@ import { isRankKey } from "@/lib/i18n"
 import type { ServerDefaults } from "@/lib/server-defaults"
 import { envWithFallback } from "@/lib/env-compat"
 import { createLogger } from "@/lib/logger"
+import { DEFAULT_HEBREW_FONT } from "@/lib/badge-styles"
 
 const log = createLogger("stremio-poster-url")
 
@@ -205,4 +206,31 @@ export function buildStremioPosterUrl(input: BuildStremioPosterUrlInput): URL {
   const mappingVersion = mappingVersionParam(input.mapping)
   if (mappingVersion) url.searchParams.set("mv", mappingVersion)
   return url
+}
+
+export interface BuildStremioLogoUrlInput {
+  readonly origin: string
+  readonly type: StremioPosterType
+  /** Id IMDB quando noto (come `{imdb_id}` nel pattern), altrimenti TMDB. */
+  readonly id: string | number
+  readonly lang?: string | null
+  readonly hebrewFont?: string | null
+}
+
+/**
+ * Fork: URL del logo per il campo `logo` dei meta che serviamo noi, gemello
+ * del pattern "חיבור Pictorium" (`buildLogoUrlPattern`) che AIOMetadata
+ * riempie per ogni meta. Così NuvioTV mostra il nostro logo nelle pagine
+ * dettaglio anche con l'addon installato direttamente. Niente chiavi: come
+ * il poster, l'URL finisce nel DB del client.
+ */
+export function buildStremioLogoUrl(input: BuildStremioLogoUrlInput): string {
+  const url = buildPosterPublicUrl(`/api/logo/${input.type}/${encodeURIComponent(String(input.id))}`, {
+    origin: input.origin,
+  })
+  url.searchParams.set("lang", input.lang || "it")
+  // La route logo legge solo i default globali: il font dello spazio va
+  // esplicito, e solo quando non è quello di default.
+  if (input.hebrewFont && input.hebrewFont !== DEFAULT_HEBREW_FONT) url.searchParams.set("hfont", input.hebrewFont)
+  return url.toString()
 }

@@ -120,6 +120,8 @@ describe("per-catalog poster shape (as in AIOMetadata)", () => {
     expect(land.body.metas[0].posterShape).toBe("landscape")
     expect(land.body.metas[0].poster).toContain("shape=landscape")
     expect(land.body.metas[0].landscapePoster).toBe(land.body.metas[0].poster)
+    // Il logo arriva anche in landscape (come AIOMetadata).
+    expect(land.body.metas[0].logo).toBe("http://localhost:3000/api/logo/movie/30?lang=he")
     const other = await catalog("series", "pictorium-today-series")
     expect(other.body.metas[0]?.posterShape ?? "poster").toBe("poster")
   })
@@ -131,5 +133,44 @@ describe("per-catalog poster shape (as in AIOMetadata)", () => {
     const res = await catalog("movie", "pictorium-today-movies")
     expect(res.body.metas[0].posterShape).toBe("poster")
     expect(res.body.metas[0].poster).not.toContain("shape=landscape")
+  })
+})
+
+describe("logo URL on catalog metas (as AIOMetadata does with the logo pattern)", () => {
+  async function withDefaults(sd: Record<string, unknown>) {
+    const { getServerDefaults } = await import("@/lib/server-defaults")
+    vi.mocked(getServerDefaults).mockReturnValue(sd as never)
+  }
+  afterEach(async () => { await withDefaults({}) })
+
+  it("every meta carries our /api/logo URL, with no key in it", async () => {
+    vi.mocked(getTopToday).mockResolvedValue([30, 10])
+    tmdbByUrl()
+    const { body } = await catalog("movie", "pictorium-today-movies")
+    expect(body.metas.map((m: { logo: string }) => m.logo)).toEqual([
+      "http://localhost:3000/api/logo/movie/30?lang=he",
+      "http://localhost:3000/api/logo/movie/10?lang=he",
+    ])
+    expect(body.metas[0].logo).not.toContain("api_key")
+  })
+
+  it("series use the series path, and the IMDB id when known", async () => {
+    vi.mocked(getTopToday).mockResolvedValue([77])
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input instanceof Request ? input.url : input)
+      if (/\/3\/tv\/77\/external_ids/.test(url)) return Response.json({ id: 77, imdb_id: "tt0000077" })
+      if (/\/3\/tv\/77(\?|$)/.test(url)) return Response.json({ id: 77, name: "Show 77", first_air_date: "2026-08-01" })
+      return Response.json({ status_message: "not found" }, { status: 404 })
+    })
+    const { body } = await catalog("series", "pictorium-today-series")
+    expect(body.metas[0].logo).toBe("http://localhost:3000/api/logo/series/tt0000077?lang=he")
+  })
+
+  it("carries the space's Hebrew font when it isn't the default", async () => {
+    await withDefaults({ hebrewFont: "heebo" })
+    vi.mocked(getTopToday).mockResolvedValue([30])
+    tmdbByUrl()
+    const { body } = await catalog("movie", "pictorium-today-movies")
+    expect(body.metas[0].logo).toBe("http://localhost:3000/api/logo/movie/30?lang=he&hfont=heebo")
   })
 })
