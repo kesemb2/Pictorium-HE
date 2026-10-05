@@ -117,7 +117,7 @@ describe("rank strip", () => {
     const { data, info } = await sharp(out).removeAlpha().raw().toBuffer({ resolveWithObject: true })
     expect([info.width, info.height]).toEqual([W, H])
     const px = (x: number, y: number) => Array.from(data.subarray((y * W + x) * 3, (y * W + x) * 3 + 3))
-    const [r, g, b] = px(4, 4)
+    const [r, , b] = px(4, 4)
     expect(b).toBeGreaterThan(r! + 15) // blu notte
     expect(px(W - 10, H / 2)).toEqual([208, 208, 208]) // pannello intatto
     // Angolo arrotondato: il vertice del pannello mostra la striscia.

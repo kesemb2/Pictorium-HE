@@ -198,7 +198,11 @@ export async function composeTagStyle(input: TagStyleInput): Promise<{ layers: T
   ])
   if (cardGlass) layers.push(cardGlass)
   if (tagGlass) layers.push(tagGlass)
-  if (logo && logoTop !== null) layers.push({ input: logo.input, top: logoTop, left: logo.left })
+  // Il logo segue lo stesso asse della card e della tag (in orizzontale il
+  // layout classico lo allinea a sinistra: qui torna al centro).
+  if (logo && logoTop !== null) {
+    layers.push({ input: logo.input, top: logoTop, left: Math.min(Math.max(0, round(centerX - logo.w / 2)), Math.max(0, W - logo.w)) })
+  }
   if (title && titleTop !== null) {
     layers.push({ input: title.png, top: titleTop, left: Math.min(Math.max(0, round(centerX - title.w / 2)), Math.max(0, W - title.w)) })
   }
