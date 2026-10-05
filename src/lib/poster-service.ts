@@ -43,7 +43,8 @@ import type { ServerDefaults } from "./server-defaults"
 import type { WikidataResult } from "./awards"
 import type { BadgeT } from "./poster-badge"
 import { isBadgeStyle, isRankingBadgeStyle, isRibbonRankingStyle, type BadgeStyle, type RankingBadgeStyle } from "./badge-styles"
-import type { BadgeFont, BadgeFontSpec, HebrewFont } from "./badge-styles"
+import type { BadgeFont, BadgeFontSpec, HebrewFont, PosterStyle } from "./badge-styles"
+import { composeTagStyle, tagLabelFor } from "./tag-style"
 import { latinFontOf, withHebrewFont } from "./badge-styles"
 import { normalizeBadgeFont } from "./badge-svg-shared"
 import type { PosterImageFormat } from "@/lib/poster-runtime-cache"
@@ -133,6 +134,10 @@ export interface GenerationInput {
   badgeFont?: BadgeFont | null
   /** Fork: font del testo ebraico (badge, nastro, titolo). Assente → Rubik. */
   hebrewFont?: HebrewFont | null
+  /** Fork: stile del poster ("classic" default; "tag" vedi lib/tag-style). */
+  posterStyle?: PosterStyle | null
+  /** Fork, stile tag: dissolvenza scura dal basso (default on). */
+  tagFade?: boolean
   /** Stile icone del badge qualità (standard = pill testuale). */
   qualityBadgeStyle?: QualityBadgeStyle | null
   /** Formati A/V da affiancare alla qualità (dv, atmos, imax, hdr, hdr10plus). */
@@ -930,6 +935,8 @@ export interface ReadabilityReport {
   logoHalo?: number
   /** Altezza della fascia in %: chiesta, dopo la ritirata, finale (pavimento logo). */
   band?: { requested: number; retreated: number; final: number; logoTop: number | null; logoH: number | null }
+  /** Stile tag: testo della tag e cima del logo nella card. */
+  tag?: { label: string | null; logoTop: number | null }
 }
 
 function round2(v: number): number {
@@ -952,7 +959,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   const {
     posterBuf, logoFetch, backdropFetch,
     backdropScale, backdropOffsetX, backdropOffsetY,
-    blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness,
+    blurEnabled: blurEnabledInput, blurHeight, blurIntensity, blurFade, blurDarkness,
     // Default 20 quando il chiamante non lo passa (test diretti, vecchi adapter).
     tintStrength = 20,
     // Ombra superiore: default 50 = catena di default (test diretti inclusi).
@@ -996,6 +1003,10 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
     autoDarkText, textHalo, readabilityReport,
   } = input
+  // Fork: stile "tag": niente fascia, niente riga genere, badge superiore
+  // trasformato in tag di vetro (vedi lib/tag-style).
+  const tagStyle = input.posterStyle === "tag"
+  const blurEnabled = blurEnabledInput && !tagStyle
 
   // Il badge genere in basso segue la luce del fondo, non del top (su poster
   // con alto chiaro e fondo scuro la pill restava grafite su nero). Chiamanti
@@ -1055,7 +1066,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   const ratingAvailable = !!(voteAverage && voteAverage > 0)
   const yearAvailable = !!year
   // Il badge è visibile se almeno uno dei 3 componenti è abilitato E disponibile.
-  const hasGenreBadge = badgesEnabled
+  const hasGenreBadge = badgesEnabled && !tagStyle
     && ((genreAvailable && badgeGenre) || (ratingAvailable && badgeRating) || (yearAvailable && badgeYear))
 
   // Le due scale di gruppo del fork (riga in alto, riga in basso) si
@@ -1261,7 +1272,8 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   if (topShade > 0) {
     composites.push({ input: await getTopShade(CW, CH, topShade), top: 0, left: 0 })
   }
-  if (logoResult) {
+  // Stile tag: logo e titolo li compone lib/tag-style a fine render.
+  if (logoResult && !tagStyle) {
     // Rete di sicurezza per la leggibilità: quando il logo e la fascia di poster
     // sotto hanno quasi la stessa luminosità, il logo sparisce. La selezione a
     // monte prova già a evitarlo, ma su un titolo con un solo logo e un solo
@@ -1324,7 +1336,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // Titolo tradotto sotto il logo, allineato al logo: centrato sotto un logo
   // centrato (ritratto, 16:9 centrale), a filo del suo bordo sinistro in
   // Cinematic Left, dove tutta la colonna parte dallo stesso margine.
-  if (titleFit && logoResult) {
+  if (titleFit && logoResult && !tagStyle) {
     const titleBadge = await renderTitleText(title!, titleMaxW, titleFit.fs, titleTreatment.color || undefined, titleTextStyle, badgeFont).catch(() => null)
     if (titleBadge) {
       const logoCenterX = logoResult.left + logoResult.w / 2
@@ -1404,7 +1416,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
       topBadge = { type: "extra" as const, label: comingSoonLabel }
     }
   }
-  const showComingSoon = !!preRelease && !queryExtra
+  const showComingSoon = !tagStyle && !!preRelease && !queryExtra
     && topBadge?.type === "extra" && topBadge.label === comingSoonLabel
     // Nastro disattivato: il Coming Soon resta come badge extra centrale
     // (ramo rank standard) invece del nastro angolare rosso.
@@ -1462,6 +1474,10 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
       topBadge = null
     }
   }
+
+  // Stile tag: il badge superiore diventa il testo della tag in basso.
+  const tagLabel = tagStyle ? tagLabelFor(topBadge, t("badge.top")) : null
+  if (tagStyle) topBadge = null
 
   // -----------------------------------------------------------------------
   // 5. Render genre + ranking badges (parallel with coalescing)
@@ -1808,7 +1824,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // Riga custom provider: se renderizzata, la colonna separati si nasconde
   // (mai due stack di rating impilati — il provider vince).
   let customRowRendered = false
-  if (input.ratings?.length) {
+  if (input.ratings?.length && !tagStyle) {
     // Optional enrichment must never prevent the original poster from rendering.
     // La riga sta sopra il badge genere, in basso: stessa polarità del fondo.
     const row = await renderMultiRatings(input.ratings, CW - 40, bottomLight, badgeFont).catch(() => null)
@@ -2225,7 +2241,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // pill verticali logo-sopra/punteggio-sotto a larghezza uniforme,
   // centrato sull'asse verticale del badge qualità (o all'angolo quando la
   // qualità manca). Vale per entrambi i canvas. Mai col custom provider.
-  if (!customRowRendered && input.separateRatings?.length) {
+  if (!tagStyle && !customRowRendered && input.separateRatings?.length) {
     const items = input.separateRatings.slice(0, 3)
     const netPadX = Math.round(18 * CW / 380)
     const netBaseTop = Math.round(18 * CH / 570)
@@ -2251,6 +2267,30 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     }
   }
 
+
+  // -----------------------------------------------------------------------
+  // 6b. Fork: stile tag — dissolvenza, card di vetro con logo e titolo, tag.
+  // -----------------------------------------------------------------------
+  if (tagStyle) {
+    const below = (await Promise.all(composites.map((layer) => fitCompositeToCanvas(layer, CW, CH))))
+      .filter((layer): layer is PosterComposite => layer !== null)
+    const base = await sharp(posterBuf).composite(below).png().toBuffer()
+    const titleStrip = titleFit && logoResult
+      ? await renderTitleText(title!, titleMaxW, titleFit.fs, undefined, textStyle, badgeFont).catch(() => null)
+      : null
+    const tagged = await composeTagStyle({
+      base,
+      canvasW: CW,
+      canvasH: CH,
+      logo: logoResult ? { input: logoResult.input, w: logoResult.w, h: logoResult.h, left: logoResult.left, top: logoResult.top } : null,
+      title: titleStrip,
+      tagLabel,
+      fade: input.tagFade !== false,
+      font: badgeFont,
+    })
+    composites.push(...tagged.layers)
+    if (readabilityReport) readabilityReport.tag = { label: tagLabel, logoTop: tagged.logoTop }
+  }
 
   // -----------------------------------------------------------------------
   // 7. Final composite

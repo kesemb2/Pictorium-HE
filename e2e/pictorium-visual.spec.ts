@@ -737,6 +737,33 @@ test.describe("poster API — visual regression", () => {
     await expect(poster).toHaveScreenshot("poster-readability-logo-halo.png", { maxDiffPixelRatio: 0.05 })
   })
 
+  // Fork: stile "tag" (pstyle=tag): card di vetro con logo e titolo, tag di
+  // stato in basso, dissolvenza opzionale. Il classico resta coperto da tutti
+  // gli snapshot sopra, che non devono muoversi.
+  const tagUrl = (params: Record<string, string>) =>
+    readabilityUrl({ ranking: "1", extra: "עונה חדשה", pstyle: "tag", logo: "/mocked/readability-logo.png", title: "כותרת", lang: "he", ...params })
+
+  test("tag style on busy artwork — screenshot", async ({ page }) => {
+    const poster = await renderPoster(page, tagUrl({ poster: "/mocked/readability-busy.jpg" }))
+    await expect(poster).toHaveScreenshot("poster-tag-busy.png", { maxDiffPixelRatio: 0.05 })
+  })
+
+  test("tag style on light artwork — screenshot", async ({ page }) => {
+    const poster = await renderPoster(page, tagUrl({ poster: "/mocked/readability-light.jpg" }))
+    await expect(poster).toHaveScreenshot("poster-tag-light.png", { maxDiffPixelRatio: 0.05 })
+  })
+
+  test("tag style without the fade — screenshot", async ({ page }) => {
+    const poster = await renderPoster(page, tagUrl({ poster: "/mocked/readability-light.jpg", tfade: "0" }))
+    await expect(poster).toHaveScreenshot("poster-tag-nofade.png", { maxDiffPixelRatio: 0.05 })
+  })
+
+  test("tag style in landscape — screenshot", async ({ page }) => {
+    const url = posterUrl({ backdrop: "/mocked/backdrop.jpg", logo: "/mocked/readability-logo.png", shape: "landscape", genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "1", extra: "בכורה", pstyle: "tag" })
+    const poster = await renderPoster(page, url)
+    await expect(poster).toHaveScreenshot("poster-tag-landscape.png", { maxDiffPixelRatio: 0.05 })
+  })
+
   // Fork: font del testo ebraico (`hfont`). Genere, nastro e dicitura in
   // ebraico, così ogni famiglia copre tutti i testi che governa.
   for (const hfont of ["heebo", "karantina", "secular-one", "frank-ruhl-libre"]) {

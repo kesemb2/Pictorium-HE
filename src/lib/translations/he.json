@@ -1074,5 +1074,11 @@
   "ui.themeDark": "כהה",
   "ui.rankCountryGlobal": "כל העולם",
   "ui.hebrewFont": "גופן עברי",
-  "ui.hebrewFontHint": "חל על כל הטקסט העברי בפוסטר: שורת הז'אנר, סרט הדירוג והכותרת מתחת ללוגו."
+  "ui.hebrewFontHint": "חל על כל הטקסט העברי בפוסטר: שורת הז'אנר, סרט הדירוג והכותרת מתחת ללוגו.",
+  "ui.posterStyle": "סגנון פוסטר",
+  "ui.posterStyleClassic": "קלאסי",
+  "ui.posterStyleClassicSub": "פס בלור, ז'אנר, שנה ודירוג",
+  "ui.posterStyleTag": "תגית",
+  "ui.posterStyleTagSub": "תמונה נקייה, לוגו על זכוכית ותגית סטטוס",
+  "ui.tagFade": "דעיכה כהה מלמטה"
 }

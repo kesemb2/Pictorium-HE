@@ -5,7 +5,7 @@ import type { TMDBImage, NetworkLogoPosition, PosterShape } from "@/lib/types"
 import { useDefaults } from "@/lib/useDefaults"
 import type { LandscapeServerDefaults } from "@/lib/server-defaults"
 import type { DateFormat } from "@/lib/release-badge"
-import type { BadgeStyle, RankingBadgeStyle, QualityBadgeStyle, BadgeFont, HebrewFont } from "@/lib/badge-styles"
+import type { BadgeStyle, RankingBadgeStyle, QualityBadgeStyle, BadgeFont, HebrewFont, PosterStyle } from "@/lib/badge-styles"
 import type { SashBucket } from "@/lib/badge-priority"
 import type { VideoFormat } from "@/lib/av-specs"
 import type { VisualPresetValues } from "@/lib/visual-presets"
@@ -147,6 +147,11 @@ export interface PosterEditorCtx {
   /** Fork: font del testo ebraico (impostazione globale, default Rubik). */
   defaultHebrewFont: HebrewFont
   setDefaultHebrewFont: (v: HebrewFont) => void
+  /** Fork: stile del poster e dissolvenza dello stile tag (globali). */
+  defaultPosterStyle: PosterStyle
+  setDefaultPosterStyle: (v: PosterStyle) => void
+  defaultTagFade: boolean
+  setDefaultTagFade: (v: boolean) => void
   /** Stile icone del badge qualità di default. */
   defaultQualityBadgeStyle: QualityBadgeStyle
   setDefaultQualityBadgeStyle: (v: QualityBadgeStyle | ((prev: QualityBadgeStyle) => QualityBadgeStyle)) => void
@@ -461,7 +466,7 @@ export function PosterEditorProvider({
     genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY,
     networkLogoOffsetX, networkLogoOffsetY,
     badgeStyle, rankingBadgeStyle, qualityBadgeStyle, videoFormats,
-    badgeFont, defaultBadgeFont, defaultHebrewFont,
+    badgeFont, defaultBadgeFont, defaultHebrewFont, defaultPosterStyle, defaultTagFade,
     defaultBadgeStyle, defaultRankingBadgeStyle, defaultQualityBadgeStyle, defaultVideoFormats,
     defaultBlurEnabled, defaultBlurIntensity, defaultBlurFade, defaultBlurDarkness, defaultTintStrength, defaultTopShade,
     defaultGradientHeight, defaultGlobalBadges, defaultRankingBadges,
@@ -792,6 +797,14 @@ export function PosterEditorProvider({
   const setDefaultHebrewFont = useCallback(
     (v: HebrewFont) => {
       update({ defaultHebrewFont: v })
+    }, [update])
+  const setDefaultPosterStyle = useCallback(
+    (v: PosterStyle) => {
+      update({ defaultPosterStyle: v })
+    }, [update])
+  const setDefaultTagFade = useCallback(
+    (v: boolean) => {
+      update({ defaultTagFade: v })
     }, [update])
   const setDefaultQualityBadgeStyle = useCallback(
     (v: QualityBadgeStyle | ((prev: QualityBadgeStyle) => QualityBadgeStyle)) => {
@@ -1211,6 +1224,10 @@ export function PosterEditorProvider({
       setDefaultBadgeFont,
       defaultHebrewFont,
       setDefaultHebrewFont,
+      defaultPosterStyle,
+      setDefaultPosterStyle,
+      defaultTagFade,
+      setDefaultTagFade,
       defaultQualityBadgeStyle,
       setDefaultQualityBadgeStyle,
       defaultVideoFormats,
@@ -1481,6 +1498,8 @@ export function PosterEditorProvider({
       defaultRankingBadgeStyle, setDefaultRankingBadgeStyle,
       defaultBadgeFont, setDefaultBadgeFont,
       defaultHebrewFont, setDefaultHebrewFont,
+      defaultPosterStyle, setDefaultPosterStyle,
+      defaultTagFade, setDefaultTagFade,
       defaultQualityBadgeStyle, setDefaultQualityBadgeStyle,
       defaultVideoFormats, setDefaultVideoFormats,
       defaultEpisodeMetadataSource, setDefaultEpisodeMetadataSource,

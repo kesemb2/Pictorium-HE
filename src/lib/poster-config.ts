@@ -21,6 +21,9 @@ import {
   isHebrewFont,
   DEFAULT_HEBREW_FONT,
   type HebrewFont,
+  isPosterStyle,
+  DEFAULT_POSTER_STYLE,
+  type PosterStyle,
   nonRibbonRankingStyle,
   DEFAULT_BADGE_STYLE,
   DEFAULT_RANKING_BADGE_STYLE,
@@ -86,6 +89,10 @@ export interface PosterRenderConfig {
   badgeFont: BadgeFont
   /** Fork: font del testo ebraico (query `hfont` > config token > server defaults > Rubik). */
   hebrewFont: HebrewFont
+  /** Fork: stile del poster (query `pstyle` > config token > server defaults > classic). */
+  posterStyle: PosterStyle
+  /** Fork, stile tag: dissolvenza dal basso (query `tfade` > config > defaults > on). */
+  tagFade: boolean
   /** Stile icone del badge qualità (standard = pill testuale). */
   qualityBadgeStyle: QualityBadgeStyle
   blurEnabled: boolean
@@ -440,6 +447,15 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
   const rawHfont = q.get("hfont") ?? configOverride?.hebrewFont ?? sd.hebrewFont
   const hebrewFont: HebrewFont = isHebrewFont(rawHfont) ? rawHfont : DEFAULT_HEBREW_FONT
 
+  // Fork: stile del poster e dissolvenza dello stile tag. Impostazioni
+  // globali come il font ebraico (niente override per titolo).
+  const rawPstyle = q.get("pstyle") ?? configOverride?.posterStyle ?? sd.posterStyle
+  const posterStyle: PosterStyle = isPosterStyle(rawPstyle) ? rawPstyle : DEFAULT_POSTER_STYLE
+  const rawTfade = q.get("tfade")
+  const tagFade: boolean = rawTfade !== null
+    ? rawTfade !== "0"
+    : (configOverride?.tagFade ?? sd.tagFade ?? true)
+
   const qScale = q.get("scale")
   const qOx = q.get("ox")
   const qOy = q.get("oy")
@@ -662,6 +678,8 @@ const qSide = q.get("side")
     rankingBadgeStyle,
     badgeFont,
     hebrewFont,
+    posterStyle,
+    tagFade,
     qualityBadgeStyle,
     blurEnabled,
     blurHeight,

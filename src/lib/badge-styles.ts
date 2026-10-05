@@ -137,3 +137,17 @@ export const HEBREW_FONT_WIDTH: Readonly<Record<HebrewFont, number>> = {
 export function normalizeBadgeFontSpec(v: string | null | undefined): BadgeFontSpec {
   return withHebrewFont(latinFontOf(v), hebrewFontOf(v))
 }
+
+/**
+ * Fork: stile del poster. "classic" = la resa di sempre (fascia sfocata, riga
+ * genere/voto, badge in alto); "tag" = artwork pulito, logo e titolo in una
+ * card di vetro, stato in una tag di vetro in basso (vedi lib/tag-style).
+ * Catena: query `pstyle` > config token > server defaults > "classic".
+ */
+export const POSTER_STYLES = ["classic", "tag"] as const
+export type PosterStyle = (typeof POSTER_STYLES)[number]
+export const DEFAULT_POSTER_STYLE: PosterStyle = "classic"
+
+export function isPosterStyle(v: string | null | undefined): v is PosterStyle {
+  return !!v && (POSTER_STYLES as readonly string[]).includes(v)
+}

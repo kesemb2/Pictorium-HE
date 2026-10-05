@@ -4,7 +4,8 @@ import { Palette } from "lucide-react"
 import { usePSelector } from "@/lib/context"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { usePosterEditor } from "@/lib/contexts/PosterEditorContext"
-import { BadgeStyleSelector, VideoFormatSelector, BadgeFontSelector, HebrewFontSelector } from "@/components/ui"
+import { BadgeStyleSelector, VideoFormatSelector, BadgeFontSelector, HebrewFontSelector, PosterStyleSelector } from "@/components/ui"
+import { Toggle } from "@/components/Toggle"
 import { KNOWN_VIDEO_FORMATS } from "@/lib/av-specs"
 
 /** Stili grafici predefiniti (tab Badge). Estratto da SettingsPanel: solo JSX + context, nessuno stato locale. */
@@ -18,6 +19,27 @@ export function BadgeStyleSection() {
         <Palette className="w-3.5 h-3.5 text-accent-orange" />
         {t("ui.styleDefault")}
       </span>
+
+      <div className="space-y-1.5">
+        <label className="text-[11px] text-muted font-medium block">
+          {t("ui.posterStyle")}
+        </label>
+        <PosterStyleSelector
+          value={ed.defaultPosterStyle}
+          onChange={(v) => ed.setDefaultPosterStyle(v)}
+          label={t("ui.posterStyle")}
+          names={{
+            classic: { title: t("ui.posterStyleClassic"), sub: t("ui.posterStyleClassicSub") },
+            tag: { title: t("ui.posterStyleTag"), sub: t("ui.posterStyleTagSub") },
+          }}
+        />
+        {ed.defaultPosterStyle === "tag" && (
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <span className="text-[11px] text-zinc-300">{t("ui.tagFade")}</span>
+            <Toggle value={ed.defaultTagFade} onChange={(v) => ed.setDefaultTagFade(v)} label={t("ui.tagFade")} />
+          </div>
+        )}
+      </div>
 
       <div className="space-y-1.5">
         <label className="text-[11px] text-muted font-medium block">
