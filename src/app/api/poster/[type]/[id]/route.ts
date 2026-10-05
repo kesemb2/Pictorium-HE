@@ -82,7 +82,7 @@ import { computeBottomLight } from "@/lib/accent-color"
 import { normalizeGenreName } from "@/lib/genre-normalize"
 import { NON_CLEAN_BLUR_FADE, NON_CLEAN_GRADIENT_HEIGHT } from "@/lib/gradient-defaults"
 import { LAND_W, LAND_H, landscapeBackdropUrl, pillarboxLandscapeBase, cropBackdropToPortrait } from "@/lib/image-utils"
-import { generatePosterBuffer, type GenerationInput } from "@/lib/poster-service"
+import { generatePosterBuffer, type GenerationInput, type ReadabilityReport } from "@/lib/poster-service"
 import { computeTopBadge } from "@/lib/poster-badge"
 import { containsHebrew } from "@/lib/badge-svg-shared"
 import { getFanartMovie, getFanartTv, isFanartEnabled, type FanartImage } from "@/lib/fanart-artwork"
@@ -2314,7 +2314,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       && containsHebrew(resolvedTitle)
 
     // 10. Generate poster buffer
+    // Fork: decisioni di leggibilità del render, esposte in X-Pictorium-Readability.
+    const readabilityReport: ReadabilityReport = {}
     const genInput: GenerationInput = {
+      readabilityReport,
       // Custom values override internal sources with the same ID, preserving order.
       ratings: customRatingConfig.enabled ? [...new Map([...ratings, ...customRatings].map(item => [item.id, item])).values()] : undefined,
       posterBuf, logoFetch, backdropFetch: isLandscape ? null : backdropFetch,
@@ -2416,6 +2419,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     if (needsVariant) return serveResponseVariant(payload, ephemeralTtl ? { ttlMs: QUALITY_EPHEMERAL_TTL_SEC * 1000, immutable: false } : dynamicCutTtlMs !== null ? { ttlMs: dynamicCutTtlMs, immutable: immutablePoster } : { immutable: immutablePoster })
     const renderHeaders = {
       ...posterHeaders(etag, effectiveImmutable, isPreview, dynamicPoster, outputFormat, effectiveTtlSec, isLive),
+      // Solo sui render freschi (le copie in cache non lo portano): per
+      // diagnosticare un poster basta ri-chiederlo con preview=1.
+      "X-Pictorium-Readability": JSON.stringify(readabilityReport),
       "Server-Timing": serverTimingValue([
         { name: "fetch", durMs: tFetchMs },
         { name: "prep", durMs: tCompositeStart - startTime - tFetchMs },

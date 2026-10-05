@@ -74,6 +74,34 @@ function detailFor(type) {
   return { ...MOVIE, ...base, title: "Avatar", name: "Avatar", release_date: "2009-12-10", first_air_date: null }
 }
 
+// ---- Fork: asset dei test di leggibilità (testo scuro, alone, velatura logo) ----
+// Il nome del file sceglie la variante: un poster chiaro e piatto in basso,
+// uno movimentato (scacchiera), e un logo bianco. Deterministici.
+const readabilityCache = new Map()
+async function getReadabilityAsset(pathname) {
+  const name = pathname.split("/").pop() || ""
+  const make = {
+    "readability-light.jpg": async () => {
+      // Cielo scuro sopra, fondo chiaro e piatto sotto: logo bianco a rischio.
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><rect width="400" height="280" fill="#28405f"/><rect y="280" width="400" height="320" fill="#ebe1cd"/></svg>`
+      return { buf: await sharp(Buffer.from(svg)).jpeg({ quality: 90 }).toBuffer(), type: "image/jpeg" }
+    },
+    "readability-busy.jpg": async () => {
+      const cells = []
+      for (let y = 0; y < 600; y += 10) for (let x = 0; x < 400; x += 10) if (((x + y) / 10) % 2) cells.push(`<rect x="${x}" y="${y}" width="10" height="10" fill="#e6e6e6"/>`)
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><rect width="400" height="600" fill="#282828"/>${cells.join("")}</svg>`
+      return { buf: await sharp(Buffer.from(svg)).jpeg({ quality: 90 }).toBuffer(), type: "image/jpeg" }
+    },
+    "readability-logo.png": async () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="180"><rect x="20" y="30" width="560" height="120" rx="20" fill="#ffffff"/><rect x="60" y="60" width="480" height="60" fill="#f0f0f0"/></svg>`
+      return { buf: await sharp(Buffer.from(svg)).png().toBuffer(), type: "image/png" }
+    },
+  }[name]
+  if (!make) return null
+  if (!readabilityCache.has(name)) readabilityCache.set(name, await make())
+  return readabilityCache.get(name)
+}
+
 // ---- Poster di esempio: gradiente verticale deterministico ----
 let cachedPoster = null
 async function getPosterBuffer() {
@@ -132,6 +160,9 @@ const server = http.createServer(async (req, res) => {
 
     // Immagini poster (image.tmdb.org/t/p/... → mock)
     if (method === "GET" && pathname.startsWith("/t/p/")) {
+      // Fork: varianti per i test di leggibilità (scelte dal nome del file).
+      const variant = await getReadabilityAsset(pathname)
+      if (variant) return respond(res, 200, variant.buf, variant.type)
       return respond(res, 200, await getPosterBuffer(), "image/jpeg")
     }
 
