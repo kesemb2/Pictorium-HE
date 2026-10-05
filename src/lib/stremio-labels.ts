@@ -64,6 +64,8 @@ export function canonicalGenreLabel(label: string | undefined): string | undefin
 
 /** Nomi statici dei cataloghi (`catalog-definitions`) → ebraico. */
 const HE_CATALOG_PHRASES: readonly (readonly [string, string])[] = [
+  ["Top 10 Oggi — Film", "טופ 10 היום — סרטים"],
+  ["Top 10 Oggi — Serie TV", "טופ 10 היום — סדרות"],
   ["Cerca per Persona (Film)", "חיפוש לפי אדם (סרטים)"],
   ["Cerca per Persona (Serie TV)", "חיפוש לפי אדם (סדרות)"],
   ["Cerca Serie TV", "חיפוש סדרות"],
