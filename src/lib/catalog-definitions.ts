@@ -63,17 +63,24 @@ export const PICTORIUM_PEOPLE_SEARCH_CATALOGS = [
   { id: "pictorium-search-people-series", name: "🔍 Pictorium — Cerca per Persona (Serie TV)", type: "series" },
 ] as const satisfies readonly PictoriumCatalogDefinition[]
 
+/** Built-in assenti da un ordine salvato oltre i quali l'ordine è "parziale". */
+const NEW_BUILTINS_MAX = 4
+
 /**
  * Posizione di un catalogo nell'ordine salvato dall'utente. Un catalogo
- * built-in nuovo (assente da un ordine salvato prima che esistesse) non va in
- * fondo: si mette subito dopo il built-in che lo precede nella definizione
- * (es. "Top 10 Oggi" dopo la Top 20 della regione). Gli altri ignoti in fondo.
+ * built-in nuovo (assente da un ordine completo, salvato prima che esistesse)
+ * non va in fondo: si mette subito dopo il built-in che lo precede nella
+ * definizione (es. "Top 10 Oggi" dopo la Top 20 della regione). Un ordine
+ * parziale (pochi cataloghi elencati) resta com'era: gli elencati prima, il
+ * resto in fondo. Gli ID ignoti vanno sempre in fondo.
  */
 export function catalogOrderPosition(id: string, orderMap: ReadonlyMap<string, number>): number {
   const known = orderMap.get(id)
   if (known !== undefined) return known
   const idx = PICTORIUM_CATALOGS.findIndex((c) => c.id === id)
   if (idx < 0) return 9999
+  const missing = PICTORIUM_CATALOGS.filter((c) => !orderMap.has(c.id)).length
+  if (missing > NEW_BUILTINS_MAX) return 9999
   for (let i = idx - 1; i >= 0; i--) {
     const prev = orderMap.get(PICTORIUM_CATALOGS[i]!.id)
     if (prev !== undefined) return prev + 0.5 + idx / 1000
