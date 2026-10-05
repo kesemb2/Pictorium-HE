@@ -20,7 +20,9 @@ vi.mock("@/lib/poster-render-helpers", async (importOriginal) => {
   }
 })
 
-const { checkFanartPosterText, fanartPreviewUrl, verifiedTextlessPosters, fanartPostersAsTmdb, rejectTextedFanart } = await import("@/lib/poster-textless")
+const { checkFanartPosterText, fanartPreviewUrl, verifiedTextlessPosters, fanartPostersAsTmdb, rejectTextedFanart, rejectTextedUrls, isVerifiableUrl, tvdbCleanPosters, verifyCleanPool } = await import("@/lib/poster-textless")
+const { ARTWORKS_BASE } = await import("@/lib/tvdb")
+const tvdb = (name: string) => `${ARTWORKS_BASE}/banners/v4/movie/1/posters/${name}.jpg`
 
 const asset = (name: string) => `${FANART_ASSET_PREFIX}fanart/movies/1/movieposter/${name}.jpg`
 const preview = (name: string) => `${FANART_ASSET_PREFIX}preview/movies/1/movieposter/${name}.jpg`
@@ -80,16 +82,16 @@ describe("fanart textless verification", () => {
     expect(fetched).toHaveLength(0)
   })
 
-  it("keeps only \"00\" posters that pass the visual check, in fanart order", async () => {
+  it("keeps \"00\" and unlabelled posters that pass the visual check, \"00\" first", async () => {
     images.set(preview("a"), titled)
     images.set(preview("b"), clean)
     images.set(preview("c"), clean)
     images.set(preview("d"), clean)
     const checks: unknown[] = []
-    const out = await verifiedTextlessPosters([img("a", "00", 9), img("b", "00", 5), img("c", "", 4), img("d", "en", 3)], { limit: 3, checks: checks as never })
-    expect(out.map((i) => i.id)).toEqual(["b"])
-    // "" ed "en" non vengono nemmeno analizzati.
-    expect(checks).toHaveLength(2)
+    const out = await verifiedTextlessPosters([img("c", "", 9), img("a", "00", 8), img("b", "00", 5), img("d", "en", 3)], { limit: 6, checks: checks as never })
+    expect(out.map((i) => i.id)).toEqual(["b", "c"])
+    // Una lingua vera ("en") non viene nemmeno analizzata.
+    expect(checks).toHaveLength(3)
   })
 
   it("marks only verified posters clean for the editor", async () => {
@@ -97,6 +99,10 @@ describe("fanart textless verification", () => {
     images.set(preview("b"), clean)
     const shaped = await fanartPostersAsTmdb([img("a", "00"), img("b", "00"), img("c", ""), img("d", "he")], { limit: 6 })
     expect(shaped.map((s) => s.iso_639_1)).toEqual(["und", null, "und", "he"])
+    images.set(preview("c"), clean)
+    cacheClear()
+    const withUnlabelled = await fanartPostersAsTmdb([img("a", "00"), img("b", "00"), img("c", ""), img("d", "he")], { limit: 6 })
+    expect(withUnlabelled.map((s) => s.iso_639_1)).toEqual(["und", null, null, "he"])
   })
 
   it("flags texted fanart paths in saved lists, leaving TMDB paths alone", async () => {
@@ -105,6 +111,61 @@ describe("fanart textless verification", () => {
     const rejected = await rejectTextedFanart(["/tmdb.jpg", asset("a"), asset("b")])
     expect([...rejected]).toEqual([asset("a")])
   })
+})
+
+describe("clean pool from every source", () => {
+  it("knows which URLs it can verify", () => {
+    expect(isVerifiableUrl(asset("x"))).toBe(true)
+    expect(isVerifiableUrl(tvdb("x"))).toBe(true)
+    expect(isVerifiableUrl("/tmdb.jpg")).toBe(false)
+    expect(isVerifiableUrl("https://evil.example/x.jpg")).toBe(false)
+    expect(isVerifiableUrl(null)).toBe(false)
+  })
+
+  it("keeps TVDB posters marked textless that pass the check, best score first", async () => {
+    images.set(tvdb("hi"), clean)
+    images.set(tvdb("lo"), clean)
+    images.set(tvdb("titled"), titled)
+    images.set(tvdb("texted"), clean)
+    images.set(tvdb("wide"), clean)
+    const out = await tvdbCleanPosters([
+      { image: tvdb("lo"), includesText: false, score: 1, width: 680, height: 1000 },
+      { image: tvdb("titled"), includesText: false, score: 9 },
+      { image: tvdb("texted"), includesText: true, score: 8 },
+      { image: tvdb("wide"), includesText: false, score: 7, width: 1920, height: 1080 },
+      { image: tvdb("hi"), includesText: false, score: 5 },
+    ], { limit: 30 })
+    expect(out.map((p) => p.file_path)).toEqual([tvdb("hi"), tvdb("lo")])
+    expect(out.every((p) => p.iso_639_1 === null && p.source === "tvdb")).toBe(true)
+    // Il marcato con testo e quello orizzontale non vengono analizzati.
+    expect(fetched).not.toContain(tvdb("texted"))
+    expect(fetched).not.toContain(tvdb("wide"))
+  })
+
+  it("flags texted TVDB paths in saved lists too", async () => {
+    images.set(tvdb("titled"), titled)
+    images.set(tvdb("clean"), clean)
+    const rejected = await rejectTextedUrls(["/tmdb.jpg", tvdb("titled"), tvdb("clean")])
+    expect([...rejected]).toEqual([tvdb("titled")])
+  })
+
+  it("verifies a long pool in order with at most 8 checks in flight", async () => {
+    const { fetchImg } = await import("@/lib/poster-render-helpers")
+    let inFlight = 0
+    let peak = 0
+    vi.mocked(fetchImg).mockImplementation(async (url: string) => {
+      inFlight++
+      peak = Math.max(peak, inFlight)
+      await new Promise((r) => setTimeout(r, 5))
+      inFlight--
+      return url.includes("titled") ? titled : clean
+    })
+    const sources = Array.from({ length: 20 }, (_, i) => tvdb(i === 4 ? "titled" : `p${i}`))
+    const ok = await verifyCleanPool(sources, { limit: 30 })
+    expect(peak).toBeLessThanOrEqual(8)
+    expect(peak).toBeGreaterThan(1)
+    expect(ok).toEqual(sources.filter((_, i) => i !== 4))
+  }, 30000)
 })
 
 describe("Fanart.tv tab tile language", () => {

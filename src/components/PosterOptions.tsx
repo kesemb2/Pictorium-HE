@@ -11,8 +11,10 @@ import { usePSelector } from "@/lib/context"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { usePosterEditor } from "@/lib/contexts/PosterEditorContext"
 import { usePosterFit } from "@/lib/usePosterFit"
-import { useFanartPosters } from "@/lib/useFanartPosters"
-import { RotateCcw, Check, Clock, Sparkles, ArrowUpDown, EyeOff, ChevronDown, X, Loader2 } from "lucide-react"
+import { RotateCcw, Check, Clock, Sparkles, ArrowUpDown, EyeOff, ChevronDown, X } from "lucide-react"
+
+/** Fork: chip della fonte sul tile del pool clean (nomi propri, non tradotti). */
+const SOURCE_LABEL = { tmdb: "TMDB", fanart: "Fanart", tvdb: "TVDB" } as const
 
 interface Props {
   posters: TMDBImage[]
@@ -44,11 +46,26 @@ export function PosterOptions({ posters, posterActivePath, lang, selectPoster, a
 
   const excludedSet = useMemo(() => new Set(ed.excludedPosters), [ed.excludedPosters])
 
-  const cleanPosters = useMemo(() => posters.filter((img) => img.iso_639_1 === null && !excludedSet.has(img.file_path) && !isCustomPosterUrl(img.file_path)), [posters, excludedSet])
-  const customCount = customPosters.length + (savedCustomPoster ? 1 : 0)
+  // Fork: pool clean da tutte le fonti (TMDB, fanart, TVDB), già verificato
+  // senza testo dal server. Gli URL esterni entrano solo se portano la fonte
+  // (vengono dal pool); i tile custom di sessione restano a parte.
+  const sessionCustom = useMemo(() => new Set(customPosters.map((p) => p.file_path)), [customPosters])
+  const cleanPosters = useMemo(() => posters.filter((img) =>
+    img.iso_639_1 === null
+    && !excludedSet.has(img.file_path)
+    && !sessionCustom.has(img.file_path)
+    && (!isCustomPosterUrl(img.file_path) || img.source === "fanart" || img.source === "tvdb"),
+  ), [posters, excludedSet, sessionCustom])
+  // Base custom salvata che è anche nel pool: un tile solo, quello del pool.
+  const savedTile = savedCustomPoster && !cleanPosters.some((p) => p.file_path === savedCustomPoster.file_path) ? savedCustomPoster : null
+  const customCount = customPosters.length + (savedTile ? 1 : 0)
   const hasClean = cleanPosters.length > 0 || customCount > 0
+  // Best-fit lavora su path TMDB: gli URL esterni del pool restano fuori dal punteggio.
+  const fitPosters = useMemo(() => cleanPosters.filter((p) => !isCustomPosterUrl(p.file_path)), [cleanPosters])
+  // Lingue: solo quando non c'è nessun clean (il pool è la scelta); "und"
+  // (scartati dal controllo testo) mai.
   const langGroups = useMemo(
-    () => Object.entries(groupBy(posters.filter((img) => img.iso_639_1 !== null), (img) => img.iso_639_1 || "other")).sort(([a], [b]) => {
+    () => Object.entries(groupBy(posters.filter((img) => img.iso_639_1 !== null && img.iso_639_1 !== "und"), (img) => img.iso_639_1 || "other")).sort(([a], [b]) => {
       if (a === lang) return -1; if (b === lang) return 1
       if (a === "en") return -1; if (b === "en") return 1
       return a.localeCompare(b)
@@ -60,19 +77,17 @@ export function PosterOptions({ posters, posterActivePath, lang, selectPoster, a
   const activeGroup = controlledActiveGroup ?? internalActiveGroup
   const setActiveGroup = onActiveGroupChange ?? setInternalActiveGroup
 
-  // Fanart.tv: fetch lazy solo a tab aperta (mai all'apertura del titolo).
-  const fanart = useFanartPosters(activeGroup === "fanart")
-
   const posterTabs = useMemo(() => {
     const tabs: { key: string; label: string; count: number }[] = []
-    if (hasClean) tabs.push({ key: "clean", label: t("ui.clean"), count: cleanPosters.length + customPosters.length + (savedCustomPoster ? 1 : 0) })
+    if (hasClean) {
+      tabs.push({ key: "clean", label: t("ui.clean"), count: cleanPosters.length + customCount })
+      return tabs
+    }
     for (const [language, imgs] of langGroups) {
       if (imgs.length > 0) tabs.push({ key: language, label: LANG_NAMES[language] || language, count: imgs.length })
     }
-    // Tab Fanart.tv alla pari delle lingue: solo a titolo selezionato.
-    if (selected) tabs.push({ key: "fanart", label: t("ui.fanartTitle"), count: fanart.posters.length })
     return tabs
-  }, [hasClean, cleanPosters.length, customPosters.length, savedCustomPoster, langGroups, selected, fanart.posters.length, t])
+  }, [hasClean, cleanPosters.length, customCount, langGroups, t])
 
   useEffect(() => {
     if (posterTabs.length > 0 && !posterTabs.some((t) => t.key === activeGroup)) {
@@ -85,7 +100,7 @@ export function PosterOptions({ posters, posterActivePath, lang, selectPoster, a
   const { bestFitPath, results, loading: fitLoading, error: fitError } = usePosterFit({
     enabled: ed.defaultPortraitFitEnabled,
     selectedLogo: selectedLogo,
-    cleanPosters,
+    cleanPosters: fitPosters,
     logoScale: ed.logoScale,
     logoOffsetX: ed.logoOffsetX,
     logoOffsetY: ed.logoOffsetY,
@@ -199,10 +214,9 @@ export function PosterOptions({ posters, posterActivePath, lang, selectPoster, a
   }, [displayPosters, visibleCleanCount])
 
   const activeClean = activeGroup === "clean"
-  const activeFanart = activeGroup === "fanart"
   const activeLangImgs = useMemo(() => {
-    return !activeClean && !activeFanart ? langGroups.find(([l]) => l === activeGroup)?.[1] ?? [] : []
-  }, [activeClean, activeFanart, langGroups, activeGroup])
+    return !activeClean ? langGroups.find(([l]) => l === activeGroup)?.[1] ?? [] : []
+  }, [activeClean, langGroups, activeGroup])
 
   const visibleLangImgs = useMemo(() => {
     return activeLangImgs.slice(0, visibleLangCount)
@@ -368,9 +382,9 @@ export function PosterOptions({ posters, posterActivePath, lang, selectPoster, a
               </div>
             ))}
             {/* Tile custom salvato: in griglia senza rimozione (dal box). */}
-            {savedCustomPoster && (
-              <div key={`custom-saved:${savedCustomPoster.file_path}`}>
-                <PosterBtn staggerIndex={customPosters.length} img={savedCustomPoster} active={posterActivePath === savedCustomPoster.file_path} onSelect={selectPoster} title={t("ui.customPosterActive")} />
+            {savedTile && (
+              <div key={`custom-saved:${savedTile.file_path}`}>
+                <PosterBtn staggerIndex={customPosters.length} img={savedTile} active={posterActivePath === savedTile.file_path} onSelect={selectPoster} title={t("ui.customPosterActive")} />
               </div>
             )}
             {visibleCleanPosters.map((img) => {
@@ -383,6 +397,7 @@ export function PosterOptions({ posters, posterActivePath, lang, selectPoster, a
                 <div key={img.file_path} className={`relative group rounded-xl overflow-hidden ${isBestFit && bestScore >= 0.45 ? `ring-1 ${isHighScore ? "ring-orange-400/70 shadow-[0_0_18px_rgba(232,93,42,0.12)]" : "ring-amber-400/50"}` : ""}`}>
                   <PosterBtn staggerIndex={stagger} img={img} active={posterActivePath === img.file_path} onSelect={selectPoster} />
                   <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/50 to-transparent opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity" />
+                  <span data-testid="poster-source" className={`pointer-events-none absolute ${posterActivePath === img.file_path ? "bottom-6" : "bottom-1.5"} start-1.5 z-10 px-1.5 py-px rounded-md text-[9px] font-semibold tracking-wide text-zinc-100 bg-black/55 backdrop-blur-sm border border-white/10`}>{SOURCE_LABEL[img.source ?? "tmdb"]}</span>
                   {showBadge && (
                     <div className={`fit-badge z-20 ${isHighScore ? "fit-badge-amber" : ""}`}>
                       <Sparkles className="w-2.5 h-2.5 inline me-0.5" />
@@ -435,7 +450,7 @@ export function PosterOptions({ posters, posterActivePath, lang, selectPoster, a
         <p className="text-center py-12 text-muted text-xs">{t("ui.loading")}</p>
       )}
 
-      {!activeClean && !activeFanart && (
+      {!activeClean && (
         <>
           <div className="grid grid-cols-3 gap-2">
             {visibleLangImgs.map((img) => {
@@ -457,54 +472,6 @@ export function PosterOptions({ posters, posterActivePath, lang, selectPoster, a
             </button>
           )}
         </>
-      )}
-
-      {activeFanart && (
-        <div data-testid="fanart-tab-panel">
-          {(fanart.status === "idle" || fanart.status === "loading") && (
-            <p className="flex items-center justify-center gap-1.5 py-12 text-[11px] text-zinc-500" role="status">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-              {t("ui.fanartLoading")}
-            </p>
-          )}
-          {fanart.status === "empty" && (
-            <p className="py-12 text-center text-[11px] text-zinc-500">{t("ui.fanartEmpty")}</p>
-          )}
-          {fanart.status === "not_configured" && (
-            <p className="py-12 px-2 text-center text-[11px] text-zinc-500 leading-relaxed">{t("ui.fanartNotConfigured")}</p>
-          )}
-          {fanart.status === "unavailable" && (
-            <div className="py-8 text-center">
-              <p className="text-[11px] text-zinc-500">{t("ui.fanartUnavailable")}</p>
-              <button
-                type="button"
-                onClick={() => fanart.reload()}
-                className="mt-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-[11px] font-semibold text-zinc-300 hover:text-white hover:bg-white/10 transition-all"
-              >
-                {t("ui.retry")}
-              </button>
-            </div>
-          )}
-          {fanart.status === "ready" && (
-            <div className="grid grid-cols-3 gap-2">
-              {fanart.posters.map((tile, i) => {
-                const m = fanart.meta[i]
-                const lang = m?.lang ?? null
-                const langLabel = m?.textless ? t("ui.clean") : !lang || lang === "00" ? t("ui.fanartLangUnknown") : LANG_NAMES[lang] || lang
-                return (
-                  <PosterBtn
-                    key={tile.file_path}
-                    staggerIndex={i}
-                    img={tile}
-                    active={posterActivePath === tile.file_path}
-                    onSelect={selectPoster}
-                    title={`${langLabel} · ♥ ${m?.likes ?? 0}`}
-                  />
-                )
-              })}
-            </div>
-          )}
-        </div>
       )}
 
       {activeClean && ed.rotationPosters.length > 0 && (

@@ -55,6 +55,8 @@ export interface TMDBImage {
   vote_average: number
   width: number
   height: number
+  /** Fork: fonte del poster nel pool clean (assente = TMDB). */
+  source?: "tmdb" | "fanart" | "tvdb"
 }
 
 export interface FlixPatrolItem {
