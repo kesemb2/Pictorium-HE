@@ -13,7 +13,7 @@ import { USER_UNLOCK_EVENT, currentPathUuid } from "./user-token"
 import { t } from "./i18n"
 import { normalizeSashOrder, DEFAULT_SASH_ORDER, type SashBucket } from "./badge-priority"
 import { DEFAULT_QUALITY_BADGE_STYLE, type QualityBadgeStyle } from "./badge-styles"
-import { DEFAULT_BADGE_FONT, isBadgeFont, type BadgeFont, DEFAULT_HEBREW_FONT, isHebrewFont, type HebrewFont, DEFAULT_POSTER_STYLE, isPosterStyle, type PosterStyle } from "./badge-styles"
+import { DEFAULT_BADGE_FONT, isBadgeFont, type BadgeFont, DEFAULT_HEBREW_FONT, isHebrewFont, type HebrewFont, DEFAULT_POSTER_STYLE, isPosterStyle, type PosterStyle, DEFAULT_TAG_SIZE, normalizeTagSize } from "./badge-styles"
 import { KNOWN_VIDEO_FORMATS, isVideoFormat, type VideoFormat } from "./av-specs"
 
 export type RibbonSide = "left" | "right"
@@ -29,6 +29,10 @@ export interface DefaultsState {
   defaultPosterStyle: PosterStyle
   defaultTagFade: boolean
   defaultTagCard: boolean
+  /** Fork: stile orizzontale (default classic), striscia top 10 (on), grandezza tag (100%). */
+  defaultLandscapeStyle: PosterStyle
+  defaultLandscapeTop10: boolean
+  defaultTagSize: number
   /** Stile icone del badge qualità di default (default "standard"). */
   defaultQualityBadgeStyle: QualityBadgeStyle
   /** Formati A/V abilitati di default (dv, atmos, imax, hdr, hdr10plus). */
@@ -201,6 +205,9 @@ const DEFAULTS: DefaultsState = {
   defaultPosterStyle: DEFAULT_POSTER_STYLE,
   defaultTagFade: true,
   defaultTagCard: true,
+  defaultLandscapeStyle: DEFAULT_POSTER_STYLE,
+  defaultLandscapeTop10: true,
+  defaultTagSize: DEFAULT_TAG_SIZE,
   defaultQualityBadgeStyle: DEFAULT_QUALITY_BADGE_STYLE,
   defaultVideoFormats: [...KNOWN_VIDEO_FORMATS],
   defaultBlurEnabled: true,
@@ -388,6 +395,9 @@ interface StoredDefaults {
   posterStyle?: PosterStyle
   tagFade?: boolean
   tagCard?: boolean
+  landscapeStyle?: PosterStyle
+  landscapeTop10?: boolean
+  tagSize?: number
   defaultQualityBadgeStyle?: QualityBadgeStyle
   defaultBlurEnabled?: boolean
   defaultBlurIntensity?: number
@@ -516,6 +526,9 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     defaultPosterStyle: isPosterStyle(d.posterStyle) ? d.posterStyle : DEFAULT_POSTER_STYLE,
     defaultTagFade: d.tagFade !== false,
     defaultTagCard: d.tagCard !== false,
+    defaultLandscapeStyle: isPosterStyle(d.landscapeStyle) ? d.landscapeStyle : DEFAULT_POSTER_STYLE,
+    defaultLandscapeTop10: d.landscapeTop10 !== false,
+    defaultTagSize: normalizeTagSize(d.tagSize),
     defaultQualityBadgeStyle: d.defaultQualityBadgeStyle ?? d.qualityBadgeStyle ?? DEFAULT_QUALITY_BADGE_STYLE,
     defaultVideoFormats: Array.isArray(d.defaultVideoFormats)
       ? d.defaultVideoFormats.filter(isVideoFormat)
@@ -669,6 +682,9 @@ function defaultsToPayload(d: DefaultsState): Record<string, unknown> {
     posterStyle: d.defaultPosterStyle,
     tagFade: d.defaultTagFade,
     tagCard: d.defaultTagCard,
+    landscapeStyle: d.defaultLandscapeStyle,
+    landscapeTop10: d.defaultLandscapeTop10,
+    tagSize: d.defaultTagSize,
     qualityBadgeStyle: d.defaultQualityBadgeStyle,
     blurEnabled: d.defaultBlurEnabled,
     blurIntensity: d.defaultBlurIntensity,

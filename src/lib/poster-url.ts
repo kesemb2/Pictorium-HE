@@ -29,6 +29,10 @@ interface BadgeParams {
   posterStyle?: PosterStyle | null
   tagFade?: boolean
   tagCard?: boolean
+  /** Fork: stile orizzontale, striscia top 10 e grandezza tag (globali). */
+  landscapeStyle?: PosterStyle | null
+  landscapeTop10?: boolean
+  tagSize?: number | null
   /** Stile icone del badge qualità (default "standard"). */
   qualityBadgeStyle?: QualityBadgeStyle | null
   /** Formati A/V abilitati (dv, atmos, imax, hdr, hdr10plus). */
@@ -220,6 +224,9 @@ export function buildUrlPattern(bp: BadgeParams & {
     posterStyle: bp.posterStyle ?? undefined,
     tagFade: bp.tagFade,
     tagCard: bp.tagCard,
+    landscapeStyle: bp.landscapeStyle ?? undefined,
+    landscapeTop10: bp.landscapeTop10,
+    tagSize: bp.tagSize,
     qualityBadgeStyle: bp.qualityBadgeStyle,
     gradientHeight: bp.gradientHeight,
     blurIntensity: bp.blurIntensity,
@@ -405,6 +412,9 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams, configToken?: 
   params.push(`pstyle=${bp.posterStyle ?? "classic"}`)
   params.push(`tfade=${bp.tagFade === false ? "0" : "1"}`)
   params.push(`tcard=${bp.tagCard === false ? "0" : "1"}`)
+  params.push(`lstyle=${bp.landscapeStyle ?? "classic"}`)
+  params.push(`ltop=${bp.landscapeTop10 === false ? "0" : "1"}`)
+  params.push(`tsize=${bp.tagSize ?? 100}`)
   // Stile icone qualità SEMPRE esplicito in preview (come bs/rs): senza, un
   // mapping salvato con stile diverso scavalcerebbe la scelta editor (desync).
   params.push(`qbs=${bp.qualityBadgeStyle === "mono" || bp.qualityBadgeStyle === "color" ? bp.qualityBadgeStyle : "standard"}`)
@@ -573,6 +583,9 @@ export interface DefaultsPreviewParams {
   defaultPosterStyle?: PosterStyle | null
   defaultTagFade?: boolean
   defaultTagCard?: boolean
+  defaultLandscapeStyle?: PosterStyle | null
+  defaultLandscapeTop10?: boolean
+  defaultTagSize?: number
   defaultQualityBadgeStyle?: QualityBadgeStyle | null
   defaultVideoFormats?: readonly VideoFormat[] | null
   defaultBlurEnabled?: boolean
@@ -635,6 +648,9 @@ export function buildDefaultsPreviewUrl(bp: DefaultsPreviewParams): string {
   params.push(`pstyle=${bp.defaultPosterStyle ?? "classic"}`)
   params.push(`tfade=${bp.defaultTagFade === false ? "0" : "1"}`)
   params.push(`tcard=${bp.defaultTagCard === false ? "0" : "1"}`)
+  params.push(`lstyle=${bp.defaultLandscapeStyle ?? "classic"}`)
+  params.push(`ltop=${bp.defaultLandscapeTop10 === false ? "0" : "1"}`)
+  params.push(`tsize=${bp.defaultTagSize ?? 100}`)
   params.push(`qbs=${bp.defaultQualityBadgeStyle === "mono" || bp.defaultQualityBadgeStyle === "color" ? bp.defaultQualityBadgeStyle : "standard"}`)
   if (bp.defaultVideoFormats !== undefined && bp.defaultVideoFormats !== null) {
     params.push(`formats=${bp.defaultVideoFormats.length === 0 ? "none" : bp.defaultVideoFormats.join(",")}`)

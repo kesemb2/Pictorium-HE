@@ -768,11 +768,29 @@ test.describe("poster API — visual regression", () => {
     await expect(poster).toHaveScreenshot("poster-tag-nocard.png", { maxDiffPixelRatio: 0.05 })
   })
 
+  // Fork: in orizzontale lo stile si sceglie a parte (`lstyle`): logo e tag al
+  // centro, tag grande come nel riferimento 16:9.
   test("tag style in landscape — screenshot", async ({ page }) => {
-    const url = posterUrl({ backdrop: "/mocked/backdrop.jpg", logo: "/mocked/readability-logo.png", shape: "landscape", genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "1", extra: "בכורה", pstyle: "tag" })
+    const url = posterUrl({ backdrop: "/mocked/backdrop.jpg", logo: "/mocked/readability-logo.png", shape: "landscape", genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "1", extra: "בכורה", lstyle: "tag" })
     const poster = await renderPoster(page, url)
     await expect(poster).toHaveScreenshot("poster-tag-landscape.png", { maxDiffPixelRatio: 0.05 })
   })
+
+  test("tag style in landscape without the panel — screenshot", async ({ page }) => {
+    const url = posterUrl({ backdrop: "/mocked/readability-busy.jpg", logo: "/mocked/readability-logo.png", shape: "landscape", genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "1", extra: "זוכה אוסקר", lstyle: "tag", tcard: "0" })
+    const poster = await renderPoster(page, url)
+    await expect(poster).toHaveScreenshot("poster-tag-landscape-nocard.png", { maxDiffPixelRatio: 0.05 })
+  })
+
+  // Fork: Interstellar è il n.1 della top 10 mock (solo lui ha l'uscita
+  // digitale USA): striscia col numero al neon, nei due stili.
+  for (const [lstyle, extra] of [["tag", { tcard: "0" }], ["classic", {}]] as const) {
+    test(`landscape top 10 strip, ${lstyle} — screenshot`, async ({ page }) => {
+      const url = posterUrl({ backdrop: "/mocked/readability-busy.jpg", logo: "/mocked/readability-logo.png", shape: "landscape", genreName: "Action", voteAverage: "8.4", badges: "1", ranking: "1", lstyle, ...extra }, "movie", 157336)
+      const poster = await renderPoster(page, url)
+      await expect(poster).toHaveScreenshot(`poster-landscape-top10-${lstyle}.png`, { maxDiffPixelRatio: 0.05 })
+    })
+  }
 
   // Fork: font del testo ebraico (`hfont`). Genere, nastro e dicitura in
   // ebraico, così ogni famiglia copre tutti i testi che governa.

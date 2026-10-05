@@ -10,7 +10,7 @@ import { z } from "zod"
 // Batch B: clamp condiviso da image-utils.ts (semantica standard, senza round)
 import { clamp } from "@/lib/image-utils"
 import { envWithFallback } from "@/lib/env-compat"
-import { BADGE_STYLES, RANKING_BADGE_STYLES, QUALITY_BADGE_STYLES, BADGE_FONTS, HEBREW_FONTS, POSTER_STYLES } from "@/lib/badge-styles"
+import { BADGE_STYLES, RANKING_BADGE_STYLES, QUALITY_BADGE_STYLES, BADGE_FONTS, HEBREW_FONTS, POSTER_STYLES, TAG_SIZE_MIN, TAG_SIZE_MAX } from "@/lib/badge-styles"
 
 // ---- Zod schema (Batch C: sostituisce validazione manuale) ----
 
@@ -64,6 +64,10 @@ export const configTokenSchema = z.object({
   posterStyle: z.enum(POSTER_STYLES).nullable().optional(),
   tagFade: z.boolean().optional(),
   tagCard: z.boolean().optional(),
+  /** Fork: stile orizzontale, striscia top 10, grandezza tag (opzionali). */
+  landscapeStyle: z.enum(POSTER_STYLES).nullable().optional(),
+  landscapeTop10: z.boolean().optional(),
+  tagSize: z.number().int().min(TAG_SIZE_MIN).max(TAG_SIZE_MAX).optional(),
   // Stile icone qualità: opzionale+nullable (token vecchi senza campo restano validi).
   qualityBadgeStyle: z.enum(QUALITY_BADGE_STYLES).nullable().optional(),
   blurEnabled: z.boolean(),

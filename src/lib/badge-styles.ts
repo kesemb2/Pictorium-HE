@@ -151,3 +151,18 @@ export const DEFAULT_POSTER_STYLE: PosterStyle = "classic"
 export function isPosterStyle(v: string | null | undefined): v is PosterStyle {
   return !!v && (POSTER_STYLES as readonly string[]).includes(v)
 }
+
+/**
+ * Fork: grandezza della tag (stile tag) in % del default del formato.
+ * Catena: query `tsize` > config token > server defaults > 100.
+ */
+export const TAG_SIZE_MIN = 50
+export const TAG_SIZE_MAX = 160
+export const DEFAULT_TAG_SIZE = 100
+
+/** Valore libero → % intera nei limiti (assente/invalido → default). */
+export function normalizeTagSize(v: string | number | null | undefined): number {
+  const n = typeof v === "number" ? v : v == null || v === "" ? NaN : Number(v)
+  if (!Number.isFinite(n)) return DEFAULT_TAG_SIZE
+  return Math.min(TAG_SIZE_MAX, Math.max(TAG_SIZE_MIN, Math.round(n)))
+}

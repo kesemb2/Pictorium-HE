@@ -110,6 +110,15 @@ describe("tag poster style", () => {
     expect(noCard.layers.length).toBe(withCard.layers.length)
   })
 
+  it("in landscape centres the logo on the tag axis, whatever the classic alignment", async () => {
+    const base = await sharp({ create: { width: 768, height: 432, channels: 3, background: "#808080" } }).png().toBuffer()
+    const logoPng = await sharp({ create: { width: 200, height: 60, channels: 4, background: "#fff" } }).png().toBuffer()
+    const out = await composeTagStyle({ base, canvasW: 768, canvasH: 432, logo: { input: logoPng, w: 200, h: 60, left: 36, top: 300 }, title: null, tagLabel: "בכורה", fade: true, card: false })
+    const logoLayer = out.layers.find((l) => l.input === logoPng)!
+    expect(logoLayer.left).toBe(284)
+    expect(out.tagRect!.left + out.tagRect!.width / 2).toBeCloseTo(384, -1)
+  })
+
   it("a tag render reports the tag and lifts the logo above it", async () => {
     const report: ReadabilityReport = {}
     const buf = await render({ posterStyle: "tag", extra: "עונה חדשה", report })
