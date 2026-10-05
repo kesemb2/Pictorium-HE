@@ -23,7 +23,8 @@ import {
 import { usePSelector } from "@/lib/context"
 import { useT } from "@/lib/contexts/TranslationContext"
 import { usePosterEditor } from "@/lib/contexts/PosterEditorContext"
-import { PICTORIUM_CATALOGS, regionJwName } from "@/lib/catalog-definitions"
+import { PICTORIUM_CATALOGS, catalogOrderPosition, regionJwName } from "@/lib/catalog-definitions"
+import { localizeCatalogName } from "@/lib/stremio-labels"
 import { getRegionDef } from "@/lib/regions"
 import { EmojiPicker } from "@/components/ui"
 
@@ -58,6 +59,7 @@ export function CatalogManagerModal({ isOpen, onClose }: CatalogManagerModalProp
   const homeDisabledCatalogIds = usePSelector((v) => v.homeDisabledCatalogIds)
   const toggleCatalogHome = usePSelector((v) => v.toggleCatalogHome)
   const catalogOrder = usePSelector((v) => v.catalogOrder)
+  const uiLang = usePSelector((v) => v.lang)
   const setCatalogOrder = usePSelector((v) => v.setCatalogOrder)
   const moveCatalog = usePSelector((v) => v.moveCatalog)
   const catalogRenames = usePSelector((v) => v.catalogRenames)
@@ -102,7 +104,8 @@ export function CatalogManagerModal({ isOpen, onClose }: CatalogManagerModalProp
 
     // Built-in catalogs (i nomi JW seguono la regione attiva)
     for (const c of PICTORIUM_CATALOGS) {
-      const defaultName = regionJwName(c.id, c.type, activeRegion) ?? c.name
+      // Nomi statici nella lingua dell'interfaccia, come nel manifest.
+      const defaultName = regionJwName(c.id, c.type, activeRegion) ?? localizeCatalogName(c.name, uiLang || "en")
       list.push({
         id: c.id,
         name: catalogRenames[c.id] || defaultName,
@@ -160,14 +163,14 @@ export function CatalogManagerModal({ isOpen, onClose }: CatalogManagerModalProp
       const orderMap = new Map<string, number>()
       catalogOrder.forEach((id, idx) => orderMap.set(id, idx))
       list.sort((a, b) => {
-        const orderA = orderMap.has(a.id) ? orderMap.get(a.id)! : 9999
-        const orderB = orderMap.has(b.id) ? orderMap.get(b.id)! : 9999
+        const orderA = catalogOrderPosition(a.id, orderMap)
+        const orderB = catalogOrderPosition(b.id, orderMap)
         return orderA - orderB
       })
     }
 
     return list
-  }, [customCatalogs, disabledCatalogIds, homeDisabledCatalogIds, catalogOrder, catalogRenames, activeRegion, t])
+  }, [customCatalogs, disabledCatalogIds, homeDisabledCatalogIds, catalogOrder, catalogRenames, activeRegion, t, uiLang])
 
   if (!isOpen) return null
 

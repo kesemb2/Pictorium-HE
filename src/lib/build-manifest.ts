@@ -1,7 +1,7 @@
 import crypto from "node:crypto"
 import { NextRequest } from "next/server"
 import { APP_VERSION } from "@/generated/app-version"
-import { PICTORIUM_CATALOGS, PICTORIUM_PEOPLE_SEARCH_CATALOGS, regionJwName } from "@/lib/catalog-definitions"
+import { PICTORIUM_CATALOGS, PICTORIUM_PEOPLE_SEARCH_CATALOGS, catalogOrderPosition, regionJwName } from "@/lib/catalog-definitions"
 import { getOriginFromRequest } from "@/lib/poster-public-url"
 import { decodeConfig, type PictoriumUserConfig } from "@/lib/config-token"
 import { normalizeCatalogIdKeys, normalizeCatalogIdList } from "@/lib/catalog-definitions"
@@ -173,8 +173,8 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
     const orderMap = new Map<string, number>()
     userConfig.catalogOrder.forEach((id: string, idx: number) => orderMap.set(id, idx))
     catalogs.sort((a, b) => {
-      const orderA = orderMap.has(a.id) ? orderMap.get(a.id)! : 9999
-      const orderB = orderMap.has(b.id) ? orderMap.get(b.id)! : 9999
+      const orderA = catalogOrderPosition(a.id, orderMap)
+      const orderB = catalogOrderPosition(b.id, orderMap)
       return orderA - orderB
     })
   }

@@ -76,3 +76,18 @@ describe("Top 10 today catalogs (same list as the landscape strip)", () => {
     expect((await res.json()).metas).toEqual([])
   })
 })
+
+describe("new built-in catalogs in a saved order", () => {
+  it("land right after the built-in that precedes them, not at the bottom", async () => {
+    const { catalogOrderPosition } = await import("@/lib/catalog-definitions")
+    // Ordine salvato prima dei "Top 10 Oggi": JW serie è terzo.
+    const saved = ["pictorium-netflix-movies", "pictorium-jw-movies", "pictorium-jw-series", "pictorium-anime"]
+    const map = new Map(saved.map((id, i) => [id, i]))
+    const ids = [...saved, "pictorium-today-movies", "pictorium-today-series", "pictorium-custom-movie-x"]
+    const sorted = [...ids].sort((a, b) => catalogOrderPosition(a, map) - catalogOrderPosition(b, map))
+    expect(sorted).toEqual([
+      "pictorium-netflix-movies", "pictorium-jw-movies", "pictorium-jw-series",
+      "pictorium-today-movies", "pictorium-today-series", "pictorium-anime", "pictorium-custom-movie-x",
+    ])
+  })
+})
