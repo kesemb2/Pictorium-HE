@@ -1080,5 +1080,7 @@
   "ui.posterStyleClassicSub": "Blur band, genre, year and rating",
   "ui.posterStyleTag": "Tag",
   "ui.posterStyleTagSub": "Clean art, logo on glass, status tag",
-  "ui.tagFade": "Dark fade from the bottom"
+  "ui.tagFade": "Dark fade from the bottom",
+  "ui.tagCard": "Logo on a glass panel",
+  "ui.tagFadeForced": "Without the panel the logo always sits on the fade."
 }

@@ -28,6 +28,7 @@ const USER_SAVED = {
   hebrewFont: "rubik",
   posterStyle: "classic",
   tagFade: true,
+  tagCard: true,
   qualityBadgeStyle: "standard",
   videoFormats: ["dv", "hdr", "hdr10plus", "atmos", "imax"],
   blurEnabled: true,

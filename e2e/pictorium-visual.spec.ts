@@ -763,6 +763,11 @@ test.describe("poster API — visual regression", () => {
     await expect(poster).toHaveScreenshot("poster-tag-nofade.png", { maxDiffPixelRatio: 0.05 })
   })
 
+  test("tag style without the glass panel — screenshot", async ({ page }) => {
+    const poster = await renderPoster(page, tagUrl({ poster: "/mocked/readability-light.jpg", tcard: "0" }))
+    await expect(poster).toHaveScreenshot("poster-tag-nocard.png", { maxDiffPixelRatio: 0.05 })
+  })
+
   test("tag style in landscape — screenshot", async ({ page }) => {
     const url = posterUrl({ backdrop: "/mocked/backdrop.jpg", logo: "/mocked/readability-logo.png", shape: "landscape", genreName: "Action", voteAverage: "7.8", badges: "1", ranking: "1", extra: "בכורה", pstyle: "tag" })
     const poster = await renderPoster(page, url)

@@ -41,6 +41,7 @@ export interface StremioPosterParamsInput {
   /** Fork: stile poster, emesso come `pstyle` solo se "tag"; `tfade=0` solo se spenta. */
   readonly posterStyle?: PosterStyle | null
   readonly tagFade?: boolean
+  readonly tagCard?: boolean
   /** Stile icone qualità: emesso come `qbs` solo quando non-standard (cache stabile). */
   readonly qualityBadgeStyle?: QualityBadgeStyle | null
   /** Formati A/V abilitati: emessi come `formats` solo se specificati. */
@@ -363,6 +364,7 @@ export function buildStremioPosterSearchParams(input: StremioPosterParamsInput):
   if (input.posterStyle === "tag") {
     params.set("pstyle", "tag")
     if (input.tagFade === false) params.set("tfade", "0")
+    if (input.tagCard === false) params.set("tcard", "0")
   }
   // Stile icone qualità solo quando non-standard: gli URL esistenti restano
   // identici e la cache non si invalida (il server risolve lo standard da solo).

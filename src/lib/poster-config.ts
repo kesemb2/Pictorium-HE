@@ -93,6 +93,8 @@ export interface PosterRenderConfig {
   posterStyle: PosterStyle
   /** Fork, stile tag: dissolvenza dal basso (query `tfade` > config > defaults > on). */
   tagFade: boolean
+  /** Fork, stile tag: card di vetro dietro il logo (query `tcard` > config > defaults > on). */
+  tagCard: boolean
   /** Stile icone del badge qualità (standard = pill testuale). */
   qualityBadgeStyle: QualityBadgeStyle
   blurEnabled: boolean
@@ -455,6 +457,10 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
   const tagFade: boolean = rawTfade !== null
     ? rawTfade !== "0"
     : (configOverride?.tagFade ?? sd.tagFade ?? true)
+  const rawTcard = q.get("tcard")
+  const tagCard: boolean = rawTcard !== null
+    ? rawTcard !== "0"
+    : (configOverride?.tagCard ?? sd.tagCard ?? true)
 
   const qScale = q.get("scale")
   const qOx = q.get("ox")
@@ -680,6 +686,7 @@ const qSide = q.get("side")
     hebrewFont,
     posterStyle,
     tagFade,
+    tagCard,
     qualityBadgeStyle,
     blurEnabled,
     blurHeight,

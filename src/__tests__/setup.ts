@@ -287,6 +287,8 @@ const itDict: Record<string, string> = {
   "ui.posterStyleTag": "Tag",
   "ui.posterStyleTagSub": "Artwork pulito, logo su vetro, tag di stato",
   "ui.tagFade": "Dissolvenza scura dal basso",
+  "ui.tagCard": "Logo su pannello di vetro",
+  "ui.tagFadeForced": "Senza pannello il logo poggia sempre sulla dissolvenza.",
 }
 
 function mockT(key: string, params?: Record<string, string | number>): string {

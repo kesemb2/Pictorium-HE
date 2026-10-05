@@ -138,6 +138,8 @@ export interface GenerationInput {
   posterStyle?: PosterStyle | null
   /** Fork, stile tag: dissolvenza scura dal basso (default on). */
   tagFade?: boolean
+  /** Fork, stile tag: card di vetro dietro logo e titolo (default on). */
+  tagCard?: boolean
   /** Stile icone del badge qualità (standard = pill testuale). */
   qualityBadgeStyle?: QualityBadgeStyle | null
   /** Formati A/V da affiancare alla qualità (dv, atmos, imax, hdr, hdr10plus). */
@@ -2276,7 +2278,8 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
       .filter((layer): layer is PosterComposite => layer !== null)
     const base = await sharp(posterBuf).composite(below).png().toBuffer()
     const titleStrip = titleFit && logoResult
-      ? await renderTitleText(title!, titleMaxW, titleFit.fs, undefined, textStyle, badgeFont).catch(() => null)
+      // Senza card il titolo sta sulla dissolvenza: alone come sull'artwork.
+      ? await renderTitleText(title!, titleMaxW, titleFit.fs, undefined, input.tagCard === false ? { ...textStyle, halo: 0.7 } : textStyle, badgeFont).catch(() => null)
       : null
     const tagged = await composeTagStyle({
       base,
@@ -2286,6 +2289,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
       title: titleStrip,
       tagLabel,
       fade: input.tagFade !== false,
+      card: input.tagCard !== false,
       font: badgeFont,
     })
     composites.push(...tagged.layers)
