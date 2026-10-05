@@ -237,6 +237,7 @@ export const posterQuerySchema = z.object({
   tcard: boundedQueryString(8),
   lstyle: boundedQueryString(16),
   ltop: boundedQueryString(8),
+  ltrans: boundedQueryString(8),
   tsize: boundedQueryString(8),
   df: boundedQueryString(8),
   badgePreset: boundedQueryString(24),

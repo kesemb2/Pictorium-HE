@@ -1094,5 +1094,7 @@
   "ui.catalogShape": "Poster shape in Stremio/Nuvio",
   "ui.catalogShapeGlobal": "Default",
   "ui.catalogShapePoster": "Portrait",
-  "ui.catalogShapeLandscape": "Landscape"
+  "ui.catalogShapeLandscape": "Landscape",
+  "ui.landscapeTop10Transparent": "Transparent number strip (experimental)",
+  "ui.landscapeTop10TransparentHint": "Only the number and the poster stay; the app's interface shows behind them. These posters are served as WebP with transparency."
 }

@@ -390,6 +390,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   const topTodayPosition = earlyTop10 && (mediaType === "movie" || mediaType === "tv")
     ? await topTodayRank(mediaType, tmdbId, effTmdbKey).catch(() => null)
     : null
+  // Fork, esperimento: striscia trasparente. Solo se c'è davvero la striscia:
+  // il poster esce in WebP con alfa fin dal render (il JPEG canonico la
+  // perderebbe, e la variante WebP nasce dal JPEG). Gli altri poster restano
+  // identici: stesso formato, stesse chiavi.
+  const qLtrans = req.nextUrl.searchParams.get("ltrans")
+  const transparentStrip = !!topTodayPosition
+    && (qLtrans !== null ? qLtrans === "1" : (configOverride?.landscapeTop10Transparent ?? sd.landscapeTop10Transparent ?? false))
 
   // Auto-rotate 24h: sfondi landscape o poster verticali a seconda del formato.
   let isRotating = false
@@ -514,14 +521,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   const dynamicCutTtlMs = dynamicCutTtlSec !== null ? dynamicCutTtlSec * 1000 : null
   const mapVersion = mapping?.updatedAt ? `:mu${mapping.updatedAt}` : ""
   const configHash = configOverride ? hashKey(JSON.stringify(configOverride)) : ""
-  const outputFormat = resolveImageFormat(req.headers.get("accept"), req.nextUrl.searchParams.get("fmt") || req.nextUrl.searchParams.get("format"))
+  const outputFormat = transparentStrip ? "webp" : resolveImageFormat(req.headers.get("accept"), req.nextUrl.searchParams.get("fmt") || req.nextUrl.searchParams.get("format"))
   // C3: un solo render canonico per chiave (jpeg storico, webp con
   // PICTORIUM_IMAGE_FORMAT=webp); gli altri formati sono varianti di risposta
   // convertite on-the-fly. Solo ?fmt=avif esplicito mantiene chiave+render
   // dedicati. Il marcatore di formato in chiave evita poison al flip env
   // (stessa chiave + formato diverso = buffer col Content-Type sbagliato).
   const legacyAvif = outputFormat === "avif"
-  const canonicalFormat = legacyAvif ? "avif" : DEFAULT_IMAGE_FORMAT
+  const canonicalFormat = legacyAvif ? "avif" : transparentStrip ? "webp" : DEFAULT_IMAGE_FORMAT
   const formatKey = legacyAvif ? ":fmtavif" : canonicalFormat === "webp" ? ":fmtwebp" : ""
   const topTodayKey = topTodayPosition ? `:tt${topTodayPosition}` : ""
   const cacheKey = `poster:v${RENDER_VERSION}:${mediaType}:${tmdbId}:reg${posterRegion.code}:r${cachedRank ?? "x"}:sd${sdHash}:${cacheParams.toString()}${rotateKey}${mapVersion}${dynamicBucketKey}${topTodayKey}${configHash ? `:cfg${configHash}` : ""}${formatKey}`
@@ -2348,6 +2355,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       // La striscia è un modo di mostrare il rank: spenta coi badge di
       // classifica (`ranking=0`) o col suo interruttore.
       rankStrip: landscapeTop10 && rankingEnabled ? topTodayPosition : null,
+      rankStripTransparent: transparentStrip,
       qualityBadgeStyle,
       videoFormats: finalVideoFormats,
       separateRatings: useSeparate ? sepItems : undefined,

@@ -45,6 +45,8 @@ export interface StremioPosterParamsInput {
   /** Fork: stile orizzontale (`lstyle` solo se "tag"), striscia top 10 (`ltop=0` solo se spenta), grandezza tag (`tsize` solo se ≠ 100). */
   readonly landscapeStyle?: PosterStyle | null
   readonly landscapeTop10?: boolean
+  /** Fork, esperimento: `ltrans=1` solo se accesa. */
+  readonly landscapeTop10Transparent?: boolean
   readonly tagSize?: number | null
   /** Stile icone qualità: emesso come `qbs` solo quando non-standard (cache stabile). */
   readonly qualityBadgeStyle?: QualityBadgeStyle | null
@@ -373,6 +375,7 @@ export function buildStremioPosterSearchParams(input: StremioPosterParamsInput):
     if (input.tagSize != null && input.tagSize !== 100) params.set("tsize", String(input.tagSize))
   }
   if (input.landscapeTop10 === false) params.set("ltop", "0")
+  if (input.landscapeTop10Transparent === true) params.set("ltrans", "1")
   // Stile icone qualità solo quando non-standard: gli URL esistenti restano
   // identici e la cache non si invalida (il server risolve lo standard da solo).
   if (input.qualityBadgeStyle === "mono" || input.qualityBadgeStyle === "color") {

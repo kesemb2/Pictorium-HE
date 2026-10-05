@@ -32,6 +32,7 @@ interface BadgeParams {
   /** Fork: stile orizzontale, striscia top 10 e grandezza tag (globali). */
   landscapeStyle?: PosterStyle | null
   landscapeTop10?: boolean
+  landscapeTop10Transparent?: boolean
   tagSize?: number | null
   /** Stile icone del badge qualità (default "standard"). */
   qualityBadgeStyle?: QualityBadgeStyle | null
@@ -226,6 +227,7 @@ export function buildUrlPattern(bp: BadgeParams & {
     tagCard: bp.tagCard,
     landscapeStyle: bp.landscapeStyle ?? undefined,
     landscapeTop10: bp.landscapeTop10,
+    landscapeTop10Transparent: bp.landscapeTop10Transparent,
     tagSize: bp.tagSize,
     qualityBadgeStyle: bp.qualityBadgeStyle,
     gradientHeight: bp.gradientHeight,
@@ -414,6 +416,7 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams, configToken?: 
   params.push(`tcard=${bp.tagCard === false ? "0" : "1"}`)
   params.push(`lstyle=${bp.landscapeStyle ?? "classic"}`)
   params.push(`ltop=${bp.landscapeTop10 === false ? "0" : "1"}`)
+  params.push(`ltrans=${bp.landscapeTop10Transparent === true ? "1" : "0"}`)
   params.push(`tsize=${bp.tagSize ?? 100}`)
   // Stile icone qualità SEMPRE esplicito in preview (come bs/rs): senza, un
   // mapping salvato con stile diverso scavalcerebbe la scelta editor (desync).
@@ -585,6 +588,7 @@ export interface DefaultsPreviewParams {
   defaultTagCard?: boolean
   defaultLandscapeStyle?: PosterStyle | null
   defaultLandscapeTop10?: boolean
+  defaultLandscapeTop10Transparent?: boolean
   defaultTagSize?: number
   defaultQualityBadgeStyle?: QualityBadgeStyle | null
   defaultVideoFormats?: readonly VideoFormat[] | null
@@ -650,6 +654,7 @@ export function buildDefaultsPreviewUrl(bp: DefaultsPreviewParams): string {
   params.push(`tcard=${bp.defaultTagCard === false ? "0" : "1"}`)
   params.push(`lstyle=${bp.defaultLandscapeStyle ?? "classic"}`)
   params.push(`ltop=${bp.defaultLandscapeTop10 === false ? "0" : "1"}`)
+  params.push(`ltrans=${bp.defaultLandscapeTop10Transparent === true ? "1" : "0"}`)
   params.push(`tsize=${bp.defaultTagSize ?? 100}`)
   params.push(`qbs=${bp.defaultQualityBadgeStyle === "mono" || bp.defaultQualityBadgeStyle === "color" ? bp.defaultQualityBadgeStyle : "standard"}`)
   if (bp.defaultVideoFormats !== undefined && bp.defaultVideoFormats !== null) {

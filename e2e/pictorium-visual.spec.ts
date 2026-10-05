@@ -784,6 +784,20 @@ test.describe("poster API — visual regression", () => {
 
   // Fork: Interstellar è il n.1 della top 10 mock (solo lui ha l'uscita
   // digitale USA): striscia col numero al neon, nei due stili.
+  // Fork, esperimento: striscia trasparente. Il server risponde in WebP con
+  // alfa (il JPEG non la porterebbe); nella pagina di prova si vede il nero.
+  test("landscape top 10 strip, transparent — screenshot", async ({ page }) => {
+    const url = posterUrl({ backdrop: "/mocked/readability-busy.jpg", logo: "/mocked/readability-logo.png", shape: "landscape", genreName: "Action", voteAverage: "8.4", badges: "1", ranking: "1", lstyle: "tag", tcard: "0", ltrans: "1" }, "movie", 157336)
+    const res = await page.request.get(url)
+    expect(res.status()).toBe(200)
+    expect(res.headers()["content-type"]).toContain("image/webp")
+    // RIFF....WEBPVP8X: il chunk esteso è quello che porta il canale alfa.
+    const head = (await res.body()).subarray(0, 16).toString("latin1")
+    expect(head).toContain("WEBPVP8X")
+    const poster = await renderPoster(page, url)
+    await expect(poster).toHaveScreenshot("poster-landscape-top10-transparent.png", { maxDiffPixelRatio: 0.05 })
+  })
+
   for (const [lstyle, extra] of [["tag", { tcard: "0" }], ["classic", {}]] as const) {
     test(`landscape top 10 strip, ${lstyle} — screenshot`, async ({ page }) => {
       const url = posterUrl({ backdrop: "/mocked/readability-busy.jpg", logo: "/mocked/readability-logo.png", shape: "landscape", genreName: "Action", voteAverage: "8.4", badges: "1", ranking: "1", lstyle, ...extra }, "movie", 157336)

@@ -159,6 +159,8 @@ export interface PosterEditorCtx {
   setDefaultLandscapeStyle: (v: PosterStyle) => void
   defaultLandscapeTop10: boolean
   setDefaultLandscapeTop10: (v: boolean) => void
+  defaultLandscapeTop10Transparent: boolean
+  setDefaultLandscapeTop10Transparent: (v: boolean) => void
   defaultTagSize: number
   setDefaultTagSize: (v: number) => void
   /** Stile icone del badge qualità di default. */
@@ -476,7 +478,7 @@ export function PosterEditorProvider({
     networkLogoOffsetX, networkLogoOffsetY,
     badgeStyle, rankingBadgeStyle, qualityBadgeStyle, videoFormats,
     badgeFont, defaultBadgeFont, defaultHebrewFont, defaultPosterStyle, defaultTagFade, defaultTagCard,
-    defaultLandscapeStyle, defaultLandscapeTop10, defaultTagSize,
+    defaultLandscapeStyle, defaultLandscapeTop10, defaultLandscapeTop10Transparent, defaultTagSize,
     defaultBadgeStyle, defaultRankingBadgeStyle, defaultQualityBadgeStyle, defaultVideoFormats,
     defaultBlurEnabled, defaultBlurIntensity, defaultBlurFade, defaultBlurDarkness, defaultTintStrength, defaultTopShade,
     defaultGradientHeight, defaultGlobalBadges, defaultRankingBadges,
@@ -827,6 +829,10 @@ export function PosterEditorProvider({
   const setDefaultLandscapeTop10 = useCallback(
     (v: boolean) => {
       update({ defaultLandscapeTop10: v })
+    }, [update])
+  const setDefaultLandscapeTop10Transparent = useCallback(
+    (v: boolean) => {
+      update({ defaultLandscapeTop10Transparent: v })
     }, [update])
   const setDefaultTagSize = useCallback(
     (v: number) => {
@@ -1260,6 +1266,8 @@ export function PosterEditorProvider({
       setDefaultLandscapeStyle,
       defaultLandscapeTop10,
       setDefaultLandscapeTop10,
+      defaultLandscapeTop10Transparent,
+      setDefaultLandscapeTop10Transparent,
       defaultTagSize,
       setDefaultTagSize,
       defaultQualityBadgeStyle,
@@ -1537,6 +1545,7 @@ export function PosterEditorProvider({
       defaultTagCard, setDefaultTagCard,
       defaultLandscapeStyle, setDefaultLandscapeStyle,
       defaultLandscapeTop10, setDefaultLandscapeTop10,
+      defaultLandscapeTop10Transparent, setDefaultLandscapeTop10Transparent,
       defaultTagSize, setDefaultTagSize,
       defaultQualityBadgeStyle, setDefaultQualityBadgeStyle,
       defaultVideoFormats, setDefaultVideoFormats,

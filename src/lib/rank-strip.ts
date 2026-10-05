@@ -40,7 +40,7 @@ const DIGIT_BOX_H = 160
 /** Stacco fra l'inchiostro di due cifre consecutive (unità del riquadro). */
 const DIGIT_GAP = 14
 /** Margine attorno al tracciato per l'alone (unità del riquadro). */
-const PAD = 26
+const PAD = 56
 
 /** Colori presi dal riferimento: notte, alone, tubo, filamento. */
 const STRIP_BG_TOP = "#030a2e"
@@ -138,6 +138,12 @@ export interface RankStripInput {
   readonly canvasW: number
   readonly canvasH: number
   readonly stripW: number
+  /**
+   * Esperimento: striscia trasparente (niente blu notte). Restano il numero
+   * col suo alone e il pannello; dietro si vede l'interfaccia del client.
+   * Serve un formato con alfa (WebP), vedi la route poster.
+   */
+  readonly transparent?: boolean
 }
 
 /**
@@ -164,7 +170,11 @@ export async function composeRankStrip(input: RankStripInput): Promise<Buffer> {
   const numLeft = inkRight - num.inkW - num.inkLeft
   const numTop = Math.round(H * 0.51 - num.height / 2)
   // Ombra del pannello sulla striscia.
-  const shadow = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs><filter id="s" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${Math.max(2, Math.round(H * 0.02))}"/></filter></defs><rect x="${S - 2}" y="0" width="${panelW + r}" height="${H}" rx="${r}" fill="#000" opacity="0.55" filter="url(#s)"/></svg>`
+  // Trasparente: ombra più corta e leggera, non una macchia scura sul fondo
+  // del client.
+  const shadowOpacity = input.transparent ? 0.3 : 0.55
+  const shadowBlur = Math.max(2, Math.round(H * (input.transparent ? 0.012 : 0.02)))
+  const shadow = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs><filter id="s" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${shadowBlur}"/></filter></defs><rect x="${S - 2}" y="0" width="${panelW + r}" height="${H}" rx="${r}" fill="#000" opacity="${shadowOpacity}" filter="url(#s)"/></svg>`
   // Pannello: angoli sinistri arrotondati (a destra il bordo del canvas).
   const mask = `<svg xmlns="http://www.w3.org/2000/svg" width="${panelW}" height="${H}"><path d="M${r},0 L${panelW},0 L${panelW},${H} L${r},${H} Q0,${H} 0,${H - r} L0,${r} Q0,0 ${r},0 Z" fill="#fff"/></svg>`
   const edge = `<svg xmlns="http://www.w3.org/2000/svg" width="${panelW}" height="${H}"><path d="M${panelW},0.75 L${r},0.75 Q0.75,0.75 0.75,${r} L0.75,${H - r} Q0.75,${H - 0.75} ${r},${H - 0.75} L${panelW},${H - 0.75}" fill="none" stroke="rgba(150,190,255,0.28)" stroke-width="1.5"/></svg>`
@@ -177,7 +187,10 @@ export async function composeRankStrip(input: RankStripInput): Promise<Buffer> {
     .extract({ left: Math.max(0, -numLeft), top: Math.max(0, -numTop), width: Math.min(num.width - Math.max(0, -numLeft), W - Math.max(0, numLeft)), height: Math.min(num.height - Math.max(0, -numTop), H - Math.max(0, numTop)) })
     .png()
     .toBuffer()
-  return sharp(Buffer.from(bg))
+  const canvas = input.transparent
+    ? sharp({ create: { width: W, height: H, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    : sharp(Buffer.from(bg))
+  return canvas
     .composite([
       { input: numClip, left: Math.max(0, numLeft), top: Math.max(0, numTop) },
       { input: Buffer.from(shadow), left: 0, top: 0 },

@@ -100,6 +100,8 @@ export interface PosterRenderConfig {
   landscapeStyle: PosterStyle
   /** Fork: striscia top 10 in orizzontale (query `ltop` > config > defaults > on). */
   landscapeTop10: boolean
+  /** Fork, esperimento: striscia top 10 trasparente (query `ltrans` > config > defaults > off). */
+  landscapeTop10Transparent: boolean
   /** Fork, stile tag: grandezza della tag in % (query `tsize` > config > defaults > 100). */
   tagSize: number
   /** Stile icone del badge qualità (standard = pill testuale). */
@@ -477,6 +479,10 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
     ? rawLtop !== "0"
     : (configOverride?.landscapeTop10 ?? sd.landscapeTop10 ?? true)
   const tagSize = normalizeTagSize(q.get("tsize") ?? configOverride?.tagSize ?? sd.tagSize)
+  const rawLtrans = q.get("ltrans")
+  const landscapeTop10Transparent: boolean = rawLtrans !== null
+    ? rawLtrans === "1"
+    : (configOverride?.landscapeTop10Transparent ?? sd.landscapeTop10Transparent ?? false)
 
   const qScale = q.get("scale")
   const qOx = q.get("ox")
@@ -705,6 +711,7 @@ const qSide = q.get("side")
     tagCard,
     landscapeStyle,
     landscapeTop10,
+    landscapeTop10Transparent,
     tagSize,
     qualityBadgeStyle,
     blurEnabled,

@@ -1094,5 +1094,7 @@
   "ui.catalogShape": "צורת הפוסטר בסטרמיו/נוביו",
   "ui.catalogShapeGlobal": "כללי",
   "ui.catalogShapePoster": "לאורך",
-  "ui.catalogShapeLandscape": "לרוחב"
+  "ui.catalogShapeLandscape": "לרוחב",
+  "ui.landscapeTop10Transparent": "פס מספר שקוף (ניסיוני)",
+  "ui.landscapeTop10TransparentHint": "נשארים רק המספר והפוסטר, ומאחוריהם רואים את הממשק של האפליקציה. הפוסטרים האלה נשלחים כ-WebP עם שקיפות."
 }
