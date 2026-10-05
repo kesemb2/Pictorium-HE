@@ -301,6 +301,8 @@ const itDict: Record<string, string> = {
   "ui.catalogShapeGlobal": "Predefinita",
   "ui.catalogShapePoster": "Verticale",
   "ui.catalogShapeLandscape": "Orizzontale",
+  "ui.landscapeTop10Transparent": "Fascia del numero trasparente (sperimentale)",
+  "ui.landscapeTop10TransparentHint": "Restano solo il numero e il poster; dietro si vede l'interfaccia dell'app. Questi poster escono in WebP con trasparenza.",
 }
 
 function mockT(key: string, params?: Record<string, string | number>): string {

@@ -174,3 +174,37 @@ describe("landscape tag size and settings chain", () => {
     expect(preview).toContain("tsize=90")
   })
 })
+
+describe("transparent rank strip (experiment)", () => {
+  it("keeps only the number and the panel: the strip background is see-through", async () => {
+    const W = 768, H = 432, S = rankStripWidth(W, H, 3)
+    const panel = await sharp({ create: { width: W - S, height: H, channels: 3, background: "#d0d0d0" } }).png().toBuffer()
+    const out = await composeRankStrip({ panel, rank: 3, canvasW: W, canvasH: H, stripW: S, transparent: true })
+    const { data, info } = await sharp(out).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    expect(info.channels).toBe(4)
+    const alpha = (x: number, y: number) => data[(y * W + x) * 4 + 3]!
+    expect(alpha(2, 2)).toBe(0) // angolo della striscia: trasparente
+    expect(alpha(W - 10, H / 2)).toBe(255) // pannello pieno
+    // Il numero c'è: almeno un pixel visibile nella fascia centrale.
+    let visible = 0
+    for (let x = 4; x < S - 4; x++) if (alpha(x, Math.round(H * 0.51)) > 0) visible++
+    expect(visible).toBeGreaterThan(0)
+    // Angolo arrotondato del pannello: trasparente anche lui.
+    expect(alpha(S, 0)).toBeLessThan(80)
+  })
+
+  it("resolves ltrans (default off) and emits it only when on", () => {
+    const resolve = (q: string, sd: Record<string, unknown> = {}) => resolvePosterRenderConfig({
+      searchParams: new URLSearchParams(q), mapping: null, configOverride: null, sd: sd as never,
+      hasQuery: true, showBadges: true, rankingBadges: true, animeRank: null, rankingResult: null, finalRank: null,
+    }).landscapeTop10Transparent
+    expect(resolve("")).toBe(false)
+    expect(resolve("", { landscapeTop10Transparent: true })).toBe(true)
+    expect(resolve("ltrans=0", { landscapeTop10Transparent: true })).toBe(false)
+    expect(normalizePosterCacheParams(new URLSearchParams("ltrans=x")).get("ltrans")).toBe("0")
+    expect(buildStremioPosterSearchParams({}).get("ltrans")).toBeNull()
+    expect(buildStremioPosterSearchParams({ landscapeTop10Transparent: true }).get("ltrans")).toBe("1")
+    expect(buildDefaultsPreviewUrl({ defaultLandscapeTop10Transparent: true })).toContain("ltrans=1")
+    expect(buildDefaultsPreviewUrl({})).toContain("ltrans=0")
+  })
+})

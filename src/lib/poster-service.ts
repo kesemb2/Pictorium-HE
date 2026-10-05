@@ -153,6 +153,11 @@ export interface GenerationInput {
    * striscia col numero al neon (solo orizzontale; null = poster normale).
    */
   rankStrip?: number | null
+  /**
+   * Fork, esperimento: striscia trasparente (solo il numero e il pannello).
+   * Ha senso solo con `format: "webp"`: il JPEG non ha canale alfa.
+   */
+  rankStripTransparent?: boolean
   /** Stile icone del badge qualità (standard = pill testuale). */
   qualityBadgeStyle?: QualityBadgeStyle | null
   /** Formati A/V da affiancare alla qualità (dv, atmos, imax, hdr, hdr10plus). */
@@ -2353,13 +2358,15 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // Fork: striscia col numero della top 10 (pannello + numero al neon).
   if (stripRank) {
     const panel = await pipeline.png().toBuffer()
-    pipeline = sharp(await composeRankStrip({ panel, rank: stripRank, canvasW: LAND_W, canvasH: LAND_H, stripW }))
+    pipeline = sharp(await composeRankStrip({ panel, rank: stripRank, canvasW: LAND_W, canvasH: LAND_H, stripW, transparent: input.rankStripTransparent === true }))
   }
 
   if (input.format === "avif") {
     return await pipeline.avif({ quality: 75, effort: 2 }).toBuffer()
   }
   if (input.format === "webp") {
+    // Striscia trasparente: alfa conservato e pulito sui bordi dell'alone.
+    if (stripRank && input.rankStripTransparent) return await pipeline.webp({ quality: 85, alphaQuality: 90, effort: 2 }).toBuffer()
     return await pipeline.webp({ quality: 85, effort: 2 }).toBuffer()
   }
   return await pipeline.jpeg({ quality: 82, mozjpeg: true }).toBuffer()

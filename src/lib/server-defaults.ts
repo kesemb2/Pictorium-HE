@@ -87,6 +87,8 @@ export interface ServerDefaults {
   landscapeStyle?: PosterStyle | null
   /** Fork: striscia col numero della top 10 di oggi in orizzontale (assente = on). */
   landscapeTop10?: boolean
+  /** Fork, esperimento: striscia top 10 trasparente (assente = off). */
+  landscapeTop10Transparent?: boolean
   /** Fork, stile tag: grandezza della tag in % (assente = 100). */
   tagSize?: number
   /** Stile icone del badge qualità (standard = pill testuale). */
@@ -321,6 +323,7 @@ function defaultsFromEnv(): ServerDefaults {
   const tagCardEnv = envBool("TAG_CARD")
   const lsEnv = getEnv("LANDSCAPE_STYLE")?.trim().toLowerCase()
   const lTopEnv = envBool("LANDSCAPE_TOP10")
+  const lTransEnv = envBool("LANDSCAPE_TOP10_TRANSPARENT")
   const tagSizeEnv = envNum("TAG_SIZE")
   const side = getEnv("RIBBON_SIDE")?.trim().toLowerCase()
   const shapeEnv = getEnv("POSTER_SHAPE")?.trim().toLowerCase()
@@ -366,6 +369,7 @@ function defaultsFromEnv(): ServerDefaults {
   if (tagCardEnv !== undefined) d.tagCard = tagCardEnv
   if (lsEnv && isPosterStyle(lsEnv)) d.landscapeStyle = lsEnv
   if (lTopEnv !== undefined) d.landscapeTop10 = lTopEnv
+  if (lTransEnv !== undefined) d.landscapeTop10Transparent = lTransEnv
   if (tagSizeEnv !== undefined) d.tagSize = normalizeTagSize(tagSizeEnv)
   if (side === "left" || side === "right") d.ribbonSide = side
   if (blurI !== undefined) d.blurIntensity = blurI

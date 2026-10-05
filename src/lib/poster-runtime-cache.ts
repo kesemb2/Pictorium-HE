@@ -150,6 +150,8 @@ export function normalizePosterCacheParams(searchParams: URLSearchParams): URLSe
   if (lstyle !== null && !isPosterStyle(lstyle)) params.set("lstyle", "classic")
   const ltop = params.get("ltop")
   if (ltop !== null && ltop !== "0" && ltop !== "1") params.set("ltop", "1")
+  const ltrans = params.get("ltrans")
+  if (ltrans !== null && ltrans !== "0" && ltrans !== "1") params.set("ltrans", "0")
   const tsize = params.get("tsize")
   if (tsize !== null) params.set("tsize", String(normalizeTagSize(tsize)))
 

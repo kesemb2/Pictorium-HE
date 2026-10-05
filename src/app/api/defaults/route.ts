@@ -50,6 +50,7 @@ const defaultsSchema = z.object({
   tagCard: z.boolean().optional(),
   landscapeStyle: z.enum(POSTER_STYLES).optional(),
   landscapeTop10: z.boolean().optional(),
+  landscapeTop10Transparent: z.boolean().optional(),
   tagSize: z.number().int().min(TAG_SIZE_MIN).max(TAG_SIZE_MAX).optional(),
   qualityBadgeStyle: z.enum(QUALITY_BADGE_STYLES).nullable().optional(),
   videoFormats: z.array(z.enum(["dv", "hdr", "hdr10plus", "atmos", "imax"])).nullable().optional(),

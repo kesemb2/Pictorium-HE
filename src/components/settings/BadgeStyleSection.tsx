@@ -95,6 +95,15 @@ export function BadgeStyleSection() {
           <Toggle value={ed.defaultLandscapeTop10} onChange={(v) => ed.setDefaultLandscapeTop10(v)} label={t("ui.landscapeTop10")} />
         </div>
         <p className="text-[11px] text-zinc-500 leading-snug">{t("ui.landscapeTop10Hint")}</p>
+        {ed.defaultLandscapeTop10 && (
+          <div className="pt-1 space-y-1">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[11px] text-zinc-300">{t("ui.landscapeTop10Transparent")}</span>
+              <Toggle value={ed.defaultLandscapeTop10Transparent} onChange={(v) => ed.setDefaultLandscapeTop10Transparent(v)} label={t("ui.landscapeTop10Transparent")} />
+            </div>
+            <p className="text-[11px] text-zinc-500 leading-snug">{t("ui.landscapeTop10TransparentHint")}</p>
+          </div>
+        )}
       </div>
 
       <div className="space-y-1.5">

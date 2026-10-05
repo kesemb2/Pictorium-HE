@@ -32,6 +32,8 @@ export interface DefaultsState {
   /** Fork: stile orizzontale (default classic), striscia top 10 (on), grandezza tag (100%). */
   defaultLandscapeStyle: PosterStyle
   defaultLandscapeTop10: boolean
+  /** Fork, esperimento: striscia top 10 trasparente (default off). */
+  defaultLandscapeTop10Transparent: boolean
   defaultTagSize: number
   /** Stile icone del badge qualità di default (default "standard"). */
   defaultQualityBadgeStyle: QualityBadgeStyle
@@ -207,6 +209,7 @@ const DEFAULTS: DefaultsState = {
   defaultTagCard: true,
   defaultLandscapeStyle: DEFAULT_POSTER_STYLE,
   defaultLandscapeTop10: true,
+  defaultLandscapeTop10Transparent: false,
   defaultTagSize: DEFAULT_TAG_SIZE,
   defaultQualityBadgeStyle: DEFAULT_QUALITY_BADGE_STYLE,
   defaultVideoFormats: [...KNOWN_VIDEO_FORMATS],
@@ -397,6 +400,7 @@ interface StoredDefaults {
   tagCard?: boolean
   landscapeStyle?: PosterStyle
   landscapeTop10?: boolean
+  landscapeTop10Transparent?: boolean
   tagSize?: number
   defaultQualityBadgeStyle?: QualityBadgeStyle
   defaultBlurEnabled?: boolean
@@ -528,6 +532,7 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     defaultTagCard: d.tagCard !== false,
     defaultLandscapeStyle: isPosterStyle(d.landscapeStyle) ? d.landscapeStyle : DEFAULT_POSTER_STYLE,
     defaultLandscapeTop10: d.landscapeTop10 !== false,
+    defaultLandscapeTop10Transparent: d.landscapeTop10Transparent === true,
     defaultTagSize: normalizeTagSize(d.tagSize),
     defaultQualityBadgeStyle: d.defaultQualityBadgeStyle ?? d.qualityBadgeStyle ?? DEFAULT_QUALITY_BADGE_STYLE,
     defaultVideoFormats: Array.isArray(d.defaultVideoFormats)
@@ -684,6 +689,7 @@ function defaultsToPayload(d: DefaultsState): Record<string, unknown> {
     tagCard: d.defaultTagCard,
     landscapeStyle: d.defaultLandscapeStyle,
     landscapeTop10: d.defaultLandscapeTop10,
+    landscapeTop10Transparent: d.defaultLandscapeTop10Transparent,
     tagSize: d.defaultTagSize,
     qualityBadgeStyle: d.defaultQualityBadgeStyle,
     blurEnabled: d.defaultBlurEnabled,

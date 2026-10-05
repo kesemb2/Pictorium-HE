@@ -67,6 +67,7 @@ export const configTokenSchema = z.object({
   /** Fork: stile orizzontale, striscia top 10, grandezza tag (opzionali). */
   landscapeStyle: z.enum(POSTER_STYLES).nullable().optional(),
   landscapeTop10: z.boolean().optional(),
+  landscapeTop10Transparent: z.boolean().optional(),
   tagSize: z.number().int().min(TAG_SIZE_MIN).max(TAG_SIZE_MAX).optional(),
   // Stile icone qualità: opzionale+nullable (token vecchi senza campo restano validi).
   qualityBadgeStyle: z.enum(QUALITY_BADGE_STYLES).nullable().optional(),
