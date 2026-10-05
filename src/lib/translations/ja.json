@@ -1074,5 +1074,11 @@
   "ui.themeDark": "ダーク",
   "ui.rankCountryGlobal": "the world",
   "ui.hebrewFont": "Hebrew font",
-  "ui.hebrewFontHint": "Used for all Hebrew text on the poster: genre line, ranking ribbon and the title under the logo. Arabic stays in Rubik."
+  "ui.hebrewFontHint": "Used for all Hebrew text on the poster: genre line, ranking ribbon and the title under the logo. Arabic stays in Rubik.",
+  "ui.posterStyle": "Poster style",
+  "ui.posterStyleClassic": "Classic",
+  "ui.posterStyleClassicSub": "Blur band, genre, year and rating",
+  "ui.posterStyleTag": "Tag",
+  "ui.posterStyleTagSub": "Clean art, logo on glass, status tag",
+  "ui.tagFade": "Dark fade from the bottom"
 }

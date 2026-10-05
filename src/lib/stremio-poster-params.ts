@@ -1,5 +1,5 @@
 import { POSTER_URL_VERSION } from "@/lib/render-version"
-import type { BadgeStyle, RankingBadgeStyle, QualityBadgeStyle, BadgeFont, HebrewFont } from "@/lib/badge-styles"
+import type { BadgeStyle, RankingBadgeStyle, QualityBadgeStyle, BadgeFont, HebrewFont, PosterStyle } from "@/lib/badge-styles"
 import type { VideoFormat } from "@/lib/av-specs"
 import { parseMinQuality, type StreamQuality } from "@/lib/quality-tiers"
 import { parseSashOrder, isDefaultSashOrder, type SashBucket } from "@/lib/badge-priority"
@@ -38,6 +38,9 @@ export interface StremioPosterParamsInput {
   readonly badgeFont?: BadgeFont
   /** Fork: font del testo ebraico, emesso come `hfont` solo se non Rubik. */
   readonly hebrewFont?: HebrewFont | null
+  /** Fork: stile poster, emesso come `pstyle` solo se "tag"; `tfade=0` solo se spenta. */
+  readonly posterStyle?: PosterStyle | null
+  readonly tagFade?: boolean
   /** Stile icone qualità: emesso come `qbs` solo quando non-standard (cache stabile). */
   readonly qualityBadgeStyle?: QualityBadgeStyle | null
   /** Formati A/V abilitati: emessi come `formats` solo se specificati. */
@@ -356,6 +359,11 @@ export function buildStremioPosterSearchParams(input: StremioPosterParamsInput):
   // Fork: font ebraico solo quando non è Rubik, così gli URL di default restano
   // identici (CDN calda). Assente, il server risale a config token / defaults.
   if (input.hebrewFont && input.hebrewFont !== "rubik") params.set("hfont", input.hebrewFont)
+  // Fork: stile tag solo quando scelto (URL classici invariati).
+  if (input.posterStyle === "tag") {
+    params.set("pstyle", "tag")
+    if (input.tagFade === false) params.set("tfade", "0")
+  }
   // Stile icone qualità solo quando non-standard: gli URL esistenti restano
   // identici e la cache non si invalida (il server risolve lo standard da solo).
   if (input.qualityBadgeStyle === "mono" || input.qualityBadgeStyle === "color") {

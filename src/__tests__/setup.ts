@@ -281,6 +281,12 @@ const itDict: Record<string, string> = {
   "ui.rankCountryGlobal": "il mondo",
   "ui.hebrewFont": "Font ebraico",
   "ui.hebrewFontHint": "Vale per tutto il testo ebraico del poster: riga genere, nastro classifica e titolo sotto il logo. L'arabo resta in Rubik.",
+  "ui.posterStyle": "Stile poster",
+  "ui.posterStyleClassic": "Classico",
+  "ui.posterStyleClassicSub": "Fascia sfocata, genere, anno e voto",
+  "ui.posterStyleTag": "Tag",
+  "ui.posterStyleTagSub": "Artwork pulito, logo su vetro, tag di stato",
+  "ui.tagFade": "Dissolvenza scura dal basso",
 }
 
 function mockT(key: string, params?: Record<string, string | number>): string {

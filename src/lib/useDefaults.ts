@@ -13,7 +13,7 @@ import { USER_UNLOCK_EVENT, currentPathUuid } from "./user-token"
 import { t } from "./i18n"
 import { normalizeSashOrder, DEFAULT_SASH_ORDER, type SashBucket } from "./badge-priority"
 import { DEFAULT_QUALITY_BADGE_STYLE, type QualityBadgeStyle } from "./badge-styles"
-import { DEFAULT_BADGE_FONT, isBadgeFont, type BadgeFont, DEFAULT_HEBREW_FONT, isHebrewFont, type HebrewFont } from "./badge-styles"
+import { DEFAULT_BADGE_FONT, isBadgeFont, type BadgeFont, DEFAULT_HEBREW_FONT, isHebrewFont, type HebrewFont, DEFAULT_POSTER_STYLE, isPosterStyle, type PosterStyle } from "./badge-styles"
 import { KNOWN_VIDEO_FORMATS, isVideoFormat, type VideoFormat } from "./av-specs"
 
 export type RibbonSide = "left" | "right"
@@ -25,6 +25,9 @@ export interface DefaultsState {
   defaultBadgeFont: BadgeFont
   /** Fork: font del testo ebraico (impostazione globale, default Rubik). */
   defaultHebrewFont: HebrewFont
+  /** Fork: stile del poster (globale, default classic) e dissolvenza dello stile tag. */
+  defaultPosterStyle: PosterStyle
+  defaultTagFade: boolean
   /** Stile icone del badge qualità di default (default "standard"). */
   defaultQualityBadgeStyle: QualityBadgeStyle
   /** Formati A/V abilitati di default (dv, atmos, imax, hdr, hdr10plus). */
@@ -194,6 +197,8 @@ const DEFAULTS: DefaultsState = {
   defaultRankingBadgeStyle: "default",
   defaultBadgeFont: DEFAULT_BADGE_FONT,
   defaultHebrewFont: DEFAULT_HEBREW_FONT,
+  defaultPosterStyle: DEFAULT_POSTER_STYLE,
+  defaultTagFade: true,
   defaultQualityBadgeStyle: DEFAULT_QUALITY_BADGE_STYLE,
   defaultVideoFormats: [...KNOWN_VIDEO_FORMATS],
   defaultBlurEnabled: true,
@@ -378,6 +383,8 @@ interface StoredDefaults {
   defaultRankingBadgeStyle?: RankingBadgeStyle
   defaultBadgeFont?: BadgeFont
   hebrewFont?: HebrewFont
+  posterStyle?: PosterStyle
+  tagFade?: boolean
   defaultQualityBadgeStyle?: QualityBadgeStyle
   defaultBlurEnabled?: boolean
   defaultBlurIntensity?: number
@@ -503,6 +510,8 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     defaultRankingBadgeStyle: d.defaultRankingBadgeStyle ?? d.rankingBadgeStyle ?? "default",
     defaultBadgeFont: isBadgeFont(d.defaultBadgeFont) ? d.defaultBadgeFont : (isBadgeFont(d.badgeFont) ? d.badgeFont : DEFAULT_BADGE_FONT),
     defaultHebrewFont: isHebrewFont(d.hebrewFont) ? d.hebrewFont : DEFAULT_HEBREW_FONT,
+    defaultPosterStyle: isPosterStyle(d.posterStyle) ? d.posterStyle : DEFAULT_POSTER_STYLE,
+    defaultTagFade: d.tagFade !== false,
     defaultQualityBadgeStyle: d.defaultQualityBadgeStyle ?? d.qualityBadgeStyle ?? DEFAULT_QUALITY_BADGE_STYLE,
     defaultVideoFormats: Array.isArray(d.defaultVideoFormats)
       ? d.defaultVideoFormats.filter(isVideoFormat)
@@ -653,6 +662,8 @@ function defaultsToPayload(d: DefaultsState): Record<string, unknown> {
     rankingBadgeStyle: d.defaultRankingBadgeStyle,
     badgeFont: d.defaultBadgeFont,
     hebrewFont: d.defaultHebrewFont,
+    posterStyle: d.defaultPosterStyle,
+    tagFade: d.defaultTagFade,
     qualityBadgeStyle: d.defaultQualityBadgeStyle,
     blurEnabled: d.defaultBlurEnabled,
     blurIntensity: d.defaultBlurIntensity,

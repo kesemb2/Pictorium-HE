@@ -2030,7 +2030,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       lang: req.nextUrl.searchParams.get("lang") || mapping?.language || posterRegion.lang2,
     })
     const {
-      badgeStyle, rankingBadgeStyle, qualityBadgeStyle, badgeFont, hebrewFont,
+      badgeStyle, rankingBadgeStyle, qualityBadgeStyle, badgeFont, hebrewFont, posterStyle, tagFade,
       blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness, tintStrength, topShade,
       badgesEnabled, rankingEnabled,
       badgeGenre, badgeYear, badgeRating, badgeQuality, minQuality, sashOrder,
@@ -2248,6 +2248,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
             rankingBadgeStyle,
             badgeFont,
             hebrewFont,
+            posterStyle,
+            tagFade,
             badgeGenre,
             badgeYear,
             badgeRating,
@@ -2324,7 +2326,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       backdropScale, backdropOffsetX, backdropOffsetY,
       blurEnabled, blurHeight: effBlurHeight, blurIntensity, blurFade: effBlurFade, blurDarkness, tintStrength, topShade,
       badgesEnabled, rankingEnabled, genreName, voteAverage, badgeStyle,
-      rankingBadgeStyle, badgeFont, hebrewFont, badgeGenre, badgeYear, badgeRating: effectiveBadgeRating, badgeQuality,
+      rankingBadgeStyle, badgeFont, hebrewFont, posterStyle, tagFade, badgeGenre, badgeYear, badgeRating: effectiveBadgeRating, badgeQuality,
       qualityBadgeStyle,
       videoFormats: finalVideoFormats,
       separateRatings: useSeparate ? sepItems : undefined,
@@ -2421,7 +2423,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       ...posterHeaders(etag, effectiveImmutable, isPreview, dynamicPoster, outputFormat, effectiveTtlSec, isLive),
       // Solo sui render freschi (le copie in cache non lo portano): per
       // diagnosticare un poster basta ri-chiederlo con preview=1.
-      "X-Pictorium-Readability": JSON.stringify(readabilityReport),
+      // Gli header HTTP sono ByteString: l'ebraico (testo della tag) va
+      // escapato come \uXXXX, così il valore resta JSON valido e leggibile.
+      "X-Pictorium-Readability": JSON.stringify(readabilityReport).replace(/[\u007f-\uffff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`),
       "Server-Timing": serverTimingValue([
         { name: "fetch", durMs: tFetchMs },
         { name: "prep", durMs: tCompositeStart - startTime - tFetchMs },

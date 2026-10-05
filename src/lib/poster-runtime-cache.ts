@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server"
 import { cacheGet, cacheGetStale, cacheSet } from "@/lib/cache"
 import { createLogger } from "@/lib/logger"
 import { envWithFallback } from "@/lib/env-compat"
-import { isBadgeStyle, isRankingBadgeStyle, isBadgeFont, isHebrewFont } from "@/lib/badge-styles"
+import { isBadgeStyle, isRankingBadgeStyle, isBadgeFont, isHebrewFont, isPosterStyle } from "@/lib/badge-styles"
 import { POSTER_CACHE_ALLOWLIST } from "./poster-params-hardening"
 
 const log = createLogger("poster-cache")
@@ -139,6 +139,11 @@ export function normalizePosterCacheParams(searchParams: URLSearchParams): URLSe
   if (hfont !== null && !isHebrewFont(hfont)) {
     params.set("hfont", "rubik")
   }
+  // Fork: stile poster e dissolvenza (invalidi → valore effettivo esplicito).
+  const pstyle = params.get("pstyle")
+  if (pstyle !== null && !isPosterStyle(pstyle)) params.set("pstyle", "classic")
+  const tfade = params.get("tfade")
+  if (tfade !== null && tfade !== "0" && tfade !== "1") params.set("tfade", "1")
 
   return params
 }
