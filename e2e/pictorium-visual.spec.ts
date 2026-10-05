@@ -722,6 +722,16 @@ test.describe("poster API — visual regression", () => {
     expect(report.logoScrim).toBeGreaterThan(0.25)
   })
 
+  test("readability: the band covers the logo even at a low height — screenshot", async ({ page }) => {
+    const url = readabilityUrl({ poster: "/mocked/readability-busy.jpg", logo: "/mocked/readability-logo.png", gradHeight: "20" })
+    const poster = await renderPoster(page, url)
+    await expect(poster).toHaveScreenshot("poster-readability-band-over-logo.png", { maxDiffPixelRatio: 0.05 })
+    const res = await page.request.get(url)
+    const report = JSON.parse(res.headers()["x-pictorium-readability"] ?? "{}")
+    expect(report.band.requested).toBe(20)
+    expect(report.band.final).toBeGreaterThan(20)
+  })
+
   test("readability: halo behind a logo on busy artwork — screenshot", async ({ page }) => {
     const poster = await renderPoster(page, readabilityUrl({ poster: "/mocked/readability-busy.jpg", logo: "/mocked/readability-logo.png" }))
     await expect(poster).toHaveScreenshot("poster-readability-logo-halo.png", { maxDiffPixelRatio: 0.05 })

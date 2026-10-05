@@ -15,6 +15,7 @@ import {
   extractBadgeColor,
   extractSceneTint,
   fitBandToPoster,
+  bandHeightForLogo,
   fitBadgeToCanvas,
   fitCompositeToCanvas,
   isValidHex,
@@ -927,6 +928,8 @@ export interface ReadabilityReport {
   title?: { lum: number | null; std: number | null; dark: boolean; halo: number } | null
   logoScrim?: number
   logoHalo?: number
+  /** Altezza della fascia in %: chiesta, dopo la ritirata, finale (pavimento logo). */
+  band?: { requested: number; retreated: number; final: number; logoTop: number | null; logoH: number | null }
 }
 
 function round2(v: number): number {
@@ -1104,9 +1107,67 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // La fascia si toglie di mezzo: si ritira sotto quello che troverebbe a metà
   // e si indebolisce dove non ha niente da nascondere. Non fa mai PIÙ di quanto
   // chiesto, e il fade non si tocca.
-  const fittedBand = blurEnabled
+  // Geometria del logo PRIMA della fascia (solo metadati, niente pixel): serve
+  // al pavimento qui sotto. Il resize resta in parallelo col blur.
+  const logoLayout = logoFetch && !hideLogo
+    ? await (async () => {
+      const lMeta = await sharp(logoFetch).metadata()
+      const lw = lMeta.width || 200
+      const lh = lMeta.height || 100
+      // Single source: logoDefaultScaleFromAspect (logo-selection.ts).
+      // (lw/lh hanno sempre fallback > 0, niente guardia null.)
+      const defScale = logoDefaultScaleFromAspect(lw, lh) ?? 75
+      const uScale = logoScale ?? defScale
+      const uOx = logoOffsetX ?? 0
+      const uOy = (logoOffsetY ?? 0) - (logoBottomOffset ?? 0)
+      return computeLogoLayout({
+        posterW: CW, posterH: CH, logoW: lw, logoH: lh,
+        logoScale: uScale,
+        // Calibrazione geometrica landscape invisibile agli slider (+10 X /
+        // -10 Y): si somma agli offset utente espliciti (anche 0), come
+        // PORTRAIT_LOGO_TOP_OFFSET in portrait. Gli slider mostrano 0.
+        logoOffsetX: uOx + (isLandscape ? LANDSCAPE_LOGO_SHIFT_X : 0),
+        logoOffsetY: uOy + (isLandscape ? LANDSCAPE_LOGO_SHIFT_Y : 0),
+        hasBadges: hasGenreBadge,
+        // Fondo logo in linea col badge genere (~10px dal bordo, vedi
+        // costanti landscape in logo-layout.ts). In portrait margine
+        // maggiorato solo col badge genere (12% vs 10% storico).
+        // Portrait: margine del fork (eccezione "geometria" concordata al
+        // sync), cioè il default di logo-layout.
+        bottomMarginPct: isLandscape ? LANDSCAPE_LOGO_BOTTOM_MARGIN_PCT : undefined,
+        // Vincoli logo per formato (stessi di context.tsx e
+        // poster-fit-score.ts): portrait cap solo altezza + calibrazione
+        // +10px; landscape contenuto 40% larghezza / 24% altezza.
+        ...(isLandscape
+          ? { maxWidthPct: LANDSCAPE_LOGO_MAX_WIDTH_PCT, maxHeightPct: LANDSCAPE_LOGO_MAX_HEIGHT_PCT, topOffset: LANDSCAPE_LOGO_TOP_OFFSET }
+          : {
+              maxHeightPct: PORTRAIT_LOGO_MAX_HEIGHT_PCT,
+              topOffset: PORTRAIT_LOGO_TOP_OFFSET,
+            }),
+        align,
+        titleBandH,
+      })
+      })()
+    : null
+  // La fascia si ritira dall'artwork movimentato, ma con un logo non scende mai
+  // sotto di lui: regola del fork (vedi bandHeightForLogo). Vince anche su
+  // un'altezza salvata bassa o su un `gradHeight` esplicito.
+  const retreatedBand = blurEnabled
     ? await fitBandToPoster(posterBuf, { blurHeight, blurFade, blurIntensity, blurDarkness }, CH)
     : { blurHeight, blurFade, blurIntensity, blurDarkness }
+  const logoFloorPct = blurEnabled ? bandHeightForLogo(logoLayout, CH) : 0
+  const fittedBand = logoFloorPct > retreatedBand.blurHeight
+    ? { ...retreatedBand, blurHeight: logoFloorPct }
+    : retreatedBand
+  if (readabilityReport) {
+    readabilityReport.band = {
+      requested: blurEnabled ? blurHeight : 0,
+      retreated: blurEnabled ? retreatedBand.blurHeight : 0,
+      final: blurEnabled ? fittedBand.blurHeight : 0,
+      logoTop: logoLayout ? logoLayout.top : null,
+      logoH: logoLayout ? logoLayout.height : null,
+    }
+  }
   const accentBottomFraction = blurEnabled
     ? Math.min(Math.max(fittedBand.blurHeight / 100, 100 / CH), 1)
     : DEFAULT_ACCENT_REGION_FRACTION
@@ -1134,45 +1195,10 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
       canvasH: CH,
       accentColor: blurTintHex ?? undefined,
     }),
-    logoFetch && !hideLogo
+    logoLayout
       ? (async () => {
-          const lMeta = await sharp(logoFetch).metadata()
-          const lw = lMeta.width || 200
-          const lh = lMeta.height || 100
-          // Single source: logoDefaultScaleFromAspect (logo-selection.ts).
-          // (lw/lh hanno sempre fallback > 0, niente guardia null.)
-          const defScale = logoDefaultScaleFromAspect(lw, lh) ?? 75
-          const uScale = logoScale ?? defScale
-          const uOx = logoOffsetX ?? 0
-          const uOy = (logoOffsetY ?? 0) - (logoBottomOffset ?? 0)
-          const layout = computeLogoLayout({
-            posterW: CW, posterH: CH, logoW: lw, logoH: lh,
-            logoScale: uScale,
-            // Calibrazione geometrica landscape invisibile agli slider (+10 X /
-            // -10 Y): si somma agli offset utente espliciti (anche 0), come
-            // PORTRAIT_LOGO_TOP_OFFSET in portrait. Gli slider mostrano 0.
-            logoOffsetX: uOx + (isLandscape ? LANDSCAPE_LOGO_SHIFT_X : 0),
-            logoOffsetY: uOy + (isLandscape ? LANDSCAPE_LOGO_SHIFT_Y : 0),
-            hasBadges: hasGenreBadge,
-            // Fondo logo in linea col badge genere (~10px dal bordo, vedi
-            // costanti landscape in logo-layout.ts). In portrait margine
-            // maggiorato solo col badge genere (12% vs 10% storico).
-            // Portrait: margine del fork (eccezione "geometria" concordata al
-            // sync), cioè il default di logo-layout.
-            bottomMarginPct: isLandscape ? LANDSCAPE_LOGO_BOTTOM_MARGIN_PCT : undefined,
-            // Vincoli logo per formato (stessi di context.tsx e
-            // poster-fit-score.ts): portrait cap solo altezza + calibrazione
-            // +10px; landscape contenuto 40% larghezza / 24% altezza.
-            ...(isLandscape
-              ? { maxWidthPct: LANDSCAPE_LOGO_MAX_WIDTH_PCT, maxHeightPct: LANDSCAPE_LOGO_MAX_HEIGHT_PCT, topOffset: LANDSCAPE_LOGO_TOP_OFFSET }
-              : {
-                  maxHeightPct: PORTRAIT_LOGO_MAX_HEIGHT_PCT,
-                  topOffset: PORTRAIT_LOGO_TOP_OFFSET,
-                }),
-            align,
-            titleBandH,
-          })
-          const resized = await resizeLogoCached(logoFetch, layout.width, layout.height, logoSrc)
+          const layout = logoLayout
+          const resized = await resizeLogoCached(logoFetch!, layout.width, layout.height, logoSrc)
           const aW = resized.w
           const aH = resized.h
           return { input: resized.input, top: Math.max(0, Math.round(layout.top + (layout.height - aH))), left: Math.round(layout.left + ((layout.width - aW) / 2)), w: aW, h: aH } as const
