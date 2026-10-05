@@ -205,6 +205,12 @@ export interface GenerationInput {
   autoDarkText?: boolean
   /** Alone largo e debole dietro a testo e logo su artwork movimentato. Default ON. */
   textHalo?: boolean
+  /**
+   * Fork: se presente, il render ci scrive le decisioni di leggibilità (testo
+   * scuro, alone, velatura e alone del logo). La route le espone in un header
+   * sui render freschi, così un poster di Stremio si diagnostica con preview=1.
+   */
+  readabilityReport?: ReadabilityReport
 
   // Badge superiore (rank/extra in alto): scala % su tutti gli stili
   // (la barra scala nativa via font per restare full-width),
@@ -915,6 +921,30 @@ export async function resizeBackdropCached(
 // Main entry
 // ---------------------------------------------------------------------------
 
+/** Fork: decisioni di leggibilità di un render (vedi `readabilityReport`). */
+export interface ReadabilityReport {
+  meta?: { lum: number | null; std: number | null; dark: boolean; halo: number }
+  title?: { lum: number | null; std: number | null; dark: boolean; halo: number } | null
+  logoScrim?: number
+  logoHalo?: number
+}
+
+function round2(v: number): number {
+  return Math.round(v * 100) / 100
+}
+
+function treatmentSummary(
+  stats: { luminance: number; stdDev: number } | null,
+  treatment: { color?: string; halo?: number },
+): NonNullable<ReadabilityReport["meta"]> {
+  return {
+    lum: stats ? round2(stats.luminance) : null,
+    std: stats ? Math.round(stats.stdDev) : null,
+    dark: !!treatment.color,
+    halo: round2(treatment.halo ?? 0),
+  }
+}
+
 export async function generatePosterBuffer(input: GenerationInput): Promise<Buffer> {
   const {
     posterBuf, logoFetch, backdropFetch,
@@ -961,7 +991,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     voteCount, nextEpisodeAirDate, tmdbTrending, accentDominant,
     badgeTopScale, badgeBottomScale, badgeTopOffset, badgeBottomOffset, logoBottomOffset,
     textOpacity, textShadowOpacity, textShadowBlur, textShadowOffset, ratingStar,
-    autoDarkText, textHalo,
+    autoDarkText, textHalo, readabilityReport,
   } = input
 
   // Il badge genere in basso segue la luce del fondo, non del top (su poster
@@ -1179,6 +1209,10 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   const metaTreatment = zoneTextTreatment(metaZoneStats, textTreatmentOpts)
   const titleTreatment = zoneTextTreatment(titleZoneStats ?? metaZoneStats, textTreatmentOpts)
   const metaTextStyle: TextStyle = { ...textStyle, ...metaTreatment }
+  if (readabilityReport) {
+    readabilityReport.meta = treatmentSummary(metaZoneStats, metaTreatment)
+    readabilityReport.title = titleFit ? treatmentSummary(titleZoneStats ?? metaZoneStats, titleTreatment) : null
+  }
   const titleTextStyle: TextStyle = { ...textStyle, ...titleTreatment }
 
   // -----------------------------------------------------------------------
@@ -1220,6 +1254,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
         ),
       ])
       const strength = logoScrimStrength(logoContrast(inkLum, zoneLum))
+      if (readabilityReport) readabilityReport.logoScrim = round2(strength)
       if (strength <= 0) return null
       const png = await buildLogoScrim(logoResult.w, logoResult.h, strength, (inkLum ?? 0) > 0.5, CW, CH)
       if (!png) return null
@@ -1245,6 +1280,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
         canvas,
       )
       const strength = zoneTextTreatment(logoZone, { darkText: false, halo: true }).halo
+      if (readabilityReport) readabilityReport.logoHalo = round2(strength)
       const haloPng = strength > 0 ? await buildLogoHalo(logoResult.input, logoResult.w, logoResult.h, strength) : null
       if (haloPng) {
         const hMeta = await sharp(haloPng).metadata()

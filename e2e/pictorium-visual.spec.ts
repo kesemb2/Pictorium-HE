@@ -697,6 +697,36 @@ test.describe("poster API — visual regression", () => {
     await expect(poster).toHaveScreenshot("poster-font-barlow-landscape.png", { maxDiffPixelRatio: 0.10 })
   })
 
+  // Fork: leggibilità. Nessuno snapshot copriva testo scuro, alone e velatura
+  // del logo, e dopo il merge upstream del 2/10 la velatura si era ridotta
+  // senza che niente diventasse rosso. Poster e logo dal mock (readability-*).
+  const readabilityUrl = (params: Record<string, string>) =>
+    `/api/poster/${MEDIA_TYPE}/${MOVIE_TMDB}?${new URLSearchParams({ genreName: "Drama", voteAverage: "7.9", badges: "1", ranking: "0", preview: "1", ...params }).toString()}`
+
+  test("readability: dark text on a light flat bottom — screenshot", async ({ page }) => {
+    const poster = await renderPoster(page, readabilityUrl({ poster: "/mocked/readability-light.jpg", be: "0" }))
+    await expect(poster).toHaveScreenshot("poster-readability-dark-text.png", { maxDiffPixelRatio: 0.05 })
+  })
+
+  test("readability: halo on busy artwork — screenshot", async ({ page }) => {
+    const poster = await renderPoster(page, readabilityUrl({ poster: "/mocked/readability-busy.jpg", be: "0" }))
+    await expect(poster).toHaveScreenshot("poster-readability-halo.png", { maxDiffPixelRatio: 0.05 })
+  })
+
+  test("readability: veil behind a light logo on a light zone — screenshot", async ({ page }) => {
+    const poster = await renderPoster(page, readabilityUrl({ poster: "/mocked/readability-light.jpg", logo: "/mocked/readability-logo.png" }))
+    await expect(poster).toHaveScreenshot("poster-readability-logo-scrim.png", { maxDiffPixelRatio: 0.05 })
+    // Il render fresco espone le decisioni: la velatura supera lo 0.25 di upstream.
+    const res = await page.request.get(readabilityUrl({ poster: "/mocked/readability-light.jpg", logo: "/mocked/readability-logo.png" }))
+    const report = JSON.parse(res.headers()["x-pictorium-readability"] ?? "{}")
+    expect(report.logoScrim).toBeGreaterThan(0.25)
+  })
+
+  test("readability: halo behind a logo on busy artwork — screenshot", async ({ page }) => {
+    const poster = await renderPoster(page, readabilityUrl({ poster: "/mocked/readability-busy.jpg", logo: "/mocked/readability-logo.png" }))
+    await expect(poster).toHaveScreenshot("poster-readability-logo-halo.png", { maxDiffPixelRatio: 0.05 })
+  })
+
   // Fork: font del testo ebraico (`hfont`). Genere, nastro e dicitura in
   // ebraico, così ogni famiglia copre tutti i testi che governa.
   for (const hfont of ["heebo", "karantina", "secular-one", "frank-ruhl-libre"]) {
