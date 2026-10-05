@@ -304,6 +304,8 @@ async function pictoriumPosterAndShape(
   animeRankParam?: number | null,
   posterLang = "it",
   posterRegion?: string | null,
+  /** Fork: forma scelta per il catalogo (vince sul globale e sul mapping). */
+  shapeOverride?: PosterShape | null,
 ): Promise<{ poster: string; banner: string; landscapePoster?: string; posterShape: PosterShape }> {
   const scopedUser = getScopedUserId(userParam)
   const serverDefaults = scopedUser ? await getServerDefaultsForUser(scopedUser) : await getServerDefaultsChecked()
@@ -322,7 +324,7 @@ async function pictoriumPosterAndShape(
     user: userParam || undefined,
     animerank: animeRankParam ?? undefined,
   } as const
-  const posterShape = stremioPosterShape(mapping, defaults)
+  const posterShape = shapeOverride ?? stremioPosterShape(mapping, defaults)
   const poster = buildStremioPosterUrl({ ...base, forceShape: posterShape }).toString()
   // Banner pulito: canvas landscape senza logo baked-in (per i client che
   // sovrappongono già il logo da catalogo) + badge genere in basso a destra.
@@ -495,6 +497,7 @@ export async function pictoriumCatalog(
       rankingSourceMovie: effectiveDefaults.rankingSourceMovie,
       rankingSourceSeries: effectiveDefaults.rankingSourceSeries,
       catalogRenames: effectiveDefaults.catalogRenames,
+      catalogShapes: effectiveDefaults.catalogShapes,
       catalogOrder: effectiveDefaults.catalogOrder,
     } as PictoriumUserConfig
   }
@@ -503,6 +506,17 @@ export async function pictoriumCatalog(
   userConfig.disabledCatalogIds = normalizeCatalogIdList(userConfig.disabledCatalogIds)
   userConfig.catalogOrder = normalizeCatalogIdList(userConfig.catalogOrder)
   userConfig.catalogRenames = normalizeCatalogIdKeys(userConfig.catalogRenames)
+  // Fork: forma per catalogo (token > namespace), chiavi normalizzate.
+  if (userConfig.catalogShapes === undefined) userConfig.catalogShapes = effectiveDefaults.catalogShapes
+  userConfig.catalogShapes = normalizeCatalogIdKeys(userConfig.catalogShapes) as typeof userConfig.catalogShapes
+  // Fork: forma dei poster scelta per questo catalogo (come AIOMetadata:
+  // Nuvio disegna la fila coi tile della forma che ogni meta dichiara). Qui il
+  // poster orizzontale è il nostro render 16:9, non lo sfondo grezzo.
+  const catalogShape: PosterShape | null = userConfig.catalogShapes?.[catalogId] ?? null
+  const catalogPosterAndShape = (
+    r: NextRequest, t: "movie" | "series", tmdbId: number, cp?: string | null, up?: string | null,
+    animeRank?: number | null, lang = "it", posterRegion?: string | null,
+  ) => pictoriumPosterAndShape(r, t, tmdbId, cp, up, animeRank, lang, posterRegion, catalogShape)
   // Partial token merge: a token carrying only the ranking selection must not
   // lose the custom catalogs stored in the namespace defaults (the selection
   // references them by id). Same rule as the manifest composition.
@@ -630,7 +644,7 @@ export async function pictoriumCatalog(
 
         const results: (StremioMeta | null)[] = await concurrentMap(paged, async (item) => {
           if (!item.id) return null
-          const { poster, banner, landscapePoster, posterShape } = await pictoriumPosterAndShape(req, stType, item.id, configParam, userParam, undefined, posterLang, region.code)
+          const { poster, banner, landscapePoster, posterShape } = await catalogPosterAndShape(req, stType, item.id, configParam, userParam, undefined, posterLang, region.code)
           const releaseInfo = (item.release_date || item.first_air_date || "").slice(0, 4) || undefined
           return {
             id: catalogMetaId(null, item.id),
@@ -686,7 +700,7 @@ export async function pictoriumCatalog(
         }
         const d = await getDetails(stType === "movie" ? "movie" : "tv", foundId, tmdbLang, apiKey)
         const genreNames = await tmdbGenreNames(stType, apiKey, tmdbLang)
-        const { poster, banner, landscapePoster, posterShape } = await pictoriumPosterAndShape(req, stType, foundId, configParam, userParam, undefined, posterLang, region.code)
+        const { poster, banner, landscapePoster, posterShape } = await catalogPosterAndShape(req, stType, foundId, configParam, userParam, undefined, posterLang, region.code)
         const body = {
           metas: [
             {
@@ -723,7 +737,7 @@ export async function pictoriumCatalog(
       const genreNames = await tmdbGenreNames(stType, apiKey, tmdbLang)
       const results: (StremioMeta | null)[] = await concurrentMap(items, async (item) => {
         if (!item.id) return null
-        const { poster, banner, landscapePoster, posterShape } = await pictoriumPosterAndShape(req, stType, item.id, configParam, userParam, undefined, posterLang, region.code)
+        const { poster, banner, landscapePoster, posterShape } = await catalogPosterAndShape(req, stType, item.id, configParam, userParam, undefined, posterLang, region.code)
         const releaseInfo = (item.release_date || item.first_air_date || "").slice(0, 4) || undefined
         return {
           id: catalogMetaId(null, item.id),
@@ -857,7 +871,7 @@ export async function pictoriumCatalog(
               tmdbId = await tmdbFindByTvdb(ref.tvdb, stType === "movie" ? "movie" : "tv", apiKey).catch(() => null)
             }
             if (!tmdbId) return base
-            const posterAndShape = await pictoriumPosterAndShape(req, stType, tmdbId, configParam, userParam, undefined, posterLang, region.code)
+            const posterAndShape = await catalogPosterAndShape(req, stType, tmdbId, configParam, userParam, undefined, posterLang, region.code)
             const logo = apiKey
               ? await catalogLogo(stType === "movie" ? "movie" : "tv", tmdbId, apiKey, tmdbLang).catch(() => undefined)
               : undefined
@@ -964,7 +978,7 @@ export async function pictoriumCatalog(
         metas = await concurrentMap(validResults, async (r) => {
           const [imdbId, posterAndShape, logo] = await Promise.all([
             r.imdb ? Promise.resolve(r.imdb) : resolveImdbId(stType === "movie" ? "movie" : "tv", r.tmdbId, apiKey),
-            pictoriumPosterAndShape(req, stType, r.tmdbId, configParam, userParam, r.rank, posterLang, region.code),
+            catalogPosterAndShape(req, stType, r.tmdbId, configParam, userParam, r.rank, posterLang, region.code),
             apiKey ? catalogLogo(stType === "movie" ? "movie" : "tv", r.tmdbId, apiKey, tmdbLang) : Promise.resolve(undefined),
           ])
           const { poster, banner, landscapePoster, posterShape } = posterAndShape
@@ -1078,7 +1092,7 @@ export async function pictoriumCatalog(
       metas = await concurrentMap(validResults, async (r) => {
         const [imdbId, posterAndShape, logo] = await Promise.all([
           r.imdbId || r.d?.external_ids?.imdb_id || null,
-          pictoriumPosterAndShape(req, stType, r.tmdbId, configParam, userParam, undefined, posterLang, region.code),
+          catalogPosterAndShape(req, stType, r.tmdbId, configParam, userParam, undefined, posterLang, region.code),
           apiKey ? catalogLogo(stType === "movie" ? "movie" : "tv", r.tmdbId, apiKey, tmdbLang) : Promise.resolve(undefined),
         ])
         const { poster, banner, landscapePoster, posterShape } = posterAndShape
@@ -1130,7 +1144,7 @@ export async function pictoriumCatalog(
           resolveImdbId(mediaType, r.tmdbId, apiKey, CATALOG_TMDB_TIMEOUT_MS),
           // Niente `animerank`: è il badge anime. Il numero arriva dalla stessa
           // lista nella striscia dei poster orizzontali (route poster).
-          pictoriumPosterAndShape(req, stType, r.tmdbId, configParam, userParam, null, posterLang, region.code),
+          catalogPosterAndShape(req, stType, r.tmdbId, configParam, userParam, null, posterLang, region.code),
           apiKey ? catalogLogo(mediaType, r.tmdbId, apiKey, tmdbLang) : Promise.resolve(undefined),
         ])
         const { poster, banner, landscapePoster, posterShape } = posterAndShape
@@ -1198,7 +1212,7 @@ export async function pictoriumCatalog(
       metas = await concurrentMap(validResults, async (r) => {
         const [imdbId, posterAndShape, logo] = await Promise.all([
           r.imdb ? Promise.resolve(r.imdb) : resolveImdbId(mediaType, r.tmdbId, apiKey, CATALOG_TMDB_TIMEOUT_MS),
-          pictoriumPosterAndShape(req, stType, r.tmdbId, configParam, userParam, r.rank, posterLang, region.code),
+          catalogPosterAndShape(req, stType, r.tmdbId, configParam, userParam, r.rank, posterLang, region.code),
           apiKey ? catalogLogo(mediaType, r.tmdbId, apiKey, tmdbLang) : Promise.resolve(undefined),
         ])
         const { poster, banner, landscapePoster, posterShape } = posterAndShape
@@ -1294,7 +1308,7 @@ export async function pictoriumCatalog(
           metas = await concurrentMap(validResults, async (r) => {
             const [imdbId, posterAndShape, logo] = await Promise.all([
               r.imdbId || r.externalImdbId || null,
-              pictoriumPosterAndShape(req, stType, r.tmdbId, configParam, userParam, undefined, posterLang, region.code),
+              catalogPosterAndShape(req, stType, r.tmdbId, configParam, userParam, undefined, posterLang, region.code),
               apiKey ? catalogLogo(stType === "movie" ? "movie" : "tv", r.tmdbId, apiKey, tmdbLang) : Promise.resolve(undefined),
             ])
             const { poster, banner, landscapePoster, posterShape } = posterAndShape
@@ -1334,7 +1348,7 @@ export async function pictoriumCatalog(
               const [imdbId, details, posterAndShape, logo] = await Promise.all([
                 resolveImdbId(stType === "movie" ? "movie" : "tv", item.tmdbId, apiKey, CATALOG_TMDB_TIMEOUT_MS),
                 getDetails(stType === "movie" ? "movie" : "tv", item.tmdbId, tmdbLang, apiKey, catalogTimeoutSignal(), CATALOG_TMDB_TIMEOUT_MS).catch(() => null),
-                pictoriumPosterAndShape(req, stType, item.tmdbId, configParam, userParam, undefined, posterLang, region.code),
+                catalogPosterAndShape(req, stType, item.tmdbId, configParam, userParam, undefined, posterLang, region.code),
                 catalogLogo(stType === "movie" ? "movie" : "tv", item.tmdbId, apiKey, tmdbLang),
               ])
               const { poster, banner, landscapePoster, posterShape } = posterAndShape

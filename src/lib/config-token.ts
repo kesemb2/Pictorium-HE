@@ -122,6 +122,8 @@ export const configTokenSchema = z.object({
   ribbonEnabled: z.boolean().optional(),
   catalogOrder: z.array(z.string().max(80)).optional(),
   catalogRenames: z.record(z.string().max(80), z.string().max(100)).optional(),
+  /** Fork: forma dei poster per catalogo (come AIOMetadata). Assente = globale. */
+  catalogShapes: z.record(z.string().max(80), z.enum(["poster", "landscape"])).optional(),
   customCatalogs: z.array(customCatalogSchema).optional(),
   // Top 20 global ranking source (custom catalog id) per slot: absent =
   // JustWatch (old tokens stay valid). The bound mirrors the custom id;
@@ -156,6 +158,8 @@ export const partialCatalogTokenSchema = z.object({
   homeDisabledCatalogIds: z.array(z.string().max(80)).optional(),
   catalogOrder: z.array(z.string().max(80)).optional(),
   catalogRenames: z.record(z.string().max(80), z.string().max(100)).optional(),
+  /** Fork: forma dei poster per catalogo (come AIOMetadata). Assente = globale. */
+  catalogShapes: z.record(z.string().max(80), z.enum(["poster", "landscape"])).optional(),
   region: z.string().max(32).optional(),
 }).strict()
 

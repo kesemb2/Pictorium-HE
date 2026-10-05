@@ -208,6 +208,8 @@ export interface ServerDefaults {
   homeDisabledCatalogIds?: string[]
   catalogOrder?: string[]
   catalogRenames?: Record<string, string>
+  /** Fork: forma dei poster per catalogo ("poster" | "landscape"); assente = globale. */
+  catalogShapes?: Record<string, "poster" | "landscape">
 }
 
 const FILE = path.join(DATA_DIR, "defaults.json")

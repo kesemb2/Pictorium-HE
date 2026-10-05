@@ -297,6 +297,10 @@ const itDict: Record<string, string> = {
   "ui.landscapeTop10Hint": "Un titolo nella top 10 di oggi (TMDB, solo ciò che è già guardabile) riceve a sinistra una fascia con il suo numero luminoso.",
   "ui.topToday": "Top 10 Oggi",
   "ui.topTodaySub": "Il trending giornaliero di TMDB, solo ciò che è già guardabile — la stessa lista dei numeri sui poster orizzontali.",
+  "ui.catalogShape": "Forma dei poster in Stremio/Nuvio",
+  "ui.catalogShapeGlobal": "Predefinita",
+  "ui.catalogShapePoster": "Verticale",
+  "ui.catalogShapeLandscape": "Orizzontale",
 }
 
 function mockT(key: string, params?: Record<string, string | number>): string {

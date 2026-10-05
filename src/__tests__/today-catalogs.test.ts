@@ -102,3 +102,34 @@ describe("new built-in catalogs in a saved order", () => {
     expect(catalogOrderPosition("pictorium-jw-movies", map)).toBe(1)
   })
 })
+
+describe("per-catalog poster shape (as in AIOMetadata)", () => {
+  // La forma si salva nei default dello spazio (Impostazioni → Cataloghi):
+  // il catalogo la legge da lì.
+  async function withDefaults(sd: Record<string, unknown>) {
+    const { getServerDefaults } = await import("@/lib/server-defaults")
+    vi.mocked(getServerDefaults).mockReturnValue(sd as never)
+  }
+  afterEach(async () => { await withDefaults({}) })
+
+  it("a catalog set to landscape serves landscape posters; the others keep the global shape", async () => {
+    await withDefaults({ catalogShapes: { "pictorium-today-movies": "landscape" } })
+    vi.mocked(getTopToday).mockResolvedValue([30])
+    tmdbByUrl()
+    const land = await catalog("movie", "pictorium-today-movies")
+    expect(land.body.metas[0].posterShape).toBe("landscape")
+    expect(land.body.metas[0].poster).toContain("shape=landscape")
+    expect(land.body.metas[0].landscapePoster).toBe(land.body.metas[0].poster)
+    const other = await catalog("series", "pictorium-today-series")
+    expect(other.body.metas[0]?.posterShape ?? "poster").toBe("poster")
+  })
+
+  it("a catalog forced to portrait wins over a global landscape default", async () => {
+    await withDefaults({ posterShape: "landscape", catalogShapes: { "pictorium-today-movies": "poster" } })
+    vi.mocked(getTopToday).mockResolvedValue([40])
+    tmdbByUrl()
+    const res = await catalog("movie", "pictorium-today-movies")
+    expect(res.body.metas[0].posterShape).toBe("poster")
+    expect(res.body.metas[0].poster).not.toContain("shape=landscape")
+  })
+})

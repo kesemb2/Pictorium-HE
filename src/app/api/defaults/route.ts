@@ -168,6 +168,7 @@ const defaultsSchema = z.object({
   homeDisabledCatalogIds: z.array(z.string().max(80)).optional(),
   catalogOrder: z.array(z.string().max(80)).optional(),
   catalogRenames: z.record(z.string().max(80), z.string().max(100)).optional(),
+  catalogShapes: z.record(z.string().max(80), z.enum(["poster", "landscape"])).optional(),
 })
 
 export async function GET(req: NextRequest) {

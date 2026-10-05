@@ -153,6 +153,8 @@ export const MOCK_CTX: PictoriumCtx = {
   setCatalogOrder: stubFn,
   moveCatalog: stubFn,
   catalogRenames: {},
+  catalogShapes: {},
+  setCatalogShape: () => {},
   setCatalogRenames: stubFn,
   renameCatalog: stubFn,
   resetCatalogNames: stubFn,
