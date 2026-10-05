@@ -40,7 +40,7 @@ const DIGIT_BOX_H = 160
 /** Stacco fra l'inchiostro di due cifre consecutive (unità del riquadro). */
 const DIGIT_GAP = 14
 /** Margine attorno al tracciato per l'alone (unità del riquadro). */
-const PAD = 26
+const PAD = 56
 
 /** Colori presi dal riferimento: notte, alone, tubo, filamento. */
 const STRIP_BG_TOP = "#030a2e"
