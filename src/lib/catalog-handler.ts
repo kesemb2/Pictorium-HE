@@ -28,6 +28,7 @@ import { createLogger } from "@/lib/logger"
 import { concurrentMap } from "@/lib/episode-ordering"
 import { envWithFallback } from "@/lib/env-compat"
 import { isPersonQuery, pickTopPerson } from "@/lib/person-search"
+import { getTopToday } from "@/lib/top-today"
 import { normalizeCatalogId, normalizeCatalogIdKeys, normalizeCatalogIdList } from "@/lib/catalog-definitions"
 import type { PosterShape } from "@/lib/types"
 import { canonicalGenreLabel } from "@/lib/stremio-labels"
@@ -241,7 +242,9 @@ function isKnownCatalogId(catalogId: string): boolean {
     catalogId.startsWith("pictorium-search-") ||
     catalogId.startsWith("pictorium-custom-") ||
     catalogId.startsWith("pictorium-jw") ||
-    catalogId.startsWith("pictorium-anime")
+    catalogId.startsWith("pictorium-anime") ||
+    catalogId === "pictorium-today-movies" ||
+    catalogId === "pictorium-today-series"
   ) return true
   for (const k of Object.keys(PLATFORM_SLUGS)) {
     if (catalogId === `pictorium-${k}-movies` || catalogId === `pictorium-${k}-series`) return true
@@ -1094,6 +1097,57 @@ export async function pictoriumCatalog(
           imdbRating: r.d?.vote_average ? r.d.vote_average.toFixed(1) : undefined,
           genres: (r.d?.genres || []).map((g) => g.name).filter(Boolean),
           description: r.d?.overview ?? undefined,
+        }
+      }, 5)
+    } else if (catalogId === "pictorium-today-movies" || catalogId === "pictorium-today-series") {
+      // Fork: top 10 di oggi (TMDB trending/day con le regole di TopToday),
+      // la stessa lista che disegna il numero sui poster orizzontali: la fila
+      // e i numeri coincidono sempre. Dieci titoli, niente pagine oltre.
+      const mediaType = catalogId === "pictorium-today-movies" ? "movie" : "tv"
+      const todaySkip = typeof extra.skip === "number" && extra.skip > 0 ? extra.skip : 0
+      const ids = todaySkip > 0 ? [] : await getTopToday(mediaType, apiKey)
+      const results = await concurrentMap(ids, async (tmdbId) => {
+        let d: TMDBDetails | null = null
+        if (apiKey) {
+          try {
+            d = await getDetails(mediaType, tmdbId, tmdbLang, apiKey, catalogTimeoutSignal(), CATALOG_TMDB_TIMEOUT_MS)
+          } catch {
+            d = null
+          }
+        }
+        return {
+          tmdbId,
+          name: d?.title || d?.name || String(tmdbId),
+          releaseInfo: (d?.release_date || d?.first_air_date || "").slice(0, 4) || undefined,
+          genres: (d?.genres || []).map((g) => g.name).filter(Boolean),
+          backdropPath: d?.backdrop_path ?? null,
+          description: d?.overview ?? undefined,
+          voteAverage: d?.vote_average ?? undefined,
+        }
+      }, 5)
+      metas = await concurrentMap(results, async (r) => {
+        const [imdbId, posterAndShape, logo] = await Promise.all([
+          resolveImdbId(mediaType, r.tmdbId, apiKey, CATALOG_TMDB_TIMEOUT_MS),
+          // Niente `animerank`: è il badge anime. Il numero arriva dalla stessa
+          // lista nella striscia dei poster orizzontali (route poster).
+          pictoriumPosterAndShape(req, stType, r.tmdbId, configParam, userParam, null, posterLang, region.code),
+          apiKey ? catalogLogo(mediaType, r.tmdbId, apiKey, tmdbLang) : Promise.resolve(undefined),
+        ])
+        const { poster, banner, landscapePoster, posterShape } = posterAndShape
+        return {
+          id: catalogMetaId(imdbId, r.tmdbId),
+          type: stType,
+          name: r.name,
+          poster,
+          posterShape,
+          background: catalogBackground(r.backdropPath),
+          banner,
+          landscapePoster,
+          logo: catalogLogoForShape(posterShape, logo),
+          releaseInfo: r.releaseInfo,
+          imdbRating: r.voteAverage ? r.voteAverage.toFixed(1) : undefined,
+          genres: r.genres,
+          description: r.description,
         }
       }, 5)
     } else if (catalogId.startsWith("pictorium-anime")) {

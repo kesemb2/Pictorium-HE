@@ -34,6 +34,10 @@ export const PICTORIUM_CATALOGS = [
   { id: "pictorium-crunchyroll-movies", name: "🍥 Crunchyroll — Film Anime", type: "movie" },
   { id: "pictorium-anime-movies", name: "⛩️ Top 20 Film Anime", type: "movie" },
   { id: "pictorium-anime", name: "⛩️ Top 20 Serie Anime", type: "series" },
+  // Fork: la top 10 di oggi (lib/top-today), la stessa dei numeri al neon
+  // sui poster orizzontali.
+  { id: "pictorium-today-movies", name: "🔟 Top 10 Oggi — Film", type: "movie" },
+  { id: "pictorium-today-series", name: "🔟 Top 10 Oggi — Serie TV", type: "series" },
 ] as const satisfies readonly PictoriumCatalogDefinition[]
 
 export type StremioCatalogExtra = {
