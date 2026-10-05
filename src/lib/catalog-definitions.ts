@@ -7,6 +7,9 @@ export const LEGACY_CATALOG_ID_PREFIX = "posterium-"
 
 export type PictoriumCatalogType = "movie" | "series"
 
+/** Fork: forma dei poster scelta per un catalogo (assente = impostazione globale). */
+export type CatalogShape = "poster" | "landscape"
+
 export type PictoriumCatalogDefinition = {
   readonly id: string
   readonly name: string

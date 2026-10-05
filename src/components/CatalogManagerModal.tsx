@@ -19,6 +19,8 @@ import {
   Menu,
   CheckSquare,
   Square,
+  RectangleHorizontal,
+  RectangleVertical,
 } from "lucide-react"
 import { usePSelector } from "@/lib/context"
 import { useT } from "@/lib/contexts/TranslationContext"
@@ -60,6 +62,8 @@ export function CatalogManagerModal({ isOpen, onClose }: CatalogManagerModalProp
   const toggleCatalogHome = usePSelector((v) => v.toggleCatalogHome)
   const catalogOrder = usePSelector((v) => v.catalogOrder)
   const uiLang = usePSelector((v) => v.lang)
+  const catalogShapes = usePSelector((v) => v.catalogShapes)
+  const setCatalogShape = usePSelector((v) => v.setCatalogShape)
   const setCatalogOrder = usePSelector((v) => v.setCatalogOrder)
   const moveCatalog = usePSelector((v) => v.moveCatalog)
   const catalogRenames = usePSelector((v) => v.catalogRenames)
@@ -603,6 +607,30 @@ export function CatalogManagerModal({ isOpen, onClose }: CatalogManagerModalProp
 
               {/* Right: Actions */}
               <div className="flex items-center gap-1.5 shrink-0">
+                {/* Fork: forma dei poster del catalogo in Stremio/Nuvio (come
+                    AIOMetadata). Ciclo: globale → orizzontale → verticale. */}
+                {(() => {
+                  const shape = catalogShapes[item.id]
+                  const next = !shape ? "landscape" : shape === "landscape" ? "poster" : null
+                  const label = shape === "landscape" ? t("ui.catalogShapeLandscape") : shape === "poster" ? t("ui.catalogShapePoster") : t("ui.catalogShapeGlobal")
+                  return (
+                    <button
+                      type="button"
+                      data-testid="catalog-shape"
+                      onClick={() => setCatalogShape(item.id, next)}
+                      title={`${t("ui.catalogShape")}: ${label}`}
+                      aria-label={`${t("ui.catalogShape")}: ${label}`}
+                      className={`flex items-center gap-1 px-2 py-1.5 rounded-xl border text-[10px] font-semibold transition-colors ${
+                        shape
+                          ? "bg-sky-500/15 border-sky-500/30 text-sky-300 hover:bg-sky-500/25"
+                          : "bg-white/5 border-white/5 text-muted hover:text-white"
+                      }`}
+                    >
+                      {shape === "poster" ? <RectangleVertical className="w-3.5 h-3.5" /> : <RectangleHorizontal className="w-3.5 h-3.5" />}
+                      {label}
+                    </button>
+                  )
+                })()}
                 <button
                   type="button"
                   onClick={() => toggleCatalogHome(item.id)}

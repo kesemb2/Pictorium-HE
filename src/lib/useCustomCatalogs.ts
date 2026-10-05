@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react"
 import type { CustomCatalogConfig } from "./types"
-import { PICTORIUM_CATALOGS } from "./catalog-definitions"
+import { PICTORIUM_CATALOGS, type CatalogShape } from "./catalog-definitions"
 import { isProfilelessOnMultiUser, notifyProfilelessOnce, shouldSkipServerSync } from "./guest-guard"
 import { userFetch } from "./http"
 import { USER_UNLOCK_EVENT } from "./user-token"
@@ -17,6 +17,8 @@ export function useCustomCatalogs(
   const [homeDisabledCatalogIds, setHomeDisabledCatalogIdsState] = useState<string[]>([])
   const [catalogOrder, setCatalogOrderState] = useState<string[]>([])
   const [catalogRenames, setCatalogRenamesState] = useState<Record<string, string>>({})
+  // Fork: forma dei poster per catalogo (vedi catalog-handler).
+  const [catalogShapes, setCatalogShapesState] = useState<Record<string, CatalogShape>>({})
   const lastSyncRef = useRef<string>("")
   const pendingRef = useRef("")
   const [syncAttempt, setSyncAttempt] = useState(0)
@@ -51,6 +53,7 @@ export function useCustomCatalogs(
     const savedHomeDisabledCats = hasSaved("pictorium_home_disabled_catalogs")
     const savedOrder = hasSaved("pictorium_catalog_order")
     const savedRenames = hasSaved("pictorium_catalog_renames", true)
+    const savedShapes = hasSaved("pictorium_catalog_shapes", true)
     // Hydrate missing or server-configured defaults
     userFetch("/api/defaults")
       .then((r) => (r.ok ? r.json() : null))
@@ -62,6 +65,7 @@ export function useCustomCatalogs(
           homeDisabledCatalogIds: data.homeDisabledCatalogIds ?? [],
           catalogOrder: data.catalogOrder ?? [],
           catalogRenames: data.catalogRenames ?? {},
+          catalogShapes: data.catalogShapes ?? {},
         })
         if (Array.isArray(data.customCatalogs) && !savedCustomCats) {
           setCustomCatalogsState((prev) => {
@@ -99,6 +103,15 @@ export function useCustomCatalogs(
             return prev
           })
         }
+        if (data.catalogShapes && typeof data.catalogShapes === "object" && !Array.isArray(data.catalogShapes) && !savedShapes) {
+          setCatalogShapesState((prev) => {
+            if (Object.keys(prev).length === 0) {
+              safeSetItem("pictorium_catalog_shapes", JSON.stringify(data.catalogShapes))
+              return data.catalogShapes
+            }
+            return prev
+          })
+        }
         if (data.catalogRenames && typeof data.catalogRenames === "object" && !Array.isArray(data.catalogRenames) && !savedRenames) {
           setCatalogRenamesState((prev) => {
             if (Object.keys(prev).length === 0) {
@@ -120,6 +133,7 @@ export function useCustomCatalogs(
     let localHomeDisabled: string[] = []
     let localOrder: string[] = []
     let localRenames: Record<string, string> = {}
+    let localShapes: Record<string, CatalogShape> = {}
 
     const savedCustomCats = safeGetItem("pictorium_custom_catalogs")
     if (savedCustomCats) {
@@ -161,6 +175,16 @@ export function useCustomCatalogs(
         }
       } catch {}
     }
+    const savedShapesRaw = safeGetItem("pictorium_catalog_shapes")
+    if (savedShapesRaw) {
+      try {
+        const parsed = JSON.parse(savedShapesRaw)
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          localShapes = Object.fromEntries(Object.entries(parsed).filter(([, v]) => v === "poster" || v === "landscape")) as Record<string, CatalogShape>
+          setCatalogShapesState(localShapes)
+        }
+      } catch {}
+    }
     const savedRenames = safeGetItem("pictorium_catalog_renames")
     if (savedRenames) {
       try {
@@ -178,6 +202,7 @@ export function useCustomCatalogs(
       homeDisabledCatalogIds: localHomeDisabled,
       catalogOrder: localOrder,
       catalogRenames: localRenames,
+      catalogShapes: localShapes,
     })
 
     refreshCatalogsFromServer()
@@ -191,7 +216,7 @@ export function useCustomCatalogs(
   }, [refreshCatalogsFromServer])
 
   // Keep the latest desired payload separate from the last acknowledged PUT.
-  const payloadStr = JSON.stringify({ customCatalogs, disabledCatalogIds, homeDisabledCatalogIds, catalogOrder, catalogRenames })
+  const payloadStr = JSON.stringify({ customCatalogs, disabledCatalogIds, homeDisabledCatalogIds, catalogOrder, catalogRenames, catalogShapes })
   useEffect(() => {
     pendingRef.current = payloadStr
     if (!hydrated || lastSyncRef.current === payloadStr) return
@@ -349,6 +374,17 @@ export function useCustomCatalogs(
     try { localStorage.removeItem("pictorium_catalog_renames") } catch {}
   }, [])
 
+  /** Forma per catalogo: null = segue l'impostazione globale. */
+  const setCatalogShape = useCallback((id: string, shape: CatalogShape | null) => {
+    setCatalogShapesState((prev) => {
+      const next = { ...prev }
+      if (shape) next[id] = shape
+      else delete next[id]
+      safeSetItem("pictorium_catalog_shapes", JSON.stringify(next))
+      return next
+    })
+  }, [safeSetItem])
+
   const resetCatalogOrder = useCallback(() => {
     setCatalogOrderState([])
     try { localStorage.removeItem("pictorium_catalog_order") } catch {}
@@ -375,5 +411,7 @@ export function useCustomCatalogs(
     renameCatalog,
     resetCatalogNames,
     resetCatalogOrder,
+    catalogShapes,
+    setCatalogShape,
   }
 }

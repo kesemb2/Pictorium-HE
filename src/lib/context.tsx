@@ -1,5 +1,6 @@
 "use client"
 
+import type { CatalogShape } from "./catalog-definitions"
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo, useSyncExternalStore } from "react"
 import type { SearchResult, TMDBImage, Mapping, CustomCatalogConfig, NetworkLogoPosition, PosterShape } from "./types"
 import { effectiveMappingForShape } from "./types"
@@ -242,6 +243,9 @@ export interface PictoriumCtx {
   renameCatalog: (id: string, newName: string) => void
   resetCatalogNames: () => void
   resetCatalogOrder: () => void
+  /** Fork: forma dei poster per catalogo (assente = globale). */
+  catalogShapes: Record<string, CatalogShape>
+  setCatalogShape: (id: string, shape: CatalogShape | null) => void
   /** Raw Top 20 source ids (`""` = explicit JustWatch); resolved via the pure resolver. */
   rankingSourceMovie: string
   rankingSourceSeries: string
@@ -763,6 +767,8 @@ export function usePictorium(): PictoriumCtx {
     renameCatalog,
     resetCatalogNames,
     resetCatalogOrder,
+    catalogShapes,
+    setCatalogShape,
   } = useCustomCatalogs(safeGetItem, safeSetItem)
 
   // --- Top 20 Ranking Sources (global movie/series charts) ---
@@ -2045,6 +2051,7 @@ export function usePictorium(): PictoriumCtx {
     homeDisabledCatalogIds, setHomeDisabledCatalogIds, toggleCatalogHome,
     catalogOrder, setCatalogOrder, moveCatalog,
     catalogRenames, setCatalogRenames, renameCatalog, resetCatalogNames, resetCatalogOrder,
+    catalogShapes, setCatalogShape,
     rankingSourceMovie, rankingSourceSeries, setRankingSource, rankSourceNonce, refreshCurrentRank,
     localConfigToken, localConfigTokenStatus,
     t,
@@ -2068,7 +2075,7 @@ export function usePictorium(): PictoriumCtx {
     trending.trending, trending.trendingError, trending.trendingStatus, trending.streamingCharts, trending.platformErrors, trending.mdblistAnimeList, trending.animeStatus, trending.animeSource, trending.refreshNonce,
     trending.refreshLists, trending.loadPlatform,
     theme, uiAccent, serviceErrors, hasNetflixRank,
-    customCatalogs, disabledCatalogIds, homeDisabledCatalogIds, catalogOrder, catalogRenames,
+    customCatalogs, disabledCatalogIds, homeDisabledCatalogIds, catalogOrder, catalogRenames, catalogShapes,
     rankingSourceMovie, rankingSourceSeries, rankSourceNonce, catalogsSyncNonce, localConfigToken, localConfigTokenStatus,
   ])
 }
