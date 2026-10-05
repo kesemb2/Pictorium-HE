@@ -132,6 +132,7 @@ export function buildStremioPosterUrl(input: BuildStremioPosterUrlInput): URL {
     landscapeStyle: sd.landscapeStyle ?? undefined,
     landscapeTop10: sd.landscapeTop10,
     landscapeTop10Transparent: sd.landscapeTop10Transparent,
+    landscapeTop10Tint: sd.landscapeTop10Tint,
     tagSize: sd.tagSize,
     qualityBadgeStyle: mapping?.qualityBadgeStyle ?? sd.qualityBadgeStyle,
     videoFormats: mapping?.videoFormats ?? sd.videoFormats,

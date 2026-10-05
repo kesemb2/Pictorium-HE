@@ -45,11 +45,61 @@ const PAD = 56
 /** Colori presi dal riferimento: notte, alone, tubo, filamento. */
 const STRIP_BG_TOP = "#030a2e"
 const STRIP_BG_BOTTOM = "#020821"
-const GLOW = "#1a5dff"
-const TUBE_EDGE = "rgba(175,205,255,0.55)"
-const TUBE_BODY = "rgba(4,18,66,0.62)"
-const CORE = "#3fb6ff"
-const FILAMENT = "#dcfbff"
+/** Colori del tubo: alone, bordo del vetro, corpo, nucleo, filamento. */
+export interface NeonPalette {
+  readonly glow: string
+  readonly edge: string
+  readonly body: string
+  readonly core: string
+  readonly filament: string
+}
+
+/** Il blu del riferimento (invariato: i poster esistenti restano identici). */
+const BLUE_NEON: NeonPalette = {
+  glow: "#1a5dff",
+  edge: "rgba(175,205,255,0.55)",
+  body: "rgba(4,18,66,0.62)",
+  core: "#3fb6ff",
+  filament: "#dcfbff",
+}
+
+/** Neon bianco: neutro, sta bene su qualunque colore dell'interfaccia. */
+const WHITE_NEON: NeonPalette = {
+  glow: "#e8eeff",
+  edge: "rgba(255,255,255,0.5)",
+  body: "rgba(24,26,34,0.45)",
+  core: "#f4f7ff",
+  filament: "#ffffff",
+}
+
+function hexRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+function mix(rgb: [number, number, number], to: number, t: number): [number, number, number] {
+  return rgb.map((c) => Math.round(c + (to - c) * t)) as [number, number, number]
+}
+
+const css = ([r, g, b]: [number, number, number], a?: number) => (a === undefined ? `rgb(${r},${g},${b})` : `rgba(${r},${g},${b},${a})`)
+
+/**
+ * Tavolozza per una tinta: "blue"/"white" sono quelle disegnate a mano, un
+ * colore #rrggbb diventa alone pieno, nucleo schiarito e filamento quasi
+ * bianco, come un vero tubo colorato.
+ */
+export function neonPalette(tint: "white" | "blue" | `#${string}`): NeonPalette {
+  if (tint === "blue") return BLUE_NEON
+  if (tint === "white") return WHITE_NEON
+  const rgb = hexRgb(tint)
+  return {
+    glow: css(rgb),
+    edge: css(mix(rgb, 255, 0.65), 0.55),
+    body: css(mix(rgb, 0, 0.85), 0.6),
+    core: css(mix(rgb, 255, 0.45)),
+    filament: css(mix(rgb, 255, 0.88)),
+  }
+}
 
 type Glyph = { key: string; path: string; x: number }
 
@@ -72,7 +122,8 @@ function layoutDigits(rank: number): { glyphs: Glyph[]; inkW: number } {
  * SVG del numero al neon: cifre alte `digitH` px. Restituisce le misure in px
  * e dove sta l'inchiostro dentro l'immagine (l'alone sborda di `pad`).
  */
-export function neonNumberSvg(rank: number, digitH: number): { svg: string; width: number; height: number; inkLeft: number; inkW: number } {
+export function neonNumberSvg(rank: number, digitH: number, palette: NeonPalette = BLUE_NEON): { svg: string; width: number; height: number; inkLeft: number; inkW: number } {
+  const { glow: GLOW, edge: TUBE_EDGE, body: TUBE_BODY, core: CORE, filament: FILAMENT } = palette
   const k = digitH / DIGIT_BOX_H
   const { glyphs, inkW } = layoutDigits(rank)
   const vbW = inkW + PAD * 2
@@ -144,6 +195,8 @@ export interface RankStripInput {
    * Serve un formato con alfa (WebP), vedi la route poster.
    */
   readonly transparent?: boolean
+  /** Colore del numero (già risolto: "auto" lo decide il chiamante). */
+  readonly tint?: "white" | "blue" | `#${string}`
 }
 
 /**
@@ -164,17 +217,14 @@ export async function composeRankStrip(input: RankStripInput): Promise<Buffer> {
 </svg>`
   // Numero: alto ~41% del canvas, centrato in verticale; l'inchiostro
   // finisce sul bordo del pannello (lo sfiora appena, come nel riferimento).
-  const num = neonNumberSvg(input.rank, numberLayout(W, H, input.rank).digitH)
+  const num = neonNumberSvg(input.rank, numberLayout(W, H, input.rank).digitH, neonPalette(input.tint ?? "blue"))
   const numPng = await sharp(Buffer.from(num.svg)).png().toBuffer()
   const inkRight = S - Math.round(stripMargin(W) * 0.4)
   const numLeft = inkRight - num.inkW - num.inkLeft
   const numTop = Math.round(H * 0.51 - num.height / 2)
-  // Ombra del pannello sulla striscia.
-  // Trasparente: ombra più corta e leggera, non una macchia scura sul fondo
-  // del client.
-  const shadowOpacity = input.transparent ? 0.3 : 0.55
-  const shadowBlur = Math.max(2, Math.round(H * (input.transparent ? 0.012 : 0.02)))
-  const shadow = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs><filter id="s" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${shadowBlur}"/></filter></defs><rect x="${S - 2}" y="0" width="${panelW + r}" height="${H}" rx="${r}" fill="#000" opacity="${shadowOpacity}" filter="url(#s)"/></svg>`
+  // Ombra del pannello sulla striscia: uguale anche da trasparente, dove
+  // scurisce il colore del client e stacca il pannello (resa più bella).
+  const shadow = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs><filter id="s" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${Math.max(2, Math.round(H * 0.02))}"/></filter></defs><rect x="${S - 2}" y="0" width="${panelW + r}" height="${H}" rx="${r}" fill="#000" opacity="0.55" filter="url(#s)"/></svg>`
   // Pannello: angoli sinistri arrotondati (a destra il bordo del canvas).
   const mask = `<svg xmlns="http://www.w3.org/2000/svg" width="${panelW}" height="${H}"><path d="M${r},0 L${panelW},0 L${panelW},${H} L${r},${H} Q0,${H} 0,${H - r} L0,${r} Q0,0 ${r},0 Z" fill="#fff"/></svg>`
   const edge = `<svg xmlns="http://www.w3.org/2000/svg" width="${panelW}" height="${H}"><path d="M${panelW},0.75 L${r},0.75 Q0.75,0.75 0.75,${r} L0.75,${H - r} Q0.75,${H - 0.75} ${r},${H - 0.75} L${panelW},${H - 0.75}" fill="none" stroke="rgba(150,190,255,0.28)" stroke-width="1.5"/></svg>`

@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server"
 import { cacheGet, cacheGetStale, cacheSet } from "@/lib/cache"
 import { createLogger } from "@/lib/logger"
 import { envWithFallback } from "@/lib/env-compat"
-import { isBadgeStyle, isRankingBadgeStyle, isBadgeFont, isHebrewFont, isPosterStyle, normalizeTagSize } from "@/lib/badge-styles"
+import { isBadgeStyle, isRankingBadgeStyle, isBadgeFont, isHebrewFont, isPosterStyle, normalizeTagSize, normalizeNeonTint } from "@/lib/badge-styles"
 import { POSTER_CACHE_ALLOWLIST } from "./poster-params-hardening"
 
 const log = createLogger("poster-cache")
@@ -152,6 +152,8 @@ export function normalizePosterCacheParams(searchParams: URLSearchParams): URLSe
   if (ltop !== null && ltop !== "0" && ltop !== "1") params.set("ltop", "1")
   const ltrans = params.get("ltrans")
   if (ltrans !== null && ltrans !== "0" && ltrans !== "1") params.set("ltrans", "0")
+  const ltint = params.get("ltint")
+  if (ltint !== null) params.set("ltint", normalizeNeonTint(ltint))
   const tsize = params.get("tsize")
   if (tsize !== null) params.set("tsize", String(normalizeTagSize(tsize)))
 

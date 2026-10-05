@@ -9,7 +9,7 @@ import { BadgeStyleSelector, VideoFormatSelector, BadgeFontSelector, HebrewFontS
 import { Toggle } from "@/components/Toggle"
 import { KNOWN_VIDEO_FORMATS } from "@/lib/av-specs"
 import { SliderRow } from "@/components/SliderRow"
-import { DEFAULT_TAG_SIZE, TAG_SIZE_MAX, TAG_SIZE_MIN, normalizeTagSize, type PosterStyle } from "@/lib/badge-styles"
+import { DEFAULT_TAG_SIZE, TAG_SIZE_MAX, TAG_SIZE_MIN, normalizeNeonTint, normalizeTagSize, type PosterStyle } from "@/lib/badge-styles"
 
 /** Stili grafici predefiniti (tab Badge). Estratto da SettingsPanel: solo JSX + context, nessuno stato locale. */
 export function BadgeStyleSection() {
@@ -102,6 +102,48 @@ export function BadgeStyleSection() {
               <Toggle value={ed.defaultLandscapeTop10Transparent} onChange={(v) => ed.setDefaultLandscapeTop10Transparent(v)} label={t("ui.landscapeTop10Transparent")} />
             </div>
             <p className="text-[11px] text-zinc-500 leading-snug">{t("ui.landscapeTop10TransparentHint")}</p>
+          </div>
+        )}
+        {ed.defaultLandscapeTop10 && (
+          <div className="pt-1 space-y-1.5">
+            <span className="text-[11px] text-zinc-300 block">{t("ui.neonTint")}</span>
+            <div className="flex items-center gap-1.5 flex-wrap" role="radiogroup" aria-label={t("ui.neonTint")}>
+              {([
+                ["auto", t("ui.neonTintAuto"), "conic-gradient(#3fb6ff 0 50%, #f4f7ff 0)"],
+                ["white", t("ui.neonTintWhite"), "#f4f7ff"],
+                ["blue", t("ui.neonTintBlue"), "#3fb6ff"],
+              ] as const).map(([value, label, swatch]) => {
+                const active = ed.defaultLandscapeTop10Tint === value
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => ed.setDefaultLandscapeTop10Tint(value)}
+                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px] transition-colors ${active ? "bg-accent-orange/15 border-accent-orange/35 text-accent-orange" : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"}`}
+                  >
+                    <span className="w-3 h-3 rounded-full border border-white/20" style={{ background: swatch, boxShadow: `0 0 6px ${value === "white" ? "#ffffff" : "#3fb6ff"}` }} />
+                    {label}
+                  </button>
+                )
+              })}
+              {/* Colore libero: il tubo prende alone, nucleo e filamento dal colore. */}
+              <label
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px] cursor-pointer transition-colors ${ed.defaultLandscapeTop10Tint.startsWith("#") ? "bg-accent-orange/15 border-accent-orange/35 text-accent-orange" : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"}`}
+                title={t("ui.neonTintCustom")}
+              >
+                <input
+                  type="color"
+                  aria-label={t("ui.neonTintCustom")}
+                  value={ed.defaultLandscapeTop10Tint.startsWith("#") ? ed.defaultLandscapeTop10Tint : "#ff3d7f"}
+                  onChange={(e) => ed.setDefaultLandscapeTop10Tint(normalizeNeonTint(e.target.value))}
+                  className="w-3.5 h-3.5 rounded-full cursor-pointer border-0 bg-transparent [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full"
+                />
+                {t("ui.neonTintCustom")}
+              </label>
+            </div>
+            <p className="text-[11px] text-zinc-500 leading-snug">{t("ui.neonTintHint")}</p>
           </div>
         )}
       </div>

@@ -153,6 +153,24 @@ export function isPosterStyle(v: string | null | undefined): v is PosterStyle {
 }
 
 /**
+ * Fork: colore del numero al neon della striscia top 10. "auto" = blu sulla
+ * striscia blu notte, bianco sulla striscia trasparente (si adatta al colore
+ * dell'interfaccia del client); poi bianco, blu o un colore #rrggbb.
+ * Catena: query `ltint` > config token > server defaults > "auto".
+ */
+export type NeonTint = "auto" | "white" | "blue" | `#${string}`
+export const DEFAULT_NEON_TINT: NeonTint = "auto"
+
+/** Valore libero → tinta valida (invalido → auto). */
+export function normalizeNeonTint(v: string | null | undefined): NeonTint {
+  const t = (v ?? "").trim().toLowerCase()
+  if (t === "white" || t === "blue" || t === "auto") return t
+  if (/^#[0-9a-f]{6}$/.test(t)) return t as NeonTint
+  if (/^[0-9a-f]{6}$/.test(t)) return `#${t}` as NeonTint
+  return DEFAULT_NEON_TINT
+}
+
+/**
  * Fork: grandezza della tag (stile tag) in % del default del formato.
  * Catena: query `tsize` > config token > server defaults > 100.
  */

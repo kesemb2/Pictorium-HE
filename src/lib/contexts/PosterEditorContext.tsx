@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useMemo, useCallback } from "react"
+import type { NeonTint } from "@/lib/badge-styles"
 import type { TMDBImage, NetworkLogoPosition, PosterShape } from "@/lib/types"
 import { useDefaults } from "@/lib/useDefaults"
 import type { LandscapeServerDefaults } from "@/lib/server-defaults"
@@ -161,6 +162,8 @@ export interface PosterEditorCtx {
   setDefaultLandscapeTop10: (v: boolean) => void
   defaultLandscapeTop10Transparent: boolean
   setDefaultLandscapeTop10Transparent: (v: boolean) => void
+  defaultLandscapeTop10Tint: NeonTint
+  setDefaultLandscapeTop10Tint: (v: NeonTint) => void
   defaultTagSize: number
   setDefaultTagSize: (v: number) => void
   /** Stile icone del badge qualità di default. */
@@ -478,7 +481,7 @@ export function PosterEditorProvider({
     networkLogoOffsetX, networkLogoOffsetY,
     badgeStyle, rankingBadgeStyle, qualityBadgeStyle, videoFormats,
     badgeFont, defaultBadgeFont, defaultHebrewFont, defaultPosterStyle, defaultTagFade, defaultTagCard,
-    defaultLandscapeStyle, defaultLandscapeTop10, defaultLandscapeTop10Transparent, defaultTagSize,
+    defaultLandscapeStyle, defaultLandscapeTop10, defaultLandscapeTop10Transparent, defaultLandscapeTop10Tint, defaultTagSize,
     defaultBadgeStyle, defaultRankingBadgeStyle, defaultQualityBadgeStyle, defaultVideoFormats,
     defaultBlurEnabled, defaultBlurIntensity, defaultBlurFade, defaultBlurDarkness, defaultTintStrength, defaultTopShade,
     defaultGradientHeight, defaultGlobalBadges, defaultRankingBadges,
@@ -833,6 +836,10 @@ export function PosterEditorProvider({
   const setDefaultLandscapeTop10Transparent = useCallback(
     (v: boolean) => {
       update({ defaultLandscapeTop10Transparent: v })
+    }, [update])
+  const setDefaultLandscapeTop10Tint = useCallback(
+    (v: NeonTint) => {
+      update({ defaultLandscapeTop10Tint: v })
     }, [update])
   const setDefaultTagSize = useCallback(
     (v: number) => {
@@ -1268,6 +1275,8 @@ export function PosterEditorProvider({
       setDefaultLandscapeTop10,
       defaultLandscapeTop10Transparent,
       setDefaultLandscapeTop10Transparent,
+      defaultLandscapeTop10Tint,
+      setDefaultLandscapeTop10Tint,
       defaultTagSize,
       setDefaultTagSize,
       defaultQualityBadgeStyle,
@@ -1546,6 +1555,7 @@ export function PosterEditorProvider({
       defaultLandscapeStyle, setDefaultLandscapeStyle,
       defaultLandscapeTop10, setDefaultLandscapeTop10,
       defaultLandscapeTop10Transparent, setDefaultLandscapeTop10Transparent,
+      defaultLandscapeTop10Tint, setDefaultLandscapeTop10Tint,
       defaultTagSize, setDefaultTagSize,
       defaultQualityBadgeStyle, setDefaultQualityBadgeStyle,
       defaultVideoFormats, setDefaultVideoFormats,

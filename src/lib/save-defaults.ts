@@ -77,6 +77,7 @@ export async function saveDefaults(ed: PosterEditorCtx): Promise<boolean> {
     landscapeStyle: ed.defaultLandscapeStyle,
     landscapeTop10: ed.defaultLandscapeTop10,
     landscapeTop10Transparent: ed.defaultLandscapeTop10Transparent,
+    landscapeTop10Tint: ed.defaultLandscapeTop10Tint,
     tagSize: ed.defaultTagSize,
     autoRotateClean: ed.defaultAutoRotateClean,
     defaultAutoRotateBackdrop: ed.defaultAutoRotateBackdrop,

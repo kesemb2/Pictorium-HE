@@ -32,6 +32,7 @@ const USER_SAVED = {
   landscapeStyle: "classic",
   landscapeTop10: true,
   landscapeTop10Transparent: false,
+  landscapeTop10Tint: "auto",
   tagSize: 100,
   qualityBadgeStyle: "standard",
   videoFormats: ["dv", "hdr", "hdr10plus", "atmos", "imax"],

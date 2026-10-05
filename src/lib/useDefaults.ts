@@ -13,7 +13,7 @@ import { USER_UNLOCK_EVENT, currentPathUuid } from "./user-token"
 import { t } from "./i18n"
 import { normalizeSashOrder, DEFAULT_SASH_ORDER, type SashBucket } from "./badge-priority"
 import { DEFAULT_QUALITY_BADGE_STYLE, type QualityBadgeStyle } from "./badge-styles"
-import { DEFAULT_BADGE_FONT, isBadgeFont, type BadgeFont, DEFAULT_HEBREW_FONT, isHebrewFont, type HebrewFont, DEFAULT_POSTER_STYLE, isPosterStyle, type PosterStyle, DEFAULT_TAG_SIZE, normalizeTagSize } from "./badge-styles"
+import { DEFAULT_BADGE_FONT, isBadgeFont, type BadgeFont, DEFAULT_HEBREW_FONT, isHebrewFont, type HebrewFont, DEFAULT_POSTER_STYLE, isPosterStyle, type PosterStyle, DEFAULT_TAG_SIZE, normalizeTagSize, DEFAULT_NEON_TINT, normalizeNeonTint, type NeonTint } from "./badge-styles"
 import { KNOWN_VIDEO_FORMATS, isVideoFormat, type VideoFormat } from "./av-specs"
 
 export type RibbonSide = "left" | "right"
@@ -34,6 +34,8 @@ export interface DefaultsState {
   defaultLandscapeTop10: boolean
   /** Fork, esperimento: striscia top 10 trasparente (default off). */
   defaultLandscapeTop10Transparent: boolean
+  /** Fork: colore del numero al neon (default "auto"). */
+  defaultLandscapeTop10Tint: NeonTint
   defaultTagSize: number
   /** Stile icone del badge qualità di default (default "standard"). */
   defaultQualityBadgeStyle: QualityBadgeStyle
@@ -210,6 +212,7 @@ const DEFAULTS: DefaultsState = {
   defaultLandscapeStyle: DEFAULT_POSTER_STYLE,
   defaultLandscapeTop10: true,
   defaultLandscapeTop10Transparent: false,
+  defaultLandscapeTop10Tint: DEFAULT_NEON_TINT,
   defaultTagSize: DEFAULT_TAG_SIZE,
   defaultQualityBadgeStyle: DEFAULT_QUALITY_BADGE_STYLE,
   defaultVideoFormats: [...KNOWN_VIDEO_FORMATS],
@@ -401,6 +404,7 @@ interface StoredDefaults {
   landscapeStyle?: PosterStyle
   landscapeTop10?: boolean
   landscapeTop10Transparent?: boolean
+  landscapeTop10Tint?: string
   tagSize?: number
   defaultQualityBadgeStyle?: QualityBadgeStyle
   defaultBlurEnabled?: boolean
@@ -533,6 +537,7 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     defaultLandscapeStyle: isPosterStyle(d.landscapeStyle) ? d.landscapeStyle : DEFAULT_POSTER_STYLE,
     defaultLandscapeTop10: d.landscapeTop10 !== false,
     defaultLandscapeTop10Transparent: d.landscapeTop10Transparent === true,
+    defaultLandscapeTop10Tint: normalizeNeonTint(d.landscapeTop10Tint),
     defaultTagSize: normalizeTagSize(d.tagSize),
     defaultQualityBadgeStyle: d.defaultQualityBadgeStyle ?? d.qualityBadgeStyle ?? DEFAULT_QUALITY_BADGE_STYLE,
     defaultVideoFormats: Array.isArray(d.defaultVideoFormats)
@@ -690,6 +695,7 @@ function defaultsToPayload(d: DefaultsState): Record<string, unknown> {
     landscapeStyle: d.defaultLandscapeStyle,
     landscapeTop10: d.defaultLandscapeTop10,
     landscapeTop10Transparent: d.defaultLandscapeTop10Transparent,
+    landscapeTop10Tint: d.defaultLandscapeTop10Tint,
     tagSize: d.defaultTagSize,
     qualityBadgeStyle: d.defaultQualityBadgeStyle,
     blurEnabled: d.defaultBlurEnabled,

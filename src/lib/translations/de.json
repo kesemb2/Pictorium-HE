@@ -1096,5 +1096,11 @@
   "ui.catalogShapePoster": "Portrait",
   "ui.catalogShapeLandscape": "Landscape",
   "ui.landscapeTop10Transparent": "Transparent number strip (experimental)",
-  "ui.landscapeTop10TransparentHint": "Only the number and the poster stay; the app's interface shows behind them. These posters are served as WebP with transparency."
+  "ui.landscapeTop10TransparentHint": "Only the number and the poster stay; the app's interface shows behind them. These posters are served as WebP with transparency.",
+  "ui.neonTint": "Number color",
+  "ui.neonTintAuto": "Auto",
+  "ui.neonTintWhite": "White",
+  "ui.neonTintBlue": "Blue",
+  "ui.neonTintCustom": "Custom color",
+  "ui.neonTintHint": "Auto: blue on the navy strip, white neon on the transparent one (it fits any app color)."
 }

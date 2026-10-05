@@ -47,6 +47,8 @@ export interface StremioPosterParamsInput {
   readonly landscapeTop10?: boolean
   /** Fork, esperimento: `ltrans=1` solo se accesa. */
   readonly landscapeTop10Transparent?: boolean
+  /** Fork: colore del numero, `ltint` solo se non "auto". */
+  readonly landscapeTop10Tint?: string | null
   readonly tagSize?: number | null
   /** Stile icone qualità: emesso come `qbs` solo quando non-standard (cache stabile). */
   readonly qualityBadgeStyle?: QualityBadgeStyle | null
@@ -376,6 +378,7 @@ export function buildStremioPosterSearchParams(input: StremioPosterParamsInput):
   }
   if (input.landscapeTop10 === false) params.set("ltop", "0")
   if (input.landscapeTop10Transparent === true) params.set("ltrans", "1")
+  if (input.landscapeTop10Tint && input.landscapeTop10Tint !== "auto") params.set("ltint", input.landscapeTop10Tint)
   // Stile icone qualità solo quando non-standard: gli URL esistenti restano
   // identici e la cache non si invalida (il server risolve lo standard da solo).
   if (input.qualityBadgeStyle === "mono" || input.qualityBadgeStyle === "color") {

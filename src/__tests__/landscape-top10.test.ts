@@ -208,3 +208,45 @@ describe("transparent rank strip (experiment)", () => {
     expect(buildDefaultsPreviewUrl({})).toContain("ltrans=0")
   })
 })
+
+describe("neon number tint", () => {
+  it("blue keeps the hand-drawn reference palette; white and custom colors derive a tube", async () => {
+    const { neonPalette } = await import("@/lib/rank-strip")
+    expect(neonPalette("blue").glow).toBe("#1a5dff")
+    expect(neonPalette("white").filament).toBe("#ffffff")
+    const pink = neonPalette("#ff3d7f")
+    expect(pink.glow).toBe("rgb(255,61,127)")
+    // Il filamento è quasi bianco, il corpo quasi nero: è un tubo, non una tinta piatta.
+    expect(pink.filament).toMatch(/^rgb\(255,2[34]\d,2[34]\d\)$/)
+    expect(pink.body).toMatch(/^rgba\(38,9,19,0.6\)$/)
+  })
+
+  it("resolves ltint (default auto) and emits it only when chosen", async () => {
+    const { normalizeNeonTint } = await import("@/lib/badge-styles")
+    expect(normalizeNeonTint(undefined)).toBe("auto")
+    expect(normalizeNeonTint("FF3D7F")).toBe("#ff3d7f")
+    expect(normalizeNeonTint("red")).toBe("auto")
+    const resolve = (q: string, sd: Record<string, unknown> = {}) => resolvePosterRenderConfig({
+      searchParams: new URLSearchParams(q), mapping: null, configOverride: null, sd: sd as never,
+      hasQuery: true, showBadges: true, rankingBadges: true, animeRank: null, rankingResult: null, finalRank: null,
+    }).landscapeTop10Tint
+    expect(resolve("")).toBe("auto")
+    expect(resolve("", { landscapeTop10Tint: "white" })).toBe("white")
+    expect(resolve("ltint=%2300ff88", { landscapeTop10Tint: "white" })).toBe("#00ff88")
+    expect(normalizePosterCacheParams(new URLSearchParams("ltint=bogus")).get("ltint")).toBe("auto")
+    expect(buildStremioPosterSearchParams({ landscapeTop10Tint: "auto" }).get("ltint")).toBeNull()
+    expect(buildStremioPosterSearchParams({ landscapeTop10Tint: "white" }).get("ltint")).toBe("white")
+    expect(buildDefaultsPreviewUrl({ defaultLandscapeTop10Tint: "#00ff88" })).toContain("ltint=%2300ff88")
+  })
+
+  it("a transparent strip keeps the full panel shadow", async () => {
+    const W = 768, H = 432, S = rankStripWidth(W, H, 3)
+    const panel = await sharp({ create: { width: W - S, height: H, channels: 3, background: "#d0d0d0" } }).png().toBuffer()
+    const out = await composeRankStrip({ panel, rank: 3, canvasW: W, canvasH: H, stripW: S, transparent: true, tint: "white" })
+    const { data } = await sharp(out).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    // A sinistra del pannello, in alto (lontano dal numero): l'ombra piena
+    // (sfocatura 9px) arriva qui; quella ridotta di prima (5px) no.
+    const a = data[((10) * W + (S - 8)) * 4 + 3]!
+    expect(a).toBeGreaterThan(8)
+  })
+})
