@@ -86,6 +86,7 @@ import { generatePosterBuffer, type GenerationInput, type ReadabilityReport } fr
 import { computeTopBadge } from "@/lib/poster-badge"
 import { containsHebrew } from "@/lib/badge-svg-shared"
 import { getFanartMovie, getFanartTv, isFanartEnabled, type FanartImage } from "@/lib/fanart-artwork"
+import { topTodayRank } from "@/lib/top-today"
 import { checkPosterText, isVerifiableUrl, rejectTextedUrls, verifiedTextlessPosters, verifyCleanPool, CLEAN_VERIFY_LIMIT, type PosterTextCheck } from "@/lib/poster-textless"
 import { logoContrast, logoInkLuminance, posterLogoZoneLuminance } from "@/lib/logo-contrast"
 import { isTmdbTrending } from "@/lib/tmdb-trending-badge"
@@ -380,6 +381,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // (cleanBackdrops), in portrait il poster (cleanPosters). Stessa catena
   // query > mapping > config > defaults usata dal render.
   const earlyLandscape = resolvePosterShape(req.nextUrl.searchParams, mapping, configOverride, sd) === "landscape"
+  // Fork: posizione nella top 10 di oggi per la striscia col numero (solo
+  // orizzontale, striscia accesa). Calcolata qui perché entra nella chiave di
+  // cache: quando la classifica cambia, il poster cambia. Lista in cache 3h,
+  // una sola costruzione per tutte le richieste.
+  const qLtop = req.nextUrl.searchParams.get("ltop")
+  const earlyTop10 = earlyLandscape && (qLtop !== null ? qLtop !== "0" : (configOverride?.landscapeTop10 ?? sd.landscapeTop10 ?? true))
+  const topTodayPosition = earlyTop10 && (mediaType === "movie" || mediaType === "tv")
+    ? await topTodayRank(mediaType, tmdbId, effTmdbKey).catch(() => null)
+    : null
 
   // Auto-rotate 24h: sfondi landscape o poster verticali a seconda del formato.
   let isRotating = false
@@ -513,10 +523,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   const legacyAvif = outputFormat === "avif"
   const canonicalFormat = legacyAvif ? "avif" : DEFAULT_IMAGE_FORMAT
   const formatKey = legacyAvif ? ":fmtavif" : canonicalFormat === "webp" ? ":fmtwebp" : ""
-  const cacheKey = `poster:v${RENDER_VERSION}:${mediaType}:${tmdbId}:reg${posterRegion.code}:r${cachedRank ?? "x"}:sd${sdHash}:${cacheParams.toString()}${rotateKey}${mapVersion}${dynamicBucketKey}${configHash ? `:cfg${configHash}` : ""}${formatKey}`
+  const topTodayKey = topTodayPosition ? `:tt${topTodayPosition}` : ""
+  const cacheKey = `poster:v${RENDER_VERSION}:${mediaType}:${tmdbId}:reg${posterRegion.code}:r${cachedRank ?? "x"}:sd${sdHash}:${cacheParams.toString()}${rotateKey}${mapVersion}${dynamicBucketKey}${topTodayKey}${configHash ? `:cfg${configHash}` : ""}${formatKey}`
   const needsVariant = !legacyAvif && outputFormat !== canonicalFormat
   const variantKey = needsVariant ? `${cacheKey}:fmt${outputFormat}` : cacheKey
-  const etagBase = hashKey(`v${RENDER_VERSION}:${mediaType}:${tmdbId}:reg${posterRegion.code}:r${cachedRank ?? "x"}:sd${sdHash}:${cacheParams.toString()}${configHash ? `:${configHash}` : ""}`)
+  const etagBase = hashKey(`v${RENDER_VERSION}:${mediaType}:${tmdbId}:reg${posterRegion.code}:r${cachedRank ?? "x"}:sd${sdHash}:${cacheParams.toString()}${topTodayKey}${configHash ? `:${configHash}` : ""}`)
   const currentMappingVersion = mappingVersionParam(mapping)
   // Rating dinamici: con provider abilitato niente cache immutable annuale
   // (i rating cambiano) — vale anche il display-aware locale: solo la riga
@@ -2031,6 +2042,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     })
     const {
       badgeStyle, rankingBadgeStyle, qualityBadgeStyle, badgeFont, hebrewFont, posterStyle, tagFade, tagCard,
+      landscapeStyle, landscapeTop10, tagSize,
       blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness, tintStrength, topShade,
       badgesEnabled, rankingEnabled,
       badgeGenre, badgeYear, badgeRating, badgeQuality, minQuality, sashOrder,
@@ -2251,6 +2263,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
             posterStyle,
             tagFade,
             tagCard,
+            landscapeStyle,
+            landscapeTop10,
+            tagSize,
+            topToday: topTodayPosition,
             badgeGenre,
             badgeYear,
             badgeRating,
@@ -2328,6 +2344,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       blurEnabled, blurHeight: effBlurHeight, blurIntensity, blurFade: effBlurFade, blurDarkness, tintStrength, topShade,
       badgesEnabled, rankingEnabled, genreName, voteAverage, badgeStyle,
       rankingBadgeStyle, badgeFont, hebrewFont, posterStyle, tagFade, tagCard, badgeGenre, badgeYear, badgeRating: effectiveBadgeRating, badgeQuality,
+      landscapeStyle, tagSize,
+      // La striscia è un modo di mostrare il rank: spenta coi badge di
+      // classifica (`ranking=0`) o col suo interruttore.
+      rankStrip: landscapeTop10 && rankingEnabled ? topTodayPosition : null,
       qualityBadgeStyle,
       videoFormats: finalVideoFormats,
       separateRatings: useSeparate ? sepItems : undefined,

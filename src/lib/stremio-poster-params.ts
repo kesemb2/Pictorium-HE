@@ -42,6 +42,10 @@ export interface StremioPosterParamsInput {
   readonly posterStyle?: PosterStyle | null
   readonly tagFade?: boolean
   readonly tagCard?: boolean
+  /** Fork: stile orizzontale (`lstyle` solo se "tag"), striscia top 10 (`ltop=0` solo se spenta), grandezza tag (`tsize` solo se ≠ 100). */
+  readonly landscapeStyle?: PosterStyle | null
+  readonly landscapeTop10?: boolean
+  readonly tagSize?: number | null
   /** Stile icone qualità: emesso come `qbs` solo quando non-standard (cache stabile). */
   readonly qualityBadgeStyle?: QualityBadgeStyle | null
   /** Formati A/V abilitati: emessi come `formats` solo se specificati. */
@@ -361,11 +365,14 @@ export function buildStremioPosterSearchParams(input: StremioPosterParamsInput):
   // identici (CDN calda). Assente, il server risale a config token / defaults.
   if (input.hebrewFont && input.hebrewFont !== "rubik") params.set("hfont", input.hebrewFont)
   // Fork: stile tag solo quando scelto (URL classici invariati).
-  if (input.posterStyle === "tag") {
-    params.set("pstyle", "tag")
+  if (input.posterStyle === "tag") params.set("pstyle", "tag")
+  if (input.landscapeStyle === "tag") params.set("lstyle", "tag")
+  if (input.posterStyle === "tag" || input.landscapeStyle === "tag") {
     if (input.tagFade === false) params.set("tfade", "0")
     if (input.tagCard === false) params.set("tcard", "0")
+    if (input.tagSize != null && input.tagSize !== 100) params.set("tsize", String(input.tagSize))
   }
+  if (input.landscapeTop10 === false) params.set("ltop", "0")
   // Stile icone qualità solo quando non-standard: gli URL esistenti restano
   // identici e la cache non si invalida (il server risolve lo standard da solo).
   if (input.qualityBadgeStyle === "mono" || input.qualityBadgeStyle === "color") {

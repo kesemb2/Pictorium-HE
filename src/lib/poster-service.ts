@@ -45,6 +45,10 @@ import type { BadgeT } from "./poster-badge"
 import { isBadgeStyle, isRankingBadgeStyle, isRibbonRankingStyle, type BadgeStyle, type RankingBadgeStyle } from "./badge-styles"
 import type { BadgeFont, BadgeFontSpec, HebrewFont, PosterStyle } from "./badge-styles"
 import { composeTagStyle, tagLabelFor } from "./tag-style"
+import { composeRankStrip, rankStripWidth } from "./rank-strip"
+
+/** Fork: larghezza massima del logo orizzontale in stile tag (% del canvas). */
+const LANDSCAPE_TAG_LOGO_MAX_WIDTH_PCT = 56
 import { latinFontOf, withHebrewFont } from "./badge-styles"
 import { normalizeBadgeFont } from "./badge-svg-shared"
 import type { PosterImageFormat } from "@/lib/poster-runtime-cache"
@@ -140,6 +144,15 @@ export interface GenerationInput {
   tagFade?: boolean
   /** Fork, stile tag: card di vetro dietro logo e titolo (default on). */
   tagCard?: boolean
+  /** Fork: stile dei poster orizzontali, scelto a parte da quello verticale. */
+  landscapeStyle?: PosterStyle | null
+  /** Fork: grandezza della tag in % del default del formato (100). */
+  tagSize?: number | null
+  /**
+   * Fork: posizione nella top 10 di oggi (lib/top-today) da mostrare nella
+   * striscia col numero al neon (solo orizzontale; null = poster normale).
+   */
+  rankStrip?: number | null
   /** Stile icone del badge qualità (standard = pill testuale). */
   qualityBadgeStyle?: QualityBadgeStyle | null
   /** Formati A/V da affiancare alla qualità (dv, atmos, imax, hdr, hdr10plus). */
@@ -356,16 +369,18 @@ async function getVignette(canvasW: number = STD_W, canvasH: number = STD_H): Pr
   return p
 }
 
-// ---- Landscape corner scrim (una entry: 768×432 costanti) ----
-let _landscapeScrimPromise: Promise<Buffer> | null = null
-async function getLandscapeScrim(): Promise<Buffer> {
-  if (!_landscapeScrimPromise) {
-    const fresh = sharp(Buffer.from(cinematicCornerGradientSVG(LAND_W, LAND_H))).png().toBuffer()
+// ---- Landscape corner scrim (una entry per larghezza: 768 o il pannello) ----
+const _landscapeScrimCache = new Map<number, Promise<Buffer>>()
+async function getLandscapeScrim(width: number = LAND_W): Promise<Buffer> {
+  let p = _landscapeScrimCache.get(width)
+  if (!p) {
+    const fresh = sharp(Buffer.from(cinematicCornerGradientSVG(width, LAND_H))).png().toBuffer()
     // Reset su reject: vedi getVignette sopra.
-    fresh.catch(() => { if (_landscapeScrimPromise === fresh) _landscapeScrimPromise = null })
-    _landscapeScrimPromise = fresh
+    fresh.catch(() => { if (_landscapeScrimCache.get(width) === fresh) _landscapeScrimCache.delete(width) })
+    _landscapeScrimCache.set(width, fresh)
+    p = fresh
   }
-  return _landscapeScrimPromise
+  return p
 }
 // ---- Pre-release dim overlay (uno per dimensioni canvas) ----
 const _preReleaseDimCache = new Map<string, Promise<Buffer>>()
@@ -959,7 +974,7 @@ function treatmentSummary(
 
 export async function generatePosterBuffer(input: GenerationInput): Promise<Buffer> {
   const {
-    posterBuf, logoFetch, backdropFetch,
+    posterBuf: posterBufInput, logoFetch, backdropFetch,
     backdropScale, backdropOffsetX, backdropOffsetY,
     blurEnabled: blurEnabledInput, blurHeight, blurIntensity, blurFade, blurDarkness,
     // Default 20 quando il chiamante non lo passa (test diretti, vecchi adapter).
@@ -1007,7 +1022,8 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   } = input
   // Fork: stile "tag": niente fascia, niente riga genere, badge superiore
   // trasformato in tag di vetro (vedi lib/tag-style).
-  const tagStyle = input.posterStyle === "tag"
+  // In orizzontale vale lo stile scelto per l'orizzontale.
+  const tagStyle = (shape === "landscape" ? input.landscapeStyle : input.posterStyle) === "tag"
   const blurEnabled = blurEnabledInput && !tagStyle
 
   // Il badge genere in basso segue la luce del fondo, non del top (su poster
@@ -1021,8 +1037,19 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
 
   // Dimensioni canvas: portrait (default, byte-identico al passato) o
   // landscape 16:9 (prova ?shape=landscape, base = backdrop TMDB).
-  const CW = shape === "landscape" ? LAND_W : STD_W
+  // Fork: titolo nella top 10 di oggi → striscia col numero a sinistra; il
+  // poster si compone su un canvas più stretto (il pannello) e la striscia si
+  // aggiunge alla fine. Un rank fuori 1..10 non disegna niente.
+  const stripRank = shape === "landscape" && input.rankStrip && input.rankStrip >= 1 && input.rankStrip <= 10
+    ? Math.round(input.rankStrip)
+    : null
+  const stripW = stripRank ? rankStripWidth(LAND_W, LAND_H, stripRank) : 0
+  const CW = shape === "landscape" ? LAND_W - stripW : STD_W
   const CH = shape === "landscape" ? LAND_H : STD_H
+  // La base arriva a 768×432: col pannello si ritaglia al centro.
+  const posterBuf = stripW > 0
+    ? await sharp(posterBufInput).resize(CW, CH, { fit: "cover", position: "centre" }).toBuffer()
+    : posterBufInput
   // Layout logo per formato: in portrait è SEMPRE "center" per contratto.
   // In landscape può essere "left" (Cinematic) o "center", col logo
   // contenuto nei vincoli del canvas 16:9 (come i bound slider client).
@@ -1151,8 +1178,10 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
         // Vincoli logo per formato (stessi di context.tsx e
         // poster-fit-score.ts): portrait cap solo altezza + calibrazione
         // +10px; landscape contenuto 40% larghezza / 24% altezza.
+        // Fork: in orizzontale stile tag il logo è il protagonista al centro
+        // (42% della larghezza al default, come il riferimento).
         ...(isLandscape
-          ? { maxWidthPct: LANDSCAPE_LOGO_MAX_WIDTH_PCT, maxHeightPct: LANDSCAPE_LOGO_MAX_HEIGHT_PCT, topOffset: LANDSCAPE_LOGO_TOP_OFFSET }
+          ? { maxWidthPct: tagStyle ? LANDSCAPE_TAG_LOGO_MAX_WIDTH_PCT : LANDSCAPE_LOGO_MAX_WIDTH_PCT, maxHeightPct: LANDSCAPE_LOGO_MAX_HEIGHT_PCT, topOffset: LANDSCAPE_LOGO_TOP_OFFSET }
           : {
               maxHeightPct: PORTRAIT_LOGO_MAX_HEIGHT_PCT,
               topOffset: PORTRAIT_LOGO_TOP_OFFSET,
@@ -1262,7 +1291,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // Cinematic Left: scrim d'angolo per la leggibilità del blocco a sinistra
   // (si somma alla fascia blur bassa, che resta controllata dall'utente).
   if (isLandscapeLeft) {
-    composites.push({ input: await getLandscapeScrim(), top: 0, left: 0 })
+    composites.push({ input: await getLandscapeScrim(CW), top: 0, left: 0 })
   }
   // Velo pre-digitale: sopra poster/vignetta ma sotto logo e badge (restano
   // luminosi e leggibili). Costante cachata, nessun cambio di output a flag spento.
@@ -1371,8 +1400,10 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     voteCount: voteCount ?? null,
     nextEpisodeAirDate: nextEpisodeAirDate ?? null,
     tmdbTrending: !!tmdbTrending,
-    trendRank: finalRank,
-    animeRank: animeRankResult,
+    // Col numero nella striscia il rank non si ripete in un badge: resta il
+    // resto della scala (premi, stagioni…), che in stile tag diventa la tag.
+    trendRank: stripRank ? null : finalRank,
+    animeRank: stripRank ? null : animeRankResult,
     awards: wikidataResult.awards,
     nominations: wikidataResult.nominations,
     studios: wikidataResult.studios,
@@ -2291,6 +2322,7 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
       fade: input.tagFade !== false,
       card: input.tagCard !== false,
       font: badgeFont,
+      size: (input.tagSize ?? 100) / 100,
     })
     composites.push(...tagged.layers)
     if (readabilityReport) readabilityReport.tag = { label: tagLabel, logoTop: tagged.logoTop }
@@ -2317,6 +2349,12 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   }
 
   pipeline = pipeline.composite(layers)
+
+  // Fork: striscia col numero della top 10 (pannello + numero al neon).
+  if (stripRank) {
+    const panel = await pipeline.png().toBuffer()
+    pipeline = sharp(await composeRankStrip({ panel, rank: stripRank, canvasW: LAND_W, canvasH: LAND_H, stripW }))
+  }
 
   if (input.format === "avif") {
     return await pipeline.avif({ quality: 75, effort: 2 }).toBuffer()

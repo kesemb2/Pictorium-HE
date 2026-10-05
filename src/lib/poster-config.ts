@@ -23,6 +23,7 @@ import {
   type HebrewFont,
   isPosterStyle,
   DEFAULT_POSTER_STYLE,
+  normalizeTagSize,
   type PosterStyle,
   nonRibbonRankingStyle,
   DEFAULT_BADGE_STYLE,
@@ -95,6 +96,12 @@ export interface PosterRenderConfig {
   tagFade: boolean
   /** Fork, stile tag: card di vetro dietro il logo (query `tcard` > config > defaults > on). */
   tagCard: boolean
+  /** Fork: stile dei poster orizzontali (query `lstyle` > config > defaults > classic). */
+  landscapeStyle: PosterStyle
+  /** Fork: striscia top 10 in orizzontale (query `ltop` > config > defaults > on). */
+  landscapeTop10: boolean
+  /** Fork, stile tag: grandezza della tag in % (query `tsize` > config > defaults > 100). */
+  tagSize: number
   /** Stile icone del badge qualità (standard = pill testuale). */
   qualityBadgeStyle: QualityBadgeStyle
   blurEnabled: boolean
@@ -461,6 +468,15 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
   const tagCard: boolean = rawTcard !== null
     ? rawTcard !== "0"
     : (configOverride?.tagCard ?? sd.tagCard ?? true)
+  // Fork: lo stile dell'orizzontale si sceglie a parte; la striscia top 10 è
+  // accesa salvo scelta contraria; la grandezza tag vale per i due formati.
+  const rawLstyle = q.get("lstyle") ?? configOverride?.landscapeStyle ?? sd.landscapeStyle
+  const landscapeStyle: PosterStyle = isPosterStyle(rawLstyle) ? rawLstyle : DEFAULT_POSTER_STYLE
+  const rawLtop = q.get("ltop")
+  const landscapeTop10: boolean = rawLtop !== null
+    ? rawLtop !== "0"
+    : (configOverride?.landscapeTop10 ?? sd.landscapeTop10 ?? true)
+  const tagSize = normalizeTagSize(q.get("tsize") ?? configOverride?.tagSize ?? sd.tagSize)
 
   const qScale = q.get("scale")
   const qOx = q.get("ox")
@@ -687,6 +703,9 @@ const qSide = q.get("side")
     posterStyle,
     tagFade,
     tagCard,
+    landscapeStyle,
+    landscapeTop10,
+    tagSize,
     qualityBadgeStyle,
     blurEnabled,
     blurHeight,

@@ -289,6 +289,12 @@ const itDict: Record<string, string> = {
   "ui.tagFade": "Dissolvenza scura dal basso",
   "ui.tagCard": "Logo su pannello di vetro",
   "ui.tagFadeForced": "Senza pannello il logo poggia sempre sulla dissolvenza.",
+  "ui.portraitStyle": "Stile poster verticale",
+  "ui.landscapeStyle": "Stile poster orizzontale",
+  "ui.tagSize": "Dimensione tag",
+  "ui.tagOptions": "Opzioni stile tag",
+  "ui.landscapeTop10": "Numero Top 10 sui poster orizzontali",
+  "ui.landscapeTop10Hint": "Un titolo nella top 10 di oggi (TMDB, solo ciò che è già guardabile) riceve a sinistra una fascia con il suo numero luminoso.",
 }
 
 function mockT(key: string, params?: Record<string, string | number>): string {

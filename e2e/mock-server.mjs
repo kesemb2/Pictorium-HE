@@ -244,6 +244,12 @@ const server = http.createServer(async (req, res) => {
     ) {
       return json(res, 200, { page: 1, total_pages: 1, total_results: LIST_ITEMS.length, results: LIST_ITEMS })
     }
+    // Fork: date di uscita USA per la top 10 di oggi (lib/top-today): solo
+    // Interstellar è "a casa" in digitale, quindi è il n.1 della lista mock
+    // e l'unico poster orizzontale con la striscia del numero.
+    if (pathname === "/3/movie/157336/release_dates") {
+      return json(res, 200, { id: 157336, results: [{ iso_3166_1: "US", release_dates: [{ type: 3, release_date: "2014-11-05T00:00:00.000Z" }, { type: 4, release_date: "2015-03-31T00:00:00.000Z" }] }] })
+    }
     const detailsMatch = pathname.match(/^\/3\/(movie|tv)\/(\d+)$/)
     if (detailsMatch) {
       return json(res, 200, detailFor(detailsMatch[1]))

@@ -59,6 +59,7 @@ const RENDER_FILES = [
   "src/lib/poster-rotation.ts",
   "src/lib/poster-text-detect.ts",
   "src/lib/tag-style.ts",
+  "src/lib/rank-strip.ts",
   "src/lib/poster-service.ts",
   "src/lib/poster-url.ts",
   "src/lib/pre-release.ts",

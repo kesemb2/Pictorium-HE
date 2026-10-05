@@ -41,6 +41,8 @@ export interface TagStyleInput {
    */
   readonly card?: boolean
   readonly font?: BadgeFontSpec
+  /** Grandezza della tag (1 = default del formato). */
+  readonly size?: number
 }
 
 /** Scala delle misure: ritratto 500×750 = 1, landscape 768×432 ≈ 0.72. */
@@ -54,6 +56,9 @@ const GLASS_WASH = 0.06
 const GLASS_EDGE = 0.28
 const FADE_STRENGTH_MID = 0.68
 const FADE_STRENGTH_BOTTOM = 0.85
+/** In orizzontale il fondo è quasi nero (riferimento): logo e tag ci stanno sopra. */
+const FADE_LANDSCAPE_MID = 0.8
+const FADE_LANDSCAPE_BOTTOM = 0.95
 
 function round(n: number): number {
   return Math.round(n)
@@ -95,15 +100,39 @@ async function frostedGlass(
   return { input: glass, top: round(rect.top), left: round(rect.left) }
 }
 
+/** Misure della tag: altezza, corpo del testo, margini, larghezza minima. */
+export interface TagMetrics {
+  readonly h: number
+  readonly fs: number
+  readonly padX: number
+  readonly minW: number
+}
+
+/**
+ * Misure della tag per formato. Verticale: quelle di sempre (66px a 500×750).
+ * Orizzontale: dal riferimento 1920×1080 — tag alta il 13.4% del canvas, testo
+ * grande, margini ampi — perché sul 16:9 la tag è il secondo elemento della
+ * scena dopo il logo.
+ */
+export function tagMetrics(canvasW: number, canvasH: number, size = 1): TagMetrics {
+  const k = Math.min(1.6, Math.max(0.5, size))
+  if (canvasW > canvasH) {
+    const h = Math.round(canvasH * 0.134 * k)
+    return { h, fs: Math.round(h * 0.64), padX: Math.round(h * 0.72), minW: Math.round(h * 2.2) }
+  }
+  const s = tagScale(canvasW, canvasH) * k
+  return { h: Math.round(66 * s), fs: Math.round(30 * s), padX: Math.round(30 * s), minW: Math.round(120 * s) }
+}
+
 /** Testo bianco della tag (auto-ridotto per stare entro `maxW`). */
-async function tagText(label: string, maxW: number, s: number, font?: BadgeFontSpec): Promise<{ png: Buffer; w: number; h: number; padX: number }> {
-  let fs = Math.round(30 * s)
-  const padX = Math.round(30 * s)
-  while (fs > 14 && estimateTextWidth(label, fs, font) + padX * 2 > maxW) fs -= 1
+async function tagText(label: string, maxW: number, m: TagMetrics, font?: BadgeFontSpec): Promise<{ png: Buffer; w: number; h: number; padX: number }> {
+  let fs = m.fs
+  const padX = m.padX
+  while (fs > 12 && estimateTextWidth(label, fs, font) + padX * 2 > maxW) fs -= 1
   const textW = Math.round(estimateTextWidth(label, fs, font))
-  const w = Math.max(textW + padX * 2, Math.round(120 * s))
-  const h = Math.round(66 * s)
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><text x="${w / 2}" y="${h / 2 + 2 * s}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(label, font)}" font-weight="700" font-size="${fs}" fill="#ffffff">${escSvg(rtlSafe(label))}</text></svg>`
+  const w = Math.min(Math.round(maxW), Math.max(textW + padX * 2, m.minW))
+  const h = m.h
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><text x="${w / 2}" y="${h / 2 + h * 0.03}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(label, font)}" font-weight="700" font-size="${fs}" fill="#ffffff">${escSvg(rtlSafe(label))}</text></svg>`
   return { png: await renderSVG(svg, w), w, h, padX }
 }
 
@@ -116,10 +145,12 @@ export async function composeTagStyle(input: TagStyleInput): Promise<{ layers: T
   const cardOn = input.card !== false
   const fade = input.fade || !cardOn
   const s = tagScale(W, H)
-  const centerX = logo ? logo.left + logo.w / 2 : W / 2
+  // In orizzontale logo e tag stanno al centro del canvas (come il verticale),
+  // qualunque sia l'allineamento del layout classico.
+  const centerX = W > H || !logo ? W / 2 : logo.left + logo.w / 2
 
   // Tag (misura prima: la card poggia sopra di lei).
-  const tag = tagLabel ? await tagText(tagLabel, W * 0.8, s, font) : null
+  const tag = tagLabel ? await tagText(tagLabel, W * 0.8, tagMetrics(W, H, input.size), font) : null
   const tagRect = tag
     ? { left: Math.min(Math.max(0, round(centerX - tag.w / 2)), W - tag.w), top: H - tag.h, width: tag.w, height: tag.h }
     : null
@@ -148,10 +179,13 @@ export async function composeTagStyle(input: TagStyleInput): Promise<{ layers: T
 
   // Dissolvenza: trasparente sopra la card, scura sul fondo.
   // Senza card la dissolvenza parte più in alto: è lei a fare da fondo al logo.
-  const fadeTop = card ? Math.max(0, card.top - round((cardOn ? 90 : 110) * s)) : (tagRect ? Math.max(0, tagRect.top - round(80 * s)) : null)
+  const land = W > H
+  const fadeTop = card ? Math.max(0, card.top - round((cardOn ? 90 : land ? 140 : 110) * s)) : (tagRect ? Math.max(0, tagRect.top - round(80 * s)) : null)
   if (fade && fadeTop !== null) {
     const mid = (fadeTop + (H - fadeTop) * 0.55) / H
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs><linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="${(fadeTop / H).toFixed(4)}" stop-color="#000" stop-opacity="0"/><stop offset="${mid.toFixed(4)}" stop-color="#000" stop-opacity="${FADE_STRENGTH_MID}"/><stop offset="1" stop-color="#000" stop-opacity="${FADE_STRENGTH_BOTTOM}"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#f)"/></svg>`
+    const midOpacity = land ? FADE_LANDSCAPE_MID : FADE_STRENGTH_MID
+    const bottomOpacity = land ? FADE_LANDSCAPE_BOTTOM : FADE_STRENGTH_BOTTOM
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs><linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="${(fadeTop / H).toFixed(4)}" stop-color="#000" stop-opacity="0"/><stop offset="${mid.toFixed(4)}" stop-color="#000" stop-opacity="${midOpacity}"/><stop offset="1" stop-color="#000" stop-opacity="${bottomOpacity}"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#f)"/></svg>`
     const fadePng = await sharp(Buffer.from(svg)).png().toBuffer()
     layers.push({ input: fadePng, top: 0, left: 0 })
     // Il vetro deve sfocare ciò che si vede davvero: la dissolvenza inclusa.

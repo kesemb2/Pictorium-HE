@@ -154,6 +154,13 @@ export interface PosterEditorCtx {
   setDefaultTagFade: (v: boolean) => void
   defaultTagCard: boolean
   setDefaultTagCard: (v: boolean) => void
+  /** Fork: stile orizzontale, striscia top 10 e grandezza tag (globali). */
+  defaultLandscapeStyle: PosterStyle
+  setDefaultLandscapeStyle: (v: PosterStyle) => void
+  defaultLandscapeTop10: boolean
+  setDefaultLandscapeTop10: (v: boolean) => void
+  defaultTagSize: number
+  setDefaultTagSize: (v: number) => void
   /** Stile icone del badge qualità di default. */
   defaultQualityBadgeStyle: QualityBadgeStyle
   setDefaultQualityBadgeStyle: (v: QualityBadgeStyle | ((prev: QualityBadgeStyle) => QualityBadgeStyle)) => void
@@ -469,6 +476,7 @@ export function PosterEditorProvider({
     networkLogoOffsetX, networkLogoOffsetY,
     badgeStyle, rankingBadgeStyle, qualityBadgeStyle, videoFormats,
     badgeFont, defaultBadgeFont, defaultHebrewFont, defaultPosterStyle, defaultTagFade, defaultTagCard,
+    defaultLandscapeStyle, defaultLandscapeTop10, defaultTagSize,
     defaultBadgeStyle, defaultRankingBadgeStyle, defaultQualityBadgeStyle, defaultVideoFormats,
     defaultBlurEnabled, defaultBlurIntensity, defaultBlurFade, defaultBlurDarkness, defaultTintStrength, defaultTopShade,
     defaultGradientHeight, defaultGlobalBadges, defaultRankingBadges,
@@ -811,6 +819,18 @@ export function PosterEditorProvider({
   const setDefaultTagCard = useCallback(
     (v: boolean) => {
       update({ defaultTagCard: v })
+    }, [update])
+  const setDefaultLandscapeStyle = useCallback(
+    (v: PosterStyle) => {
+      update({ defaultLandscapeStyle: v })
+    }, [update])
+  const setDefaultLandscapeTop10 = useCallback(
+    (v: boolean) => {
+      update({ defaultLandscapeTop10: v })
+    }, [update])
+  const setDefaultTagSize = useCallback(
+    (v: number) => {
+      update({ defaultTagSize: v })
     }, [update])
   const setDefaultQualityBadgeStyle = useCallback(
     (v: QualityBadgeStyle | ((prev: QualityBadgeStyle) => QualityBadgeStyle)) => {
@@ -1236,6 +1256,12 @@ export function PosterEditorProvider({
       setDefaultTagFade,
       defaultTagCard,
       setDefaultTagCard,
+      defaultLandscapeStyle,
+      setDefaultLandscapeStyle,
+      defaultLandscapeTop10,
+      setDefaultLandscapeTop10,
+      defaultTagSize,
+      setDefaultTagSize,
       defaultQualityBadgeStyle,
       setDefaultQualityBadgeStyle,
       defaultVideoFormats,
@@ -1509,6 +1535,9 @@ export function PosterEditorProvider({
       defaultPosterStyle, setDefaultPosterStyle,
       defaultTagFade, setDefaultTagFade,
       defaultTagCard, setDefaultTagCard,
+      defaultLandscapeStyle, setDefaultLandscapeStyle,
+      defaultLandscapeTop10, setDefaultLandscapeTop10,
+      defaultTagSize, setDefaultTagSize,
       defaultQualityBadgeStyle, setDefaultQualityBadgeStyle,
       defaultVideoFormats, setDefaultVideoFormats,
       defaultEpisodeMetadataSource, setDefaultEpisodeMetadataSource,

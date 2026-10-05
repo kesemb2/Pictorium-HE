@@ -7,9 +7,9 @@ import { POSTER_STYLES, type PosterStyle } from "@/lib/badge-styles"
  * (nessuna immagine): fascia sfocata + riga genere per il classico, card di
  * vetro + tag in basso per lo stile tag.
  */
-function Thumb({ style }: { style: PosterStyle }) {
+function Thumb({ style, landscape }: { style: PosterStyle; landscape?: boolean }) {
   return (
-    <div dir="ltr" className="relative w-[46px] h-[69px] rounded-md overflow-hidden bg-gradient-to-b from-sky-900 via-amber-800 to-stone-700 shrink-0">
+    <div dir="ltr" className={`relative ${landscape ? "w-[69px] h-[39px]" : "w-[46px] h-[69px]"} rounded-md overflow-hidden bg-gradient-to-b from-sky-900 via-amber-800 to-stone-700 shrink-0`}>
       {style === "classic" ? (
         <>
           <div className="absolute inset-x-0 bottom-0 h-[38%] bg-gradient-to-b from-transparent via-black/55 to-black/80 backdrop-blur-[1px]" />
@@ -33,11 +33,14 @@ export function PosterStyleSelector({
   onChange,
   label,
   names,
+  landscape,
 }: {
   value: PosterStyle
   onChange: (v: PosterStyle) => void
   label: string
   names: Record<PosterStyle, { title: string; sub: string }>
+  /** Miniature 16:9 (scelta dello stile orizzontale). */
+  landscape?: boolean
 }) {
   return (
     <div className="grid grid-cols-2 gap-1.5 w-full" role="radiogroup" aria-label={label}>
@@ -56,7 +59,7 @@ export function PosterStyleSelector({
                 : "bg-white/5 hover:bg-white/10 border-transparent"
             }`}
           >
-            <Thumb style={s} />
+            <Thumb style={s} landscape={landscape} />
             <span className="min-w-0">
               <span className={`block text-xs font-semibold ${active ? "text-accent-orange" : "text-zinc-200"}`}>{names[s].title}</span>
               <span className="block text-[11px] text-muted leading-snug">{names[s].sub}</span>

@@ -1082,5 +1082,11 @@
   "ui.posterStyleTagSub": "Clean art, logo on glass, status tag",
   "ui.tagFade": "Dark fade from the bottom",
   "ui.tagCard": "Logo on a glass panel",
-  "ui.tagFadeForced": "Without the panel the logo always sits on the fade."
+  "ui.tagFadeForced": "Without the panel the logo always sits on the fade.",
+  "ui.portraitStyle": "Portrait poster style",
+  "ui.landscapeStyle": "Landscape poster style",
+  "ui.tagSize": "Tag size",
+  "ui.tagOptions": "Tag style options",
+  "ui.landscapeTop10": "Top 10 number on landscape posters",
+  "ui.landscapeTop10Hint": "A title in today's top 10 (TMDB, only what is already out to watch) gets a strip with its glowing number on the left."
 }

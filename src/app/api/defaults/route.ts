@@ -8,7 +8,7 @@ import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { getWarmupCatalogs } from "@/lib/catalog-definitions"
 import { createLogger } from "@/lib/logger"
 import { z } from "zod"
-import { BADGE_STYLES, RANKING_BADGE_STYLES, QUALITY_BADGE_STYLES, BADGE_FONTS, HEBREW_FONTS, POSTER_STYLES } from "@/lib/badge-styles"
+import { BADGE_STYLES, RANKING_BADGE_STYLES, QUALITY_BADGE_STYLES, BADGE_FONTS, HEBREW_FONTS, POSTER_STYLES, TAG_SIZE_MIN, TAG_SIZE_MAX } from "@/lib/badge-styles"
 import { readJsonBody, BodyTooLargeError, DEFAULT_MAX_BODY_BYTES } from "@/lib/read-body"
 import { envWithFallback } from "@/lib/env-compat"
 
@@ -48,6 +48,9 @@ const defaultsSchema = z.object({
   posterStyle: z.enum(POSTER_STYLES).optional(),
   tagFade: z.boolean().optional(),
   tagCard: z.boolean().optional(),
+  landscapeStyle: z.enum(POSTER_STYLES).optional(),
+  landscapeTop10: z.boolean().optional(),
+  tagSize: z.number().int().min(TAG_SIZE_MIN).max(TAG_SIZE_MAX).optional(),
   qualityBadgeStyle: z.enum(QUALITY_BADGE_STYLES).nullable().optional(),
   videoFormats: z.array(z.enum(["dv", "hdr", "hdr10plus", "atmos", "imax"])).nullable().optional(),
   defaultVideoFormats: z.array(z.enum(["dv", "hdr", "hdr10plus", "atmos", "imax"])).nullable().optional(),
