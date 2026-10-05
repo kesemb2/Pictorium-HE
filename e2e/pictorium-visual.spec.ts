@@ -746,6 +746,11 @@ test.describe("poster API — visual regression", () => {
   test("tag style on busy artwork — screenshot", async ({ page }) => {
     const poster = await renderPoster(page, tagUrl({ poster: "/mocked/readability-busy.jpg" }))
     await expect(poster).toHaveScreenshot("poster-tag-busy.png", { maxDiffPixelRatio: 0.05 })
+    // L'header di leggibilità porta testo ebraico: deve restare ByteString
+    // valido (un 500 qui ha già rotto il render una volta).
+    const res = await page.request.get(tagUrl({ poster: "/mocked/readability-busy.jpg" }))
+    expect(res.status()).toBe(200)
+    expect(JSON.parse(res.headers()["x-pictorium-readability"] ?? "{}").tag.label).toBe("עונה חדשה")
   })
 
   test("tag style on light artwork — screenshot", async ({ page }) => {

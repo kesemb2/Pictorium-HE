@@ -2423,7 +2423,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       ...posterHeaders(etag, effectiveImmutable, isPreview, dynamicPoster, outputFormat, effectiveTtlSec, isLive),
       // Solo sui render freschi (le copie in cache non lo portano): per
       // diagnosticare un poster basta ri-chiederlo con preview=1.
-      "X-Pictorium-Readability": JSON.stringify(readabilityReport),
+      // Gli header HTTP sono ByteString: l'ebraico (testo della tag) va
+      // escapato come \uXXXX, così il valore resta JSON valido e leggibile.
+      "X-Pictorium-Readability": JSON.stringify(readabilityReport).replace(/[\u007f-\uffff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`),
       "Server-Timing": serverTimingValue([
         { name: "fetch", durMs: tFetchMs },
         { name: "prep", durMs: tCompositeStart - startTime - tFetchMs },
