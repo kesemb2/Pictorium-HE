@@ -31,6 +31,7 @@ const USER_SAVED = {
   tagCard: true,
   landscapeStyle: "classic",
   landscapeTop10: true,
+  landscapeTop10Transparent: false,
   tagSize: 100,
   qualityBadgeStyle: "standard",
   videoFormats: ["dv", "hdr", "hdr10plus", "atmos", "imax"],
