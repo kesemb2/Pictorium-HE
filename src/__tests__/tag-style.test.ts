@@ -97,6 +97,19 @@ describe("tag poster style", () => {
     expect(noTag.logoTop! + 60).toBeGreaterThan(withTag.logoTop! + 60)
   })
 
+  it("without the card: same logo position, no card glass, fade forced on", async () => {
+    const base = await poster(() => 128)
+    const logo = { input: await sharp({ create: { width: 200, height: 60, channels: 4, background: "#fff" } }).png().toBuffer(), w: 200, h: 60, left: 150, top: 500 }
+    const withCard = await composeTagStyle({ base, canvasW: W, canvasH: H, logo, title: null, tagLabel: "בכורה", fade: false })
+    const noCard = await composeTagStyle({ base, canvasW: W, canvasH: H, logo, title: null, tagLabel: "בכורה", fade: false, card: false })
+    expect(noCard.logoTop).toBe(withCard.logoTop)
+    // Con card e senza dissolvenza: card + tag + logo + testo. Senza card la
+    // dissolvenza entra comunque (prima, a tutta tela) e la card sparisce.
+    expect(withCard.layers.some((l) => l.top === 0 && l.left === 0)).toBe(false)
+    expect(noCard.layers[0]!.top).toBe(0)
+    expect(noCard.layers.length).toBe(withCard.layers.length)
+  })
+
   it("a tag render reports the tag and lifts the logo above it", async () => {
     const report: ReadabilityReport = {}
     const buf = await render({ posterStyle: "tag", extra: "עונה חדשה", report })
@@ -137,5 +150,10 @@ describe("tag poster style", () => {
     expect(buildStremioPosterSearchParams({ posterStyle: "tag" }).get("tfade")).toBeNull()
     expect(buildDefaultsPreviewUrl({ defaultPosterStyle: "tag", defaultTagFade: false })).toContain("pstyle=tag")
     expect(buildDefaultsPreviewUrl({ defaultPosterStyle: "tag", defaultTagFade: false })).toContain("tfade=0")
+    expect(buildStremioPosterSearchParams({ posterStyle: "tag", tagCard: false }).get("tcard")).toBe("0")
+    expect(buildStremioPosterSearchParams({ posterStyle: "tag" }).get("tcard")).toBeNull()
+    expect(buildStremioPosterSearchParams({ posterStyle: "classic", tagCard: false }).get("tcard")).toBeNull()
+    expect(normalizePosterCacheParams(new URLSearchParams("tcard=x")).get("tcard")).toBe("1")
+    expect(resolve(null).tagCard).toBe(true)
   })
 })

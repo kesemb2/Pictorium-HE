@@ -34,6 +34,12 @@ export interface TagStyleInput {
   readonly tagLabel: string | null
   /** Dissolvenza scura dal basso fin sopra la card. */
   readonly fade: boolean
+  /**
+   * Card di vetro dietro logo e titolo (default true). Senza, logo e titolo
+   * poggiano sulla sola dissolvenza, che allora è sempre attiva: senza vetro
+   * né dissolvenza il logo tornerebbe sull'artwork nudo.
+   */
+  readonly card?: boolean
   readonly font?: BadgeFontSpec
 }
 
@@ -106,7 +112,9 @@ async function tagText(label: string, maxW: number, s: number, font?: BadgeFontS
  * in verticale: la card poggia sulla tag, o sul fondo quando non c'è tag.
  */
 export async function composeTagStyle(input: TagStyleInput): Promise<{ layers: TagLayer[]; logoTop: number | null; tagRect: { left: number; top: number; width: number; height: number } | null }> {
-  const { canvasW: W, canvasH: H, logo, title, tagLabel, fade, font } = input
+  const { canvasW: W, canvasH: H, logo, title, tagLabel, font } = input
+  const cardOn = input.card !== false
+  const fade = input.fade || !cardOn
   const s = tagScale(W, H)
   const centerX = logo ? logo.left + logo.w / 2 : W / 2
 
@@ -139,7 +147,8 @@ export async function composeTagStyle(input: TagStyleInput): Promise<{ layers: T
   let base = input.base
 
   // Dissolvenza: trasparente sopra la card, scura sul fondo.
-  const fadeTop = card ? Math.max(0, card.top - round(90 * s)) : (tagRect ? Math.max(0, tagRect.top - round(80 * s)) : null)
+  // Senza card la dissolvenza parte più in alto: è lei a fare da fondo al logo.
+  const fadeTop = card ? Math.max(0, card.top - round((cardOn ? 90 : 110) * s)) : (tagRect ? Math.max(0, tagRect.top - round(80 * s)) : null)
   if (fade && fadeTop !== null) {
     const mid = (fadeTop + (H - fadeTop) * 0.55) / H
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs><linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="${(fadeTop / H).toFixed(4)}" stop-color="#000" stop-opacity="0"/><stop offset="${mid.toFixed(4)}" stop-color="#000" stop-opacity="${FADE_STRENGTH_MID}"/><stop offset="1" stop-color="#000" stop-opacity="${FADE_STRENGTH_BOTTOM}"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#f)"/></svg>`
@@ -150,7 +159,7 @@ export async function composeTagStyle(input: TagStyleInput): Promise<{ layers: T
   }
 
   const [cardGlass, tagGlass] = await Promise.all([
-    card ? frostedGlass(base, card, 22 * s, false, s) : Promise.resolve(null),
+    card && cardOn ? frostedGlass(base, card, 22 * s, false, s) : Promise.resolve(null),
     tagRect ? frostedGlass(base, tagRect, 20 * s, true, s) : Promise.resolve(null),
   ])
   if (cardGlass) layers.push(cardGlass)

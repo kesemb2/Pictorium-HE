@@ -28,6 +28,7 @@ export interface DefaultsState {
   /** Fork: stile del poster (globale, default classic) e dissolvenza dello stile tag. */
   defaultPosterStyle: PosterStyle
   defaultTagFade: boolean
+  defaultTagCard: boolean
   /** Stile icone del badge qualità di default (default "standard"). */
   defaultQualityBadgeStyle: QualityBadgeStyle
   /** Formati A/V abilitati di default (dv, atmos, imax, hdr, hdr10plus). */
@@ -199,6 +200,7 @@ const DEFAULTS: DefaultsState = {
   defaultHebrewFont: DEFAULT_HEBREW_FONT,
   defaultPosterStyle: DEFAULT_POSTER_STYLE,
   defaultTagFade: true,
+  defaultTagCard: true,
   defaultQualityBadgeStyle: DEFAULT_QUALITY_BADGE_STYLE,
   defaultVideoFormats: [...KNOWN_VIDEO_FORMATS],
   defaultBlurEnabled: true,
@@ -385,6 +387,7 @@ interface StoredDefaults {
   hebrewFont?: HebrewFont
   posterStyle?: PosterStyle
   tagFade?: boolean
+  tagCard?: boolean
   defaultQualityBadgeStyle?: QualityBadgeStyle
   defaultBlurEnabled?: boolean
   defaultBlurIntensity?: number
@@ -512,6 +515,7 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     defaultHebrewFont: isHebrewFont(d.hebrewFont) ? d.hebrewFont : DEFAULT_HEBREW_FONT,
     defaultPosterStyle: isPosterStyle(d.posterStyle) ? d.posterStyle : DEFAULT_POSTER_STYLE,
     defaultTagFade: d.tagFade !== false,
+    defaultTagCard: d.tagCard !== false,
     defaultQualityBadgeStyle: d.defaultQualityBadgeStyle ?? d.qualityBadgeStyle ?? DEFAULT_QUALITY_BADGE_STYLE,
     defaultVideoFormats: Array.isArray(d.defaultVideoFormats)
       ? d.defaultVideoFormats.filter(isVideoFormat)
@@ -664,6 +668,7 @@ function defaultsToPayload(d: DefaultsState): Record<string, unknown> {
     hebrewFont: d.defaultHebrewFont,
     posterStyle: d.defaultPosterStyle,
     tagFade: d.defaultTagFade,
+    tagCard: d.defaultTagCard,
     qualityBadgeStyle: d.defaultQualityBadgeStyle,
     blurEnabled: d.defaultBlurEnabled,
     blurIntensity: d.defaultBlurIntensity,

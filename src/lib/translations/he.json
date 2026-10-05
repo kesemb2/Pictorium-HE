@@ -1080,5 +1080,7 @@
   "ui.posterStyleClassicSub": "פס בלור, ז'אנר, שנה ודירוג",
   "ui.posterStyleTag": "תגית",
   "ui.posterStyleTagSub": "תמונה נקייה, לוגו על זכוכית ותגית סטטוס",
-  "ui.tagFade": "דעיכה כהה מלמטה"
+  "ui.tagFade": "דעיכה כהה מלמטה",
+  "ui.tagCard": "לוגו על לוח זכוכית",
+  "ui.tagFadeForced": "בלי לוח, הלוגו תמיד יושב על הדעיכה."
 }

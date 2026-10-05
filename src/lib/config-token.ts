@@ -63,6 +63,7 @@ export const configTokenSchema = z.object({
   /** Fork: stile del poster e dissolvenza dello stile tag (opzionali). */
   posterStyle: z.enum(POSTER_STYLES).nullable().optional(),
   tagFade: z.boolean().optional(),
+  tagCard: z.boolean().optional(),
   // Stile icone qualità: opzionale+nullable (token vecchi senza campo restano validi).
   qualityBadgeStyle: z.enum(QUALITY_BADGE_STYLES).nullable().optional(),
   blurEnabled: z.boolean(),

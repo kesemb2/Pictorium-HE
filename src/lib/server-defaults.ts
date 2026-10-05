@@ -81,6 +81,8 @@ export interface ServerDefaults {
   posterStyle?: PosterStyle | null
   /** Fork, stile tag: dissolvenza dal basso (assente = on). */
   tagFade?: boolean
+  /** Fork, stile tag: card di vetro dietro il logo (assente = on). */
+  tagCard?: boolean
   /** Stile icone del badge qualità (standard = pill testuale). */
   qualityBadgeStyle?: QualityBadgeStyle | null
   /** Formati A/V abilitati di default (dv, hdr, hdr10plus, atmos, imax). */
@@ -308,6 +310,7 @@ function defaultsFromEnv(): ServerDefaults {
   const hfEnv = getEnv("HEBREW_FONT")?.trim().toLowerCase()
   const psEnv = getEnv("POSTER_STYLE")?.trim().toLowerCase()
   const tagFadeEnv = envBool("TAG_FADE")
+  const tagCardEnv = envBool("TAG_CARD")
   const side = getEnv("RIBBON_SIDE")?.trim().toLowerCase()
   const shapeEnv = getEnv("POSTER_SHAPE")?.trim().toLowerCase()
   if (shapeEnv === "poster" || shapeEnv === "landscape") d.posterShape = shapeEnv
@@ -349,6 +352,7 @@ function defaultsFromEnv(): ServerDefaults {
   if (hfEnv && isHebrewFont(hfEnv)) d.hebrewFont = hfEnv
   if (psEnv && isPosterStyle(psEnv)) d.posterStyle = psEnv
   if (tagFadeEnv !== undefined) d.tagFade = tagFadeEnv
+  if (tagCardEnv !== undefined) d.tagCard = tagCardEnv
   if (side === "left" || side === "right") d.ribbonSide = side
   if (blurI !== undefined) d.blurIntensity = blurI
   if (blurF !== undefined) d.blurFade = blurF

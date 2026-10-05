@@ -34,9 +34,19 @@ export function BadgeStyleSection() {
           }}
         />
         {ed.defaultPosterStyle === "tag" && (
-          <div className="flex items-center justify-between gap-3 pt-1">
-            <span className="text-[11px] text-zinc-300">{t("ui.tagFade")}</span>
-            <Toggle value={ed.defaultTagFade} onChange={(v) => ed.setDefaultTagFade(v)} label={t("ui.tagFade")} />
+          <div className="space-y-1.5 pt-1">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[11px] text-zinc-300">{t("ui.tagCard")}</span>
+              <Toggle value={ed.defaultTagCard} onChange={(v) => ed.setDefaultTagCard(v)} label={t("ui.tagCard")} />
+            </div>
+            <div className={`flex items-center justify-between gap-3 ${ed.defaultTagCard ? "" : "opacity-60 pointer-events-none"}`}>
+              <span className="text-[11px] text-zinc-300">{t("ui.tagFade")}</span>
+              {/* Senza card la dissolvenza è sempre attiva (vedi lib/tag-style). */}
+              <Toggle value={ed.defaultTagCard ? ed.defaultTagFade : true} onChange={(v) => ed.setDefaultTagFade(v)} label={t("ui.tagFade")} />
+            </div>
+            {!ed.defaultTagCard && (
+              <p className="text-[11px] text-zinc-500 leading-snug">{t("ui.tagFadeForced")}</p>
+            )}
           </div>
         )}
       </div>

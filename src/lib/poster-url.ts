@@ -28,6 +28,7 @@ interface BadgeParams {
   /** Fork: stile del poster e dissolvenza dello stile tag (globali). */
   posterStyle?: PosterStyle | null
   tagFade?: boolean
+  tagCard?: boolean
   /** Stile icone del badge qualità (default "standard"). */
   qualityBadgeStyle?: QualityBadgeStyle | null
   /** Formati A/V abilitati (dv, atmos, imax, hdr, hdr10plus). */
@@ -218,6 +219,7 @@ export function buildUrlPattern(bp: BadgeParams & {
     hebrewFont: bp.hebrewFont ?? undefined,
     posterStyle: bp.posterStyle ?? undefined,
     tagFade: bp.tagFade,
+    tagCard: bp.tagCard,
     qualityBadgeStyle: bp.qualityBadgeStyle,
     gradientHeight: bp.gradientHeight,
     blurIntensity: bp.blurIntensity,
@@ -402,6 +404,7 @@ export function buildPreviewUrl(ps: PosterState, bp: BadgeParams, configToken?: 
   params.push(`hfont=${bp.hebrewFont ?? "rubik"}`)
   params.push(`pstyle=${bp.posterStyle ?? "classic"}`)
   params.push(`tfade=${bp.tagFade === false ? "0" : "1"}`)
+  params.push(`tcard=${bp.tagCard === false ? "0" : "1"}`)
   // Stile icone qualità SEMPRE esplicito in preview (come bs/rs): senza, un
   // mapping salvato con stile diverso scavalcerebbe la scelta editor (desync).
   params.push(`qbs=${bp.qualityBadgeStyle === "mono" || bp.qualityBadgeStyle === "color" ? bp.qualityBadgeStyle : "standard"}`)
@@ -569,6 +572,7 @@ export interface DefaultsPreviewParams {
   defaultHebrewFont?: HebrewFont | null
   defaultPosterStyle?: PosterStyle | null
   defaultTagFade?: boolean
+  defaultTagCard?: boolean
   defaultQualityBadgeStyle?: QualityBadgeStyle | null
   defaultVideoFormats?: readonly VideoFormat[] | null
   defaultBlurEnabled?: boolean
@@ -630,6 +634,7 @@ export function buildDefaultsPreviewUrl(bp: DefaultsPreviewParams): string {
   params.push(`hfont=${bp.defaultHebrewFont ?? "rubik"}`)
   params.push(`pstyle=${bp.defaultPosterStyle ?? "classic"}`)
   params.push(`tfade=${bp.defaultTagFade === false ? "0" : "1"}`)
+  params.push(`tcard=${bp.defaultTagCard === false ? "0" : "1"}`)
   params.push(`qbs=${bp.defaultQualityBadgeStyle === "mono" || bp.defaultQualityBadgeStyle === "color" ? bp.defaultQualityBadgeStyle : "standard"}`)
   if (bp.defaultVideoFormats !== undefined && bp.defaultVideoFormats !== null) {
     params.push(`formats=${bp.defaultVideoFormats.length === 0 ? "none" : bp.defaultVideoFormats.join(",")}`)

@@ -152,6 +152,8 @@ export interface PosterEditorCtx {
   setDefaultPosterStyle: (v: PosterStyle) => void
   defaultTagFade: boolean
   setDefaultTagFade: (v: boolean) => void
+  defaultTagCard: boolean
+  setDefaultTagCard: (v: boolean) => void
   /** Stile icone del badge qualità di default. */
   defaultQualityBadgeStyle: QualityBadgeStyle
   setDefaultQualityBadgeStyle: (v: QualityBadgeStyle | ((prev: QualityBadgeStyle) => QualityBadgeStyle)) => void
@@ -466,7 +468,7 @@ export function PosterEditorProvider({
     genreBadgeOffsetX, genreBadgeOffsetY, qualityBadgeOffsetX, qualityBadgeOffsetY,
     networkLogoOffsetX, networkLogoOffsetY,
     badgeStyle, rankingBadgeStyle, qualityBadgeStyle, videoFormats,
-    badgeFont, defaultBadgeFont, defaultHebrewFont, defaultPosterStyle, defaultTagFade,
+    badgeFont, defaultBadgeFont, defaultHebrewFont, defaultPosterStyle, defaultTagFade, defaultTagCard,
     defaultBadgeStyle, defaultRankingBadgeStyle, defaultQualityBadgeStyle, defaultVideoFormats,
     defaultBlurEnabled, defaultBlurIntensity, defaultBlurFade, defaultBlurDarkness, defaultTintStrength, defaultTopShade,
     defaultGradientHeight, defaultGlobalBadges, defaultRankingBadges,
@@ -805,6 +807,10 @@ export function PosterEditorProvider({
   const setDefaultTagFade = useCallback(
     (v: boolean) => {
       update({ defaultTagFade: v })
+    }, [update])
+  const setDefaultTagCard = useCallback(
+    (v: boolean) => {
+      update({ defaultTagCard: v })
     }, [update])
   const setDefaultQualityBadgeStyle = useCallback(
     (v: QualityBadgeStyle | ((prev: QualityBadgeStyle) => QualityBadgeStyle)) => {
@@ -1228,6 +1234,8 @@ export function PosterEditorProvider({
       setDefaultPosterStyle,
       defaultTagFade,
       setDefaultTagFade,
+      defaultTagCard,
+      setDefaultTagCard,
       defaultQualityBadgeStyle,
       setDefaultQualityBadgeStyle,
       defaultVideoFormats,
@@ -1500,6 +1508,7 @@ export function PosterEditorProvider({
       defaultHebrewFont, setDefaultHebrewFont,
       defaultPosterStyle, setDefaultPosterStyle,
       defaultTagFade, setDefaultTagFade,
+      defaultTagCard, setDefaultTagCard,
       defaultQualityBadgeStyle, setDefaultQualityBadgeStyle,
       defaultVideoFormats, setDefaultVideoFormats,
       defaultEpisodeMetadataSource, setDefaultEpisodeMetadataSource,

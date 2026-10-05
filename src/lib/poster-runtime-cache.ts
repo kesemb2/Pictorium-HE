@@ -144,6 +144,8 @@ export function normalizePosterCacheParams(searchParams: URLSearchParams): URLSe
   if (pstyle !== null && !isPosterStyle(pstyle)) params.set("pstyle", "classic")
   const tfade = params.get("tfade")
   if (tfade !== null && tfade !== "0" && tfade !== "1") params.set("tfade", "1")
+  const tcard = params.get("tcard")
+  if (tcard !== null && tcard !== "0" && tcard !== "1") params.set("tcard", "1")
 
   return params
 }

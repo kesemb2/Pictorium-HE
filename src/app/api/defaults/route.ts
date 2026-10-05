@@ -47,6 +47,7 @@ const defaultsSchema = z.object({
   hebrewFont: z.enum(HEBREW_FONTS).optional(),
   posterStyle: z.enum(POSTER_STYLES).optional(),
   tagFade: z.boolean().optional(),
+  tagCard: z.boolean().optional(),
   qualityBadgeStyle: z.enum(QUALITY_BADGE_STYLES).nullable().optional(),
   videoFormats: z.array(z.enum(["dv", "hdr", "hdr10plus", "atmos", "imax"])).nullable().optional(),
   defaultVideoFormats: z.array(z.enum(["dv", "hdr", "hdr10plus", "atmos", "imax"])).nullable().optional(),
