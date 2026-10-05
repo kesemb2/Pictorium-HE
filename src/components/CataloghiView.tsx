@@ -431,6 +431,7 @@ export function CataloghiView() {
   const platformFilters = useMemo(() => [
     { id: "all", label: t("ui.all") },
     { id: "custom", label: t("ui.customCatalogs") },
+    { id: "today", label: t("ui.topToday") },
     { id: "justwatch", label: "JustWatch" },
     { id: "netflix", label: "Netflix" },
     { id: "amazon-prime", label: "Prime Video" },
@@ -444,6 +445,22 @@ export function CataloghiView() {
   ], [t])
   const ed = usePosterEditor()
   const regionFlag = getRegionDef(ed.defaultRegion).flag
+  // Fork: top 10 di oggi (api/trending/today), caricata una volta per vista.
+  const uiLang = usePSelector((v) => v.lang)
+  const [todayLists, setTodayLists] = useState<{ movie: SimklCardItem[]; tv: SimklCardItem[] }>({ movie: [], tv: [] })
+  useEffect(() => {
+    if (!hasKey) return
+    const ctrl = new AbortController()
+    const keyParam = tmdbKey ? `&api_key=${encodeURIComponent(tmdbKey)}` : ""
+    const load = (type: "movie" | "tv") => userFetch(`/api/trending/today?type=${type}&lang=${encodeURIComponent(uiLang || "en")}${keyParam}`, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { items?: SimklCardItem[] } | null) => (Array.isArray(d?.items) ? d.items : []))
+      .catch(() => [] as SimklCardItem[])
+    void Promise.all([load("movie"), load("tv")]).then(([movie, tv]) => {
+      if (!ctrl.signal.aborted) setTodayLists({ movie, tv })
+    })
+    return () => ctrl.abort()
+  }, [hasKey, tmdbKey, uiLang])
   const movieTrending = trending.filter((r) => r.media_type === "movie").slice(0, 20)
   const tvTrending = trending.filter((r) => r.media_type === "tv").slice(0, 20)
   const animeMovies = mdblistAnimeList.filter((r) => r.media_type === "movie")
@@ -572,13 +589,14 @@ export function CataloghiView() {
 
   const filteredPlatforms = STREAMING_PLATFORMS.filter((sp) => {
     if (platformFilter === "all") return true
-    if (platformFilter === "justwatch" || platformFilter === "anime" || platformFilter === "custom") return false
+    if (platformFilter === "justwatch" || platformFilter === "anime" || platformFilter === "custom" || platformFilter === "today") return false
     return sp.slug === platformFilter
   })
 
   const showJustWatch = (platformFilter === "all" || platformFilter === "justwatch") && trending.length > 0
   const showAnime = (platformFilter === "all" || platformFilter === "anime") && mdblistAnimeList.length > 0
   const showCustom = (platformFilter === "all" || platformFilter === "custom")
+  const showToday = (platformFilter === "all" || platformFilter === "today") && (todayLists.movie.length > 0 || todayLists.tv.length > 0)
 
   return (
     <div className="max-w-6xl mx-auto animate-fade-scale-in">
@@ -715,6 +733,31 @@ export function CataloghiView() {
       )}
 
       {showCustom && customCatalogs.length > 0 && <div className="section-divider" />}
+
+      {/* Fork: top 10 di oggi — la stessa lista dei cataloghi "Top 10 Oggi" e
+          del numero al neon sui poster orizzontali. */}
+      {showToday && (
+        <>
+          <div className="mb-12">
+            <h2 className="section-heading text-xl font-bold mb-2">🔟 {t("ui.topToday")}</h2>
+            <p className="text-xs text-muted mb-6">{t("ui.topTodaySub")}</p>
+            <CatalogPair
+              movies={todayLists.movie}
+              tv={todayLists.tv}
+              totalMovies={todayLists.movie.length}
+              totalTv={todayLists.tv.length}
+              movieTitle={`${t("ui.movie")} — Top 10`}
+              tvTitle={`${t("ui.tvSeries")} — Top 10`}
+              movieGridTitle={`${t("ui.topToday")} — ${t("ui.movie")}`}
+              tvGridTitle={`${t("ui.topToday")} — ${t("ui.tvSeries")}`}
+              openGrid={openGrid}
+              onItemClick={navigateToItem}
+              savedKeys={savedKeys}
+            />
+          </div>
+          <div className="section-divider" />
+        </>
+      )}
 
       {/* JustWatch Top 20 — due contenitori separati (Film | Serie) sulla stessa riga */}
       {showJustWatch && (

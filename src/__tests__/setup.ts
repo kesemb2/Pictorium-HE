@@ -295,6 +295,8 @@ const itDict: Record<string, string> = {
   "ui.tagOptions": "Opzioni stile tag",
   "ui.landscapeTop10": "Numero Top 10 sui poster orizzontali",
   "ui.landscapeTop10Hint": "Un titolo nella top 10 di oggi (TMDB, solo ciò che è già guardabile) riceve a sinistra una fascia con il suo numero luminoso.",
+  "ui.topToday": "Top 10 Oggi",
+  "ui.topTodaySub": "Il trending giornaliero di TMDB, solo ciò che è già guardabile — la stessa lista dei numeri sui poster orizzontali.",
 }
 
 function mockT(key: string, params?: Record<string, string | number>): string {

@@ -1088,5 +1088,7 @@
   "ui.tagSize": "Tag size",
   "ui.tagOptions": "Tag style options",
   "ui.landscapeTop10": "Top 10 number on landscape posters",
-  "ui.landscapeTop10Hint": "A title in today's top 10 (TMDB, only what is already out to watch) gets a strip with its glowing number on the left."
+  "ui.landscapeTop10Hint": "A title in today's top 10 (TMDB, only what is already out to watch) gets a strip with its glowing number on the left.",
+  "ui.topToday": "Top 10 Today",
+  "ui.topTodaySub": "TMDB's daily trending, only what's already out to watch — the same list as the numbers on landscape posters."
 }

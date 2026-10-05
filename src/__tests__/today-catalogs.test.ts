@@ -76,3 +76,29 @@ describe("Top 10 today catalogs (same list as the landscape strip)", () => {
     expect((await res.json()).metas).toEqual([])
   })
 })
+
+describe("new built-in catalogs in a saved order", () => {
+  it("land right after the built-in that precedes them, not at the bottom", async () => {
+    const { catalogOrderPosition } = await import("@/lib/catalog-definitions")
+    const { PICTORIUM_CATALOGS } = await import("@/lib/catalog-definitions")
+    // Ordine completo salvato dal gestore prima dei "Top 10 Oggi", con la
+    // Netflix film spostata in cima.
+    const builtins = PICTORIUM_CATALOGS.map((c) => c.id).filter((id) => !id.startsWith("pictorium-today-"))
+    const saved = ["pictorium-netflix-movies", ...builtins.filter((id) => id !== "pictorium-netflix-movies")]
+    const map = new Map(saved.map((id, i) => [id, i]))
+    const ids = [...saved, "pictorium-today-movies", "pictorium-today-series", "pictorium-custom-movie-x"]
+    const sorted = [...ids].sort((a, b) => catalogOrderPosition(a, map) - catalogOrderPosition(b, map))
+    expect(sorted.slice(0, 5)).toEqual([
+      "pictorium-netflix-movies", "pictorium-jw-movies", "pictorium-jw-series",
+      "pictorium-today-movies", "pictorium-today-series",
+    ])
+    expect(sorted.at(-1)).toBe("pictorium-custom-movie-x")
+  })
+
+  it("a partial order keeps listed first and the rest at the bottom", async () => {
+    const { catalogOrderPosition } = await import("@/lib/catalog-definitions")
+    const map = new Map(["pictorium-anime", "pictorium-jw-movies"].map((id, i) => [id, i]))
+    expect(catalogOrderPosition("pictorium-today-movies", map)).toBe(9999)
+    expect(catalogOrderPosition("pictorium-jw-movies", map)).toBe(1)
+  })
+})
