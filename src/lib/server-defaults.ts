@@ -8,7 +8,7 @@ import type { StreamQuality } from "@/lib/quality-tiers"
 import type { SashBucket } from "@/lib/badge-priority"
 import type { VideoFormat } from "@/lib/av-specs"
 import { isVideoFormat } from "@/lib/av-specs"
-import { isBadgeStyle, isRankingBadgeStyle, isQualityBadgeStyle, isBadgeFont, isHebrewFont, isPosterStyle, normalizeTagSize } from "@/lib/badge-styles"
+import { isBadgeStyle, isRankingBadgeStyle, isQualityBadgeStyle, isBadgeFont, isHebrewFont, isPosterStyle, normalizeTagSize, normalizeNeonTint } from "@/lib/badge-styles"
 import type { DateFormat } from "@/lib/release-badge"
 import { normalizeRegion } from "@/lib/regions"
 import { envWithFallback } from "@/lib/env-compat"
@@ -89,6 +89,8 @@ export interface ServerDefaults {
   landscapeTop10?: boolean
   /** Fork, esperimento: striscia top 10 trasparente (assente = off). */
   landscapeTop10Transparent?: boolean
+  /** Fork: colore del numero al neon ("auto" | "white" | "blue" | #rrggbb). */
+  landscapeTop10Tint?: string
   /** Fork, stile tag: grandezza della tag in % (assente = 100). */
   tagSize?: number
   /** Stile icone del badge qualità (standard = pill testuale). */
@@ -324,6 +326,7 @@ function defaultsFromEnv(): ServerDefaults {
   const lsEnv = getEnv("LANDSCAPE_STYLE")?.trim().toLowerCase()
   const lTopEnv = envBool("LANDSCAPE_TOP10")
   const lTransEnv = envBool("LANDSCAPE_TOP10_TRANSPARENT")
+  const lTintEnv = getEnv("LANDSCAPE_TOP10_TINT")?.trim()
   const tagSizeEnv = envNum("TAG_SIZE")
   const side = getEnv("RIBBON_SIDE")?.trim().toLowerCase()
   const shapeEnv = getEnv("POSTER_SHAPE")?.trim().toLowerCase()
@@ -370,6 +373,7 @@ function defaultsFromEnv(): ServerDefaults {
   if (lsEnv && isPosterStyle(lsEnv)) d.landscapeStyle = lsEnv
   if (lTopEnv !== undefined) d.landscapeTop10 = lTopEnv
   if (lTransEnv !== undefined) d.landscapeTop10Transparent = lTransEnv
+  if (lTintEnv) d.landscapeTop10Tint = normalizeNeonTint(lTintEnv)
   if (tagSizeEnv !== undefined) d.tagSize = normalizeTagSize(tagSizeEnv)
   if (side === "left" || side === "right") d.ribbonSide = side
   if (blurI !== undefined) d.blurIntensity = blurI

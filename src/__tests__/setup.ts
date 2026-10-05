@@ -303,6 +303,12 @@ const itDict: Record<string, string> = {
   "ui.catalogShapeLandscape": "Orizzontale",
   "ui.landscapeTop10Transparent": "Fascia del numero trasparente (sperimentale)",
   "ui.landscapeTop10TransparentHint": "Restano solo il numero e il poster; dietro si vede l'interfaccia dell'app. Questi poster escono in WebP con trasparenza.",
+  "ui.neonTint": "Colore del numero",
+  "ui.neonTintAuto": "Auto",
+  "ui.neonTintWhite": "Bianco",
+  "ui.neonTintBlue": "Blu",
+  "ui.neonTintCustom": "Colore personalizzato",
+  "ui.neonTintHint": "Auto: blu sulla fascia blu notte, neon bianco su quella trasparente (sta bene con qualsiasi colore dell'app).",
 }
 
 function mockT(key: string, params?: Record<string, string | number>): string {

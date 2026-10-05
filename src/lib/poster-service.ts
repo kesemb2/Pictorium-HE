@@ -45,6 +45,7 @@ import type { BadgeT } from "./poster-badge"
 import { isBadgeStyle, isRankingBadgeStyle, isRibbonRankingStyle, type BadgeStyle, type RankingBadgeStyle } from "./badge-styles"
 import type { BadgeFont, BadgeFontSpec, HebrewFont, PosterStyle } from "./badge-styles"
 import { composeTagStyle, tagLabelFor } from "./tag-style"
+import { normalizeNeonTint, type NeonTint } from "./badge-styles"
 import { composeRankStrip, rankStripWidth } from "./rank-strip"
 
 /** Fork: larghezza massima del logo orizzontale in stile tag (% del canvas). */
@@ -158,6 +159,8 @@ export interface GenerationInput {
    * Ha senso solo con `format: "webp"`: il JPEG non ha canale alfa.
    */
   rankStripTransparent?: boolean
+  /** Fork: colore del numero al neon ("auto": blu, bianco se trasparente). */
+  rankStripTint?: NeonTint | null
   /** Stile icone del badge qualità (standard = pill testuale). */
   qualityBadgeStyle?: QualityBadgeStyle | null
   /** Formati A/V da affiancare alla qualità (dv, atmos, imax, hdr, hdr10plus). */
@@ -2358,7 +2361,12 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   // Fork: striscia col numero della top 10 (pannello + numero al neon).
   if (stripRank) {
     const panel = await pipeline.png().toBuffer()
-    pipeline = sharp(await composeRankStrip({ panel, rank: stripRank, canvasW: LAND_W, canvasH: LAND_H, stripW, transparent: input.rankStripTransparent === true }))
+    const transparent = input.rankStripTransparent === true
+    const tint = normalizeNeonTint(input.rankStripTint)
+    pipeline = sharp(await composeRankStrip({
+      panel, rank: stripRank, canvasW: LAND_W, canvasH: LAND_H, stripW, transparent,
+      tint: tint === "auto" ? (transparent ? "white" : "blue") : tint,
+    }))
   }
 
   if (input.format === "avif") {

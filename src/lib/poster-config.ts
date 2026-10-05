@@ -24,6 +24,8 @@ import {
   isPosterStyle,
   DEFAULT_POSTER_STYLE,
   normalizeTagSize,
+  normalizeNeonTint,
+  type NeonTint,
   type PosterStyle,
   nonRibbonRankingStyle,
   DEFAULT_BADGE_STYLE,
@@ -102,6 +104,8 @@ export interface PosterRenderConfig {
   landscapeTop10: boolean
   /** Fork, esperimento: striscia top 10 trasparente (query `ltrans` > config > defaults > off). */
   landscapeTop10Transparent: boolean
+  /** Fork: colore del numero (query `ltint` > config > defaults > auto). */
+  landscapeTop10Tint: NeonTint
   /** Fork, stile tag: grandezza della tag in % (query `tsize` > config > defaults > 100). */
   tagSize: number
   /** Stile icone del badge qualità (standard = pill testuale). */
@@ -483,6 +487,7 @@ export function resolvePosterRenderConfig(input: PosterRenderConfigInput): Poste
   const landscapeTop10Transparent: boolean = rawLtrans !== null
     ? rawLtrans === "1"
     : (configOverride?.landscapeTop10Transparent ?? sd.landscapeTop10Transparent ?? false)
+  const landscapeTop10Tint = normalizeNeonTint(q.get("ltint") ?? configOverride?.landscapeTop10Tint ?? sd.landscapeTop10Tint)
 
   const qScale = q.get("scale")
   const qOx = q.get("ox")
@@ -712,6 +717,7 @@ const qSide = q.get("side")
     landscapeStyle,
     landscapeTop10,
     landscapeTop10Transparent,
+    landscapeTop10Tint,
     tagSize,
     qualityBadgeStyle,
     blurEnabled,

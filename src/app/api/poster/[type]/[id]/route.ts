@@ -2049,7 +2049,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     })
     const {
       badgeStyle, rankingBadgeStyle, qualityBadgeStyle, badgeFont, hebrewFont, posterStyle, tagFade, tagCard,
-      landscapeStyle, landscapeTop10, tagSize,
+      landscapeStyle, landscapeTop10, landscapeTop10Tint, tagSize,
       blurEnabled, blurHeight, blurIntensity, blurFade, blurDarkness, tintStrength, topShade,
       badgesEnabled, rankingEnabled,
       badgeGenre, badgeYear, badgeRating, badgeQuality, minQuality, sashOrder,
@@ -2356,6 +2356,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       // classifica (`ranking=0`) o col suo interruttore.
       rankStrip: landscapeTop10 && rankingEnabled ? topTodayPosition : null,
       rankStripTransparent: transparentStrip,
+      rankStripTint: landscapeTop10Tint,
       qualityBadgeStyle,
       videoFormats: finalVideoFormats,
       separateRatings: useSeparate ? sepItems : undefined,
