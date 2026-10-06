@@ -8,8 +8,9 @@
  * dal basso (opzionale, default on) tiene leggibile il vetro sui poster chiari.
  *
  * Il vetro è sfocatura REALE di ciò che sta sotto (non un gradiente): si
- * ricava dalla tela già composta (poster + vignetta + dissolvenza), si scurisce
- * e si maschera alla forma. Per questo il modulo riceve la tela e restituisce
+ * ricava dalla tela già composta SENZA la dissolvenza (poster + vignetta), così
+ * taglia il gradiente e mostra i colori del poster; si scurisce (di più sui
+ * poster chiari) e si maschera alla forma. Per questo il modulo riceve la tela e restituisce
  * i layer da comporre in ordine: dissolvenza, vetri, logo, titolo, testo tag.
  */
 import sharp from "sharp"
@@ -52,6 +53,8 @@ export function tagScale(canvasW: number, canvasH: number): number {
 
 const GLASS_BLUR = 16
 const GLASS_BRIGHTNESS = 0.7
+/** Luminanza media massima del vetro (0-1): oltre, si scurisce per il testo bianco. */
+export const GLASS_MAX_LUMINANCE = 0.42
 const GLASS_WASH = 0.06
 const GLASS_EDGE = 0.28
 const FADE_STRENGTH_MID = 0.68
@@ -76,12 +79,20 @@ async function frostedGlass(
   const height = round(rect.height)
   if (width < 4 || height < 4) return null
   const r = Math.min(round(radius), Math.floor(Math.min(width, height) / 2))
-  const blurred = await sharp(base)
+  const frosted = await sharp(base)
     .extract({ left: round(rect.left), top: round(rect.top), width, height })
     .blur(Math.max(0.3, GLASS_BLUR * s))
     .modulate({ brightness: GLASS_BRIGHTNESS, saturation: 1.1 })
     .png()
     .toBuffer()
+  // Fork: il vetro mostra i colori veri del poster, che possono essere chiari:
+  // sopra la soglia si scurisce quanto basta perché il testo bianco resti
+  // leggibile. Sui poster scuri o saturi non cambia niente.
+  const { channels } = await sharp(frosted).stats()
+  const lum = (0.2126 * channels[0]!.mean + 0.7152 * channels[1]!.mean + 0.0722 * channels[2]!.mean) / 255
+  const blurred = lum > GLASS_MAX_LUMINANCE
+    ? await sharp(frosted).modulate({ brightness: GLASS_MAX_LUMINANCE / lum }).png().toBuffer()
+    : frosted
   const shape = flushBottom
     ? `<path d="M0,${height} L0,${r} Q0,0 ${r},0 L${width - r},0 Q${width},0 ${width},${r} L${width},${height} Z" fill="#fff"/>`
     : `<rect width="${width}" height="${height}" rx="${r}" fill="#fff"/>`
@@ -175,7 +186,7 @@ export async function composeTagStyle(input: TagStyleInput): Promise<{ layers: T
   }
 
   const layers: TagLayer[] = []
-  let base = input.base
+  const base = input.base
 
   // Dissolvenza: trasparente sopra la card, scura sul fondo.
   // Senza card la dissolvenza parte più in alto: è lei a fare da fondo al logo.
@@ -188,10 +199,11 @@ export async function composeTagStyle(input: TagStyleInput): Promise<{ layers: T
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs><linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="${(fadeTop / H).toFixed(4)}" stop-color="#000" stop-opacity="0"/><stop offset="${mid.toFixed(4)}" stop-color="#000" stop-opacity="${midOpacity}"/><stop offset="1" stop-color="#000" stop-opacity="${bottomOpacity}"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#f)"/></svg>`
     const fadePng = await sharp(Buffer.from(svg)).png().toBuffer()
     layers.push({ input: fadePng, top: 0, left: 0 })
-    // Il vetro deve sfocare ciò che si vede davvero: la dissolvenza inclusa.
-    base = await sharp(base).composite([{ input: fadePng, top: 0, left: 0 }]).png().toBuffer()
   }
 
+  // Fork: il vetro sfoca il POSTER, non la dissolvenza: taglia il gradiente
+  // scuro e mostra sfocati i colori che stanno sotto (prima sfocava anche la
+  // dissolvenza e sul fondo il vetro era quasi nero, senza effetto vetro).
   const [cardGlass, tagGlass] = await Promise.all([
     card && cardOn ? frostedGlass(base, card, 22 * s, false, s) : Promise.resolve(null),
     tagRect ? frostedGlass(base, tagRect, 20 * s, true, s) : Promise.resolve(null),

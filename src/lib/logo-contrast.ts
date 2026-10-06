@@ -48,7 +48,19 @@ export interface InkProfile {
    * contorno chiaro o una targa opaca sì — e diventerebbe un blocco bianco.
    */
   readonly flatBlack: boolean
+  /**
+   * Fork: una sola tinta (quasi ogni pixel opaco vicino al colore medio) ed è
+   * scura — nero, grigio fumo, blu notte, bordeaux. Sui poster il fondo è
+   * scuro (fascia, dissolvenza): un logo così sparisce, e si ricolora di
+   * bianco. Più largo di `flatBlack`, che resta la regola dell'endpoint logo.
+   */
+  readonly flatDark: boolean
 }
+
+/** Distanza massima per canale dal colore medio perché un pixel sia "la stessa tinta". */
+export const INK_FLAT_CHANNEL_TOLERANCE = 24
+/** Luminanza relativa massima della tinta perché conti come scura. */
+export const INK_DARK_MAX_LUMINANCE = 0.06
 
 /**
  * Profilo dell'INCHIOSTRO del logo, dai soli pixel abbastanza opachi. Un logo è
@@ -67,16 +79,34 @@ export async function logoInkProfile(logoBuf: Buffer): Promise<InkProfile | null
     let sum = 0
     let n = 0
     let black = 0
+    let rSum = 0
+    let gSum = 0
+    let bSum = 0
     for (let i = 0; i < data.length; i += info.channels) {
       if (data[i + 3] < 128) continue
       sum += relativeLuminance(data[i], data[i + 1], data[i + 2])
       n++
+      rSum += data[i]
+      gSum += data[i + 1]
+      bSum += data[i + 2]
       if (data[i] <= INK_BLACK_MAX_CHANNEL && data[i + 1] <= INK_BLACK_MAX_CHANNEL && data[i + 2] <= INK_BLACK_MAX_CHANNEL) {
         black++
       }
     }
     if (n < 16) return null
-    return { luminance: sum / n, flatBlack: black / n >= INK_FLAT_MIN_FRACTION }
+    // Tinta unica: quasi ogni pixel opaco sta vicino al colore medio.
+    const mr = rSum / n
+    const mg = gSum / n
+    const mb = bSum / n
+    let near = 0
+    for (let i = 0; i < data.length; i += info.channels) {
+      if (data[i + 3] < 128) continue
+      if (Math.abs(data[i] - mr) <= INK_FLAT_CHANNEL_TOLERANCE
+        && Math.abs(data[i + 1] - mg) <= INK_FLAT_CHANNEL_TOLERANCE
+        && Math.abs(data[i + 2] - mb) <= INK_FLAT_CHANNEL_TOLERANCE) near++
+    }
+    const flatDark = near / n >= INK_FLAT_MIN_FRACTION && relativeLuminance(mr, mg, mb) <= INK_DARK_MAX_LUMINANCE
+    return { luminance: sum / n, flatBlack: black / n >= INK_FLAT_MIN_FRACTION, flatDark }
   } catch {
     return null
   }

@@ -166,3 +166,30 @@ describe("tag poster style", () => {
     expect(resolve(null).tagCard).toBe(true)
   })
 })
+
+describe("tag glass blurs the poster, not the dark fade", () => {
+  async function glassOf(bg: string) {
+    const base = await sharp({ create: { width: W, height: H, channels: 3, background: bg } }).png().toBuffer()
+    const logoPng = await sharp({ create: { width: 200, height: 60, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } } }).png().toBuffer()
+    const out = await composeTagStyle({ base, canvasW: W, canvasH: H, logo: { input: logoPng, w: 200, h: 60, left: 150, top: 560 }, title: null, tagLabel: "בכורה", fade: true })
+    // Il vetro della tag: il penultimo layer prima del testo, a filo del fondo.
+    const glass = out.layers.find((l) => out.tagRect && l.top === out.tagRect.top && l.left === out.tagRect.left)!
+    const { channels } = await sharp(glass.input).stats()
+    return channels.map((c) => c.mean)
+  }
+
+  it("a red poster gives red glass, not near-black", async () => {
+    const [r, g, b] = await glassOf("#d02020")
+    expect(r).toBeGreaterThan(90)
+    expect(r).toBeGreaterThan(g! * 2)
+    expect(r).toBeGreaterThan(b! * 2)
+  })
+
+  it("a white poster's glass is darkened enough for white text", async () => {
+    const { GLASS_MAX_LUMINANCE } = await import("@/lib/tag-style")
+    const [r, g, b] = await glassOf("#ffffff")
+    const lum = (0.2126 * r! + 0.7152 * g! + 0.0722 * b!) / 255
+    expect(lum).toBeLessThanOrEqual(GLASS_MAX_LUMINANCE + 0.05)
+    expect(lum).toBeGreaterThan(0.25)
+  })
+})

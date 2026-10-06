@@ -146,9 +146,13 @@ describe("quality badge scale", () => {
 })
 
 async function blackLogo(): Promise<Buffer> {
+  // Due tinte scure (nero + bordeaux): invisibile sul fondo scuro, ma NON in
+  // tinta unica — un logo nero piatto il render lo sbianca (flatDark).
+  const half = await sharp({ create: { width: 110, height: 100, channels: 4, background: { r: 96, g: 0, b: 0, alpha: 1 } } }).png().toBuffer()
   return sharp({
     create: { width: 220, height: 100, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } },
   })
+    .composite([{ input: half, left: 110, top: 0 }])
     .png()
     .toBuffer()
 }
