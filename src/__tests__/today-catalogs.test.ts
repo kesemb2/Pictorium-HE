@@ -126,6 +126,28 @@ describe("per-catalog poster shape (as in AIOMetadata)", () => {
     expect(other.body.metas[0]?.posterShape ?? "poster").toBe("poster")
   })
 
+  // Il numero viaggia nell'URL: posizione cambiata → URL nuovo → nessun
+  // client può mostrare il numero di ieri.
+  it("a landscape Top 10 catalog writes each title's position into its poster URL", async () => {
+    await withDefaults({ catalogShapes: { "pictorium-today-movies": "landscape" } })
+    vi.mocked(getTopToday).mockResolvedValue([30, 10, 20])
+    tmdbByUrl()
+    const { body } = await catalog("movie", "pictorium-today-movies")
+    const tt = body.metas.map((m: { poster: string }) => new URL(m.poster).searchParams.get("tt"))
+    expect(tt).toEqual(["1", "2", "3"])
+  })
+
+  it("no position in portrait, with the strip off, or in any other catalog", async () => {
+    vi.mocked(getTopToday).mockResolvedValue([30])
+    tmdbByUrl()
+    const portrait = await catalog("movie", "pictorium-today-movies")
+    expect(new URL(portrait.body.metas[0].poster).searchParams.has("tt")).toBe(false)
+    cacheClear()
+    await withDefaults({ landscapeTop10: false, catalogShapes: { "pictorium-today-movies": "landscape" } })
+    const off = await catalog("movie", "pictorium-today-movies")
+    expect(new URL(off.body.metas[0].poster).searchParams.has("tt")).toBe(false)
+  })
+
   it("a catalog forced to portrait wins over a global landscape default", async () => {
     await withDefaults({ posterShape: "landscape", catalogShapes: { "pictorium-today-movies": "poster" } })
     vi.mocked(getTopToday).mockResolvedValue([40])

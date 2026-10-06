@@ -280,6 +280,14 @@ describe("presets rate limiting + poster hardening", () => {
     expect((await catalogGET(req("http://localhost:3000/api/presets"))).status).toBe(429)
   })
 
+  it("keeps a Top 10 position (tt) of 1-10 and drops anything else", () => {
+    expect(POSTER_CACHE_ALLOWLIST.has("tt")).toBe(true)
+    const base = { presets: true, preview: false, anonymous: true, publicInstance: true, hasMapping: false } as const
+    expect(hardenPosterSearchParams(new URLSearchParams("tt=3"), base).get("tt")).toBe("3")
+    expect(hardenPosterSearchParams(new URLSearchParams("tt=0"), base).has("tt")).toBe(false)
+    expect(hardenPosterSearchParams(new URLSearchParams("tt=11"), base).has("tt")).toBe(false)
+  })
+
   it("allows badgePreset/prv in the poster cache key and drops junk", async () => {
     expect(POSTER_CACHE_ALLOWLIST.has("badgePreset")).toBe(true)
     expect(POSTER_CACHE_ALLOWLIST.has("prv")).toBe(true)

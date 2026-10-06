@@ -391,9 +391,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // una sola costruzione per tutte le richieste.
   const qLtop = req.nextUrl.searchParams.get("ltop")
   const earlyTop10 = earlyLandscape && (qLtop !== null ? qLtop !== "0" : (configOverride?.landscapeTop10 ?? sd.landscapeTop10 ?? true))
-  const topTodayPosition = earlyTop10 && (mediaType === "movie" || mediaType === "tv")
-    ? await topTodayRank(mediaType, tmdbId, effTmdbKey).catch(() => null)
-    : null
+  // Fork: il numero arriva SOLO dall'URL (`tt`), che lo scrivono i cataloghi
+  // "Top 10 oggi" con la posizione nella fila: cambia posizione → URL nuovo,
+  // e nessun client può mostrare un numero stantio. Altrove niente numero.
+  // Eccezione: la preview dell'editor lo calcola, per far vedere il risultato.
+  const ttRaw = Number(req.nextUrl.searchParams.get("tt"))
+  const ttParam = Number.isInteger(ttRaw) && ttRaw >= 1 && ttRaw <= 10 ? ttRaw : null
+  const topTodayPosition = !earlyTop10 ? null
+    : ttParam !== null ? ttParam
+      : isPreview && (mediaType === "movie" || mediaType === "tv")
+        ? await topTodayRank(mediaType, tmdbId, effTmdbKey).catch(() => null)
+        : null
   // Fork, esperimento: striscia trasparente. Solo se c'è davvero la striscia:
   // il poster esce in WebP con alfa fin dal render (il JPEG canonico la
   // perderebbe, e la variante WebP nasce dal JPEG). Gli altri poster restano
