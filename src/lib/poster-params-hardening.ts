@@ -93,7 +93,7 @@ export const POSTER_CACHE_ALLOWLIST: ReadonlySet<string> = new Set([
   // Schema query (bound R1).
   "extra", "label", "title", "genreName", "poster", "logo", "backdrop",
   "quality", "formats", "qmin", "lang", "rsrc", "rw", "sash", "imdbId", "wikidata_id",
-  "rank", "animerank", "scale", "ox", "oy", "tscale", "tox", "toy",
+  "rank", "animerank", "tt", "scale", "ox", "oy", "tscale", "tox", "toy",
   "gscale", "gox", "goy", "qscale", "qox", "qoy", "netscale", "nox", "noy",
   "bscale", "box", "boy", "gradHeight", "blur", "bf", "bd", "voteAverage",
   "year", "rd", "fad", "mv", "fmt", "format", "shape", "align", "ac",
@@ -153,6 +153,16 @@ function canonicalizeAnimeRank(params: URLSearchParams): void {
   const n = Number(raw)
   if (!Number.isInteger(n) || n < 0) params.delete("animerank")
   else params.set("animerank", String(Math.min(n, ANIME_RANK_MAX + 1)))
+}
+
+// tt: posizione nella top 10 di oggi (cataloghi "Top 10 oggi"). Fuori da 1-10
+// non disegna niente: si toglie.
+function canonicalizeTopToday(params: URLSearchParams): void {
+  const raw = params.get("tt")
+  if (raw === null) return
+  const n = Number(raw)
+  if (Number.isInteger(n) && n >= 1 && n <= 10) params.set("tt", String(n))
+  else params.delete("tt")
 }
 
 function quantizeInPlace(params: URLSearchParams, key: string, step: number): void {
@@ -225,6 +235,7 @@ export function hardenPosterSearchParams(
 
   canonicalizeRank(params)
   canonicalizeAnimeRank(params)
+  canonicalizeTopToday(params)
 
   // Rating sources: supported ids only, deduplicated (order kept).
   if (params.has("rsrc")) {

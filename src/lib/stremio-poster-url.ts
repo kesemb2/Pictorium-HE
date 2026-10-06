@@ -38,6 +38,8 @@ export interface BuildStremioPosterUrlInput {
   // Niente chiavi (vedi stremio-poster-params.ts): questo URL viene servito
   // a Stremio e persistito nel suo DB — mai segreti dentro.
   readonly animerank?: number
+  /** Fork: posizione nella top 10 di oggi (cataloghi "Top 10 oggi", solo landscape). */
+  readonly topToday?: number | null
   readonly lang?: string | null
   readonly config?: string | null
   readonly user?: string | null
@@ -98,6 +100,7 @@ export function buildStremioPosterUrl(input: BuildStremioPosterUrlInput): URL {
   const params = buildStremioPosterSearchParams({
     config: input.config,
     animerank: input.animerank,
+    topToday: input.topToday,
     user: input.user,
     region: input.region ?? sd.region,
     lang: input.lang || "it",

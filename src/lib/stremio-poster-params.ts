@@ -15,6 +15,8 @@ export interface StremioPosterParamsInput {
   // render. Unico caso con chiavi in URL: `buildUrlPattern` (template che
   // l'utente copia per sé, come la manifest URL) le accoda da solo.
   readonly animerank?: number
+  /** Fork: posizione nella top 10 di oggi (solo cataloghi "Top 10 oggi"): striscia col numero. */
+  readonly topToday?: number | null
   readonly lang?: string | null
   readonly globalBadges?: boolean
   readonly rankingBadges?: boolean
@@ -280,6 +282,9 @@ export function buildStremioPosterSearchParams(input: StremioPosterParamsInput):
   // Rank anime noto al catalogo (posizione in lista): rende il badge Anime
   // deterministico su Stremio, indipendentemente dalle chiavi lato server.
   if (input.animerank) params.set("animerank", String(input.animerank))
+  // Il numero viaggia NELL'URL: cambia posizione → URL nuovo → il client non
+  // può mostrare una copia col numero di ieri.
+  if (input.topToday) params.set("tt", String(input.topToday))
   if (input.config) {
     // Con token stateless il server applica query > mapping > config: un ON
     // per-titolo omesso perderebbe contro un master OFF del token mentre la

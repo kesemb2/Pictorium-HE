@@ -190,6 +190,7 @@ export const posterQuerySchema = z.object({
   wikidata_id: z.string().regex(/^Q\d{1,20}$/).optional(),
   rank: intQueryString(7),
   animerank: intQueryString(7),
+  tt: intQueryString(2),
   scale: boundedQueryString(12),
   ox: boundedQueryString(12),
   oy: boundedQueryString(12),

@@ -306,6 +306,8 @@ async function pictoriumPosterAndShape(
   posterRegion?: string | null,
   /** Fork: forma scelta per il catalogo (vince sul globale e sul mapping). */
   shapeOverride?: PosterShape | null,
+  /** Fork: posizione nella top 10 di oggi (solo cataloghi "Top 10 oggi"). */
+  topToday?: number | null,
 ): Promise<{ poster: string; banner: string; landscapePoster?: string; posterShape: PosterShape; logoFor: (id: string | number) => string }> {
   const scopedUser = getScopedUserId(userParam)
   const serverDefaults = scopedUser ? await getServerDefaultsForUser(scopedUser) : await getServerDefaultsChecked()
@@ -325,7 +327,10 @@ async function pictoriumPosterAndShape(
     animerank: animeRankParam ?? undefined,
   } as const
   const posterShape = shapeOverride ?? stremioPosterShape(mapping, defaults)
-  const poster = buildStremioPosterUrl({ ...base, forceShape: posterShape }).toString()
+  // Il numero sta solo nei poster orizzontali dei cataloghi "Top 10 oggi", e
+  // viaggia nell'URL (`tt`): l'immagine disegna la posizione della fila.
+  const tt = topToday && posterShape === "landscape" && defaults.landscapeTop10 !== false ? topToday : null
+  const poster = buildStremioPosterUrl({ ...base, forceShape: posterShape, topToday: tt }).toString()
   // Banner pulito: canvas landscape senza logo baked-in (per i client che
   // sovrappongono già il logo da catalogo) + badge genere in basso a destra.
   const banner = buildStremioPosterUrl({ ...base, forceShape: "landscape", hideLogo: true }).toString()
@@ -475,8 +480,8 @@ export async function pictoriumCatalog(
   const catalogShape: PosterShape | null = userConfig.catalogShapes?.[catalogId] ?? null
   const catalogPosterAndShape = (
     r: NextRequest, t: "movie" | "series", tmdbId: number, cp?: string | null, up?: string | null,
-    animeRank?: number | null, lang = "it", posterRegion?: string | null,
-  ) => pictoriumPosterAndShape(r, t, tmdbId, cp, up, animeRank, lang, posterRegion, catalogShape)
+    animeRank?: number | null, lang = "it", posterRegion?: string | null, topToday?: number | null,
+  ) => pictoriumPosterAndShape(r, t, tmdbId, cp, up, animeRank, lang, posterRegion, catalogShape, topToday)
   // Partial token merge: a token carrying only the ranking selection must not
   // lose the custom catalogs stored in the namespace defaults (the selection
   // references them by id). Same rule as the manifest composition.
@@ -1098,9 +1103,9 @@ export async function pictoriumCatalog(
       metas = await concurrentMap(results, async (r) => {
         const [imdbId, posterAndShape] = await Promise.all([
           resolveImdbId(mediaType, r.tmdbId, apiKey, CATALOG_TMDB_TIMEOUT_MS),
-          // Niente `animerank`: è il badge anime. Il numero arriva dalla stessa
-          // lista nella striscia dei poster orizzontali (route poster).
-          catalogPosterAndShape(req, stType, r.tmdbId, configParam, userParam, null, posterLang, region.code),
+          // Niente `animerank`: è il badge anime. Il numero della striscia è la
+          // posizione nella fila, scritta nell'URL del poster (`tt`).
+          catalogPosterAndShape(req, stType, r.tmdbId, configParam, userParam, null, posterLang, region.code, ids.indexOf(r.tmdbId) + 1),
         ])
         const { poster, banner, landscapePoster, posterShape, logoFor } = posterAndShape
         return {

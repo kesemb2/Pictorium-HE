@@ -137,6 +137,9 @@ vi.mock("@/lib/tmdb", () => ({
   }),
 }))
 
+// Il numero della striscia: la lista dice 2 per tutti (solo la preview la legge).
+vi.mock("@/lib/top-today", () => ({ topTodayRank: vi.fn(async () => 2), getTopToday: vi.fn(async () => []) }))
+
 vi.mock("@/lib/imdb-resolver", () => ({
   resolveImdbToTmdb: vi.fn(async () => null),
 }))
@@ -229,6 +232,24 @@ describe("GET /api/poster/[type]/[id] with saved mappings", () => {
     const maxAge = Number(cc.match(/max-age=(\d+)/)?.[1])
     // Scade al prossimo cut delle 02:00 UTC, come la rotazione dell'artwork.
     expect(Math.abs(maxAge - secondsUntilDynamicRotationCut())).toBeLessThanOrEqual(5)
+  })
+
+  it("draws the Top 10 number only from the URL (tt); without it, none — except in the editor preview", async () => {
+    const img = await imageBuffer("#101010", 500, 750)
+    mockedGetById.mockResolvedValue({
+      tmdbId: 49, mediaType: "movie", title: "Ranked", posterPath: "/p.jpg", logoPath: null, originalPosterPath: null,
+      language: "it", updatedAt: "2026-07-16T10:15:30.000Z",
+    })
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array(img), { status: 200, headers: { "content-type": "image/png" } }))
+    const topToday = async (q: string) => {
+      const res = await GET(new NextRequest(`http://localhost:3000/api/poster/movie/49?debug=1&shape=landscape${q}`), { params: Promise.resolve({ type: "movie", id: "49" }) })
+      return (await res.json()).badge.settings.topToday
+    }
+    expect(await topToday("&tt=4")).toBe(4)
+    expect(await topToday("")).toBeNull()
+    expect(await topToday("&tt=99")).toBeNull()
+    expect(await topToday("&tt=4&ltop=0")).toBeNull()
+    expect(await topToday("&preview=1")).toBe(2)
   })
 
   it("drops the logo when a saved clean fanart base turns out to have text", async () => {
