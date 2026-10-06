@@ -92,5 +92,8 @@ export function directorBadgeLabel(
   const canonical = matchDirectorName(name) ?? name
   const wantsHebrew = (opts?.locale || "").slice(0, 2).toLowerCase() === "he"
   const shown = wantsHebrew ? (DIRECTOR_HE[canonical] || opts?.nameHe || canonical) : canonical
+  // Fork: in ebraico "בבימוי {name}" solo con un nome ebraico — col nome
+  // latino resta il nome da solo, o il testo esce a direzione mista.
+  if (wantsHebrew && !/[\u0590-\u05FF]/.test(shown)) return shown
   return t ? t("badge.director", { name: shown }) : shown
 }

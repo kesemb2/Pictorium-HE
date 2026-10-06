@@ -46,6 +46,7 @@ import type { BadgeT } from "./poster-badge"
 import { isBadgeStyle, isRankingBadgeStyle, isRibbonRankingStyle, type BadgeStyle, type RankingBadgeStyle } from "./badge-styles"
 import type { BadgeFont, BadgeFontSpec, HebrewFont, PosterStyle } from "./badge-styles"
 import { composeTagStyle, tagLabelFor } from "./tag-style"
+import { eligibleTags, pickDailyTag, type TagCandidate, type TagFacts } from "./tag-catalog"
 import { normalizeNeonTint, type NeonTint } from "./badge-styles"
 import { composeRankStrip, rankStripWidth } from "./rank-strip"
 
@@ -268,6 +269,13 @@ export interface GenerationInput {
   mediaType: "movie" | "tv"
   /** TMDB ID per il lookup premi certi (liste ID in award-ids.ts). */
   tmdbId?: number | null
+  /**
+   * Fork: fatti TMDB per la tag giornaliera dello stile Tag (tag-catalog.ts).
+   * Assenti → la tag resta quella della scala, come prima.
+   */
+  tagFacts?: TagFacts | null
+  /** Giorno della rotazione (cut 02:00 UTC, `dynamicRotationBucket`). */
+  tagBucket?: number | null
   /** IMDb ID per le variabili preset ({{imdb}}). */
   imdbId?: string | null
   /**
@@ -970,6 +978,8 @@ export interface ReadabilityReport {
   logoScrim?: number
   /** Logo in tinta unica scura ricolorato di bianco. */
   logoWhitened?: boolean
+  /** Stile Tag: id della tag del giorno scelta dal catalogo. */
+  dailyTag?: string
   logoHalo?: number
   /** Altezza della fascia in %: chiesta, dopo la ritirata, finale (pavimento logo). */
   band?: { requested: number; retreated: number; final: number; logoTop: number | null; logoH: number | null }
@@ -1449,10 +1459,42 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
   const studioBadge = computed.studioBadge
   const isNetStudio = isNetworkStudio(studioBadge)
 
+  // Fork: stile Tag — ogni poster porta una tag. Le notizie (classifica,
+  // in uscita, nuovo, nuova stagione, nuovo episodio, appena aggiunto) le
+  // decide la scala e vincono; altrimenti la tag del giorno dal catalogo
+  // (tag-catalog.ts), diversa ogni giorno, uguale per tutti.
+  const dailyTag = tagStyle && rankingEnabled && !queryExtra && !preRelease && input.tagFacts && input.tagBucket != null
+    ? (() => {
+        const b = computed.badge
+        const newsLabels = [computed.upcomingRelease, computed.newSeason, computed.justAdded, computed.nextEpisode,
+          computed.isNewMovie ? t("badge.newMovie") : null, computed.isNewSeries ? t("badge.newSeries") : null]
+        const isNews = !!b && (b.type === "rank" || newsLabels.includes(b.label))
+        if (isNews) return null
+        const pool: TagCandidate[] = eligibleTags(input.tagFacts!, t, locale)
+        const ladder: [string, string | null | undefined, number][] = [
+          ["award", computed.awardBadge, 3],
+          ["absoluteCinema", computed.extraFallback, 3],
+          ["nomination", computed.nomination, 2],
+          ["director", computed.directorBadge, 2],
+          ["trending", tmdbTrending ? t(mediaType === "movie" ? "badge.trending" : "badge.trendingSeries") : null, 2],
+          ["highlyRated", computed.highlyRated ? t("badge.highlyRated") : null, 1],
+          ["returning", computed.returning, 1],
+          ["seriesEnded", computed.seriesEnded, 1],
+        ]
+        for (const [id, label, weight] of ladder) {
+          if (label && !pool.some((c) => c.id === id)) pool.push({ id, label, weight })
+        }
+        return pickDailyTag(pool, `${mediaType}:${input.tmdbId ?? ""}`, input.tagBucket!)
+      })()
+    : null
+  if (readabilityReport && dailyTag) readabilityReport.dailyTag = dailyTag.id
+
   let topBadge: { type: "extra"; label: string } | { type: "rank"; rank: number; label: string; ribbonLabel?: string } | null = null
   if (rankingEnabled) {
     if (queryExtra) {
       topBadge = { type: "extra" as const, label: queryExtra }
+    } else if (dailyTag) {
+      topBadge = { type: "extra" as const, label: dailyTag.label }
     } else if (computed.badge) {
       const b = computed.badge
       if (b.type === "extra") {

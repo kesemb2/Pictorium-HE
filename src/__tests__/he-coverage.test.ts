@@ -28,6 +28,10 @@ const BRAND_VALUES = new Set([
   "Nuvio",
   "https://.../manifest.json",
   "#{rank} · {name}",
+  // Tag dei poster: marchi e segnaposto della rete (formulazione approvata).
+  "DC",
+  "A24",
+  "{network}",
 ])
 
 describe("Hebrew dictionary coverage", () => {

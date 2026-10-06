@@ -118,3 +118,16 @@ export function getSubGenreLabel(keywords: string[], locale = "it"): string | nu
   }
   return null
 }
+
+/**
+ * Fork: TUTTI i sottogeneri che corrispondono (non solo il primo), con la
+ * chiave stabile — il catalogo delle tag ne fa candidate separate.
+ */
+export function getSubGenreLabels(keywords: string[], locale = "it"): { key: string; label: string }[] {
+  if (!keywords || !keywords.length) return []
+  const normalized = keywords.map((k) => k.toLowerCase().trim())
+  const lang = (locale || "it").slice(0, 2)
+  return SUB_GENRES
+    .filter((sub) => sub.keywords.some((kwPattern) => normalized.some((nk) => matchKeywordPattern(nk, kwPattern))))
+    .map((sub) => ({ key: sub.key, label: sub.labels[lang] || sub.labels.it }))
+}
