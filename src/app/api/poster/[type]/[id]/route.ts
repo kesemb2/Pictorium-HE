@@ -15,7 +15,7 @@ import { touchUserActivity } from "@/lib/user-activity"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { recordPosterUrl } from "@/lib/poster-url-log"
 import { getServerDefaultsForUser, getServerDefaultsChecked } from "@/lib/server-defaults"
-import { getRegionDef, normalizeRegion, parseRegion, defaultRegionForLang } from "@/lib/regions"
+import { getRegionDef, normalizeRegion, parseRegion, defaultRegionForLang, contentLanguageForUiLang } from "@/lib/regions"
 import { BEST_FIT_GLOBAL, resolveLogoFitEnabled } from "@/lib/best-fit-config"
 import { selectAutoFitCandidates, selectBestLogoFitPosterPath } from "@/lib/poster-auto-fit"
 import { fetchAllWikidata, matchTMDBStudios, directorBadgeLabel, isValidWikidataQid, type WikidataResult } from "@/lib/awards"
@@ -25,7 +25,9 @@ import type { EnrichedAnimeItem } from "@/lib/validation"
 import { fetchMDBList, type MDBListEntry } from "@/lib/mdblist"
 import { fetchAggregatedRating, pickSeparateRatings, resolveRatingSources, type SeparateRating } from "@/lib/ratings"
 import { isImdbTop250 } from "@/lib/imdb-top250"
-import { getEffectiveRotationState, tryRotatePoster, getEffectiveBackdropRotationState, tryRotateBackdrop, getDynamicRotationBucket, rotationIndexFor, secondsUntilDynamicRotationCut } from "@/lib/poster-rotation"
+import { getEffectiveRotationState, tryRotatePoster, getEffectiveBackdropRotationState, tryRotateBackdrop, getDynamicRotationBucket, rotationIndexFor, secondsUntilDynamicRotationCut, dynamicRotationBucket } from "@/lib/poster-rotation"
+import { loadTagFacts } from "@/lib/tag-facts"
+import { eligibleTags, pickDailyTag } from "@/lib/tag-catalog"
 import { getTMDBSessionCache, setTMDBSessionCache } from "@/lib/tmdb-session-cache"
 import { mappingVersionParam } from "@/lib/stremio-poster-url"
 import { RENDER_VERSION } from "@/lib/render-version"
@@ -154,6 +156,8 @@ const RENDER_TIMEOUT_MS = (() => {
 // teneva 1 slot di render fino a 30s; a 8s il render degrada (fallback) o
 // fallisce in fretta liberando lo slot. Cataloghi/meta/search restano a 30s.
 const POSTER_TMDB_TIMEOUT_MS = 8000
+/** Fork: tetto ai fatti per la tag del giorno — oltre, la tag della scala. */
+const TAG_FACTS_TIMEOUT_MS = 2500
 
 // Tetto massimo per l'attesa del voto medio TMDB+IMDb (MDBList) prima del
 // render: se il fetch è lento, il poster usa il voto TMDB senza bloccarsi.
@@ -513,9 +517,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     nowMs: startTime,
   })
   const dynamicBucketKey = dynamicDayBucket !== null ? `:dd${dynamicDayBucket}` : ""
+  // Fork: stile Tag — la tag cambia ogni giorno (tag-catalog.ts), stesso cut
+  // delle 02:00 UTC della rotazione: il giorno entra nella chiave e il TTL si
+  // ferma al cut, per i titoli salvati come per i dinamici.
+  const qStyle = req.nextUrl.searchParams.get(earlyLandscape ? "lstyle" : "pstyle")
+  const earlyTagStyle = (qStyle ?? (earlyLandscape
+    ? (configOverride?.landscapeStyle ?? sd.landscapeStyle)
+    : (configOverride?.posterStyle ?? sd.posterStyle))) === "tag"
+  const tagDayBucket = earlyTagStyle ? dynamicRotationBucket(startTime) : null
+  const tagBucketKey = tagDayBucket !== null ? `:tg${tagDayBucket}` : ""
   // TTL allineato al prossimo cut (header + storage esplicito sotto): oltre
   // il cut la chiave cambia comunque, mai contenuto stantio oltre il giorno.
-  const dynamicCutTtlSec = dynamicDayBucket !== null
+  const dynamicCutTtlSec = dynamicDayBucket !== null || tagDayBucket !== null
     ? secondsUntilDynamicRotationCut(startTime)
     : null
   const dynamicCutTtlMs = dynamicCutTtlSec !== null ? dynamicCutTtlSec * 1000 : null
@@ -531,7 +544,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   const canonicalFormat = legacyAvif ? "avif" : transparentStrip ? "webp" : DEFAULT_IMAGE_FORMAT
   const formatKey = legacyAvif ? ":fmtavif" : canonicalFormat === "webp" ? ":fmtwebp" : ""
   const topTodayKey = topTodayPosition ? `:tt${topTodayPosition}` : ""
-  const cacheKey = `poster:v${RENDER_VERSION}:${mediaType}:${tmdbId}:reg${posterRegion.code}:r${cachedRank ?? "x"}:sd${sdHash}:${cacheParams.toString()}${rotateKey}${mapVersion}${dynamicBucketKey}${topTodayKey}${configHash ? `:cfg${configHash}` : ""}${formatKey}`
+  const cacheKey = `poster:v${RENDER_VERSION}:${mediaType}:${tmdbId}:reg${posterRegion.code}:r${cachedRank ?? "x"}:sd${sdHash}:${cacheParams.toString()}${rotateKey}${mapVersion}${dynamicBucketKey}${tagBucketKey}${topTodayKey}${configHash ? `:cfg${configHash}` : ""}${formatKey}`
   const needsVariant = !legacyAvif && outputFormat !== canonicalFormat
   const variantKey = needsVariant ? `${cacheKey}:fmt${outputFormat}` : cacheKey
   const etagBase = hashKey(`v${RENDER_VERSION}:${mediaType}:${tmdbId}:reg${posterRegion.code}:r${cachedRank ?? "x"}:sd${sdHash}:${cacheParams.toString()}${topTodayKey}${configHash ? `:${configHash}` : ""}`)
@@ -539,7 +552,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // Rating dinamici: con provider abilitato niente cache immutable annuale
   // (i rating cambiano) — vale anche il display-aware locale: solo la riga
   // davvero renderizzata rinuncia all'immutable.
-  const immutablePoster = !customRatingConfig.enabled && !sepDisplay && isImmutablePosterRequest(req.nextUrl.searchParams, {
+  // La tag del giorno cambia ogni giorno: mai immutable.
+  const immutablePoster = tagDayBucket === null && !customRatingConfig.enabled && !sepDisplay && isImmutablePosterRequest(req.nextUrl.searchParams, {
     hasMapping: !!mapping,
     isRotating,
     mappingVersionMatches: !!currentMappingVersion && req.nextUrl.searchParams.get("mv") === currentMappingVersion,
@@ -560,9 +574,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   // TTL reale della entry canonica (jitter deterministico ±10%): threadato
   // negli header così restano sincronizzati con lo storage (M3). La variante
   // ha storage key propria → TTL proprio (vedi serveResponseVariant).
-  const dynamicTtlSec = dynamicPoster ? (dynamicCutTtlSec ?? dynamicPosterTtlSec(cacheKey)) : undefined
+  // Fork: con la tag del giorno anche il poster salvato scade al cut, o la
+  // CDN servirebbe la tag di ieri per un giorno intero.
+  const tagCutTtlSec = tagDayBucket !== null ? (dynamicCutTtlSec ?? undefined) : undefined
+  const dynamicTtlSec = dynamicPoster ? (dynamicCutTtlSec ?? dynamicPosterTtlSec(cacheKey)) : tagCutTtlSec
   // La variante è un'entry separata (storage key propria) con TTL proprio.
-  const variantTtlSec = dynamicPoster && needsVariant ? (dynamicCutTtlSec ?? dynamicPosterTtlSec(variantKey)) : undefined
+  const variantTtlSec = dynamicPoster && needsVariant ? (dynamicCutTtlSec ?? dynamicPosterTtlSec(variantKey)) : needsVariant ? tagCutTtlSec : undefined
 
   // Validatore della richiesta condizionale: null in preview (sempre 200) e
   // quando assente. I confronti usano SEMPRE l'ETag della rappresentazione
@@ -2169,6 +2186,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         ? { genreColor: mapping.accentColor, rankColor: mapping.accentColor }
         : null
 
+    // Fork: fatti TMDB per la tag del giorno (solo stile Tag, cachati 12h).
+    // Mai bloccanti: oltre il tetto il poster esce con la tag della scala.
+    const tagFacts = tagDayBucket !== null && effTmdbKey && (mediaType === "movie" || mediaType === "tv")
+      ? await Promise.race([
+          loadTagFacts({
+            mediaType, tmdbId, locale, tmdbLang: contentLanguageForUiLang(locale, posterRegion.code),
+            apiKey: effTmdbKey, signal: renderAbort.signal, timeoutMs: POSTER_TMDB_TIMEOUT_MS, keywords: tmdbKeywords,
+          }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), TAG_FACTS_TIMEOUT_MS)),
+        ]).catch(() => null)
+      : null
+
     // 9. Debug mode — return JSON with all computed data instead of rendering
     const isDebug = req.nextUrl.searchParams.get("debug") === "1"
     if (isDebug) {
@@ -2194,6 +2223,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         imdbTop250: !!imdbTop250,
       }
       const badgeComputed = computeTopBadge(badgeInput, t, locale, sashOrder, dateFormat)
+      // Stile Tag: le tag del catalogo che valgono oggi e quella del giorno.
+      const tagPool = tagFacts ? eligibleTags(tagFacts, t, locale) : []
+      const tagDebug = tagDayBucket !== null
+        ? { bucket: tagDayBucket, eligible: tagPool.map((c) => ({ id: c.id, label: c.label, weight: c.weight })), pick: pickDailyTag(tagPool, `${mediaType}:${tmdbId}`, tagDayBucket)?.id ?? null }
+        : null
       log.info("Debug mode", { mediaType, tmdbId, imdbId, imdbTop250: !!imdbTop250, badge: badgeComputed.badge?.label ?? "null", vote: voteAverage, genre: genreName, quality: finalQuality })
       completePosterRender(null)
       return Response.json({
@@ -2206,6 +2240,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
           imdbTop250: !!imdbTop250,
           renderVersion: RENDER_VERSION,
           shape: isLandscape ? "landscape" : "poster",
+          tags: tagDebug,
           mappingId: mapping ? `${mediaType}:${tmdbId}` : null,
         },
         images: {
@@ -2347,6 +2382,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       // Custom values override internal sources with the same ID, preserving order.
       ratings: customRatingConfig.enabled ? [...new Map([...ratings, ...customRatings].map(item => [item.id, item])).values()] : undefined,
       posterBuf, logoFetch, backdropFetch: isLandscape ? null : backdropFetch,
+      tagFacts, tagBucket: tagDayBucket,
       backdropScale, backdropOffsetX, backdropOffsetY,
       blurEnabled, blurHeight: effBlurHeight, blurIntensity, blurFade: effBlurFade, blurDarkness, tintStrength, topShade,
       badgesEnabled, rankingEnabled, genreName, voteAverage, badgeStyle,
@@ -2415,7 +2451,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
       const sepSig = useSeparate ? sepItems.map((s) => `${s.id}${s.value}`).join(",") : ""
       // Rotazione dinamica: il bucket giorno entra nell'ETag così la
       // rivalidazione tra giorni non risponde mai 304 sul poster di ieri.
-      const dynEtagSuffix = dynamicDayBucket !== null ? `:${dynamicDayBucket}` : ""
+      const dynEtagSuffix = `${dynamicDayBucket !== null ? `:${dynamicDayBucket}` : ""}${tagDayBucket !== null ? `:t${tagDayBucket}` : ""}`
       etag = `${etag.slice(0, -1)}:${finalRank ?? "X"}:${imdbTop250}:${voteAverage ?? "0"}:${applyPreRelease ? "P" : "x"}:${sepSig}${dynEtagSuffix}"`
     }
 

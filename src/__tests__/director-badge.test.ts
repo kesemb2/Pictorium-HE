@@ -18,11 +18,11 @@ const tIt = tFor(itDict as Record<string, string>)
 
 describe("directorBadgeLabel", () => {
   it("uses the curated Hebrew name over Wikidata's", () => {
-    expect(directorBadgeLabel("Martin Scorsese", tHe, { nameHe: "מרטין סקורסזי", locale: "he" })).toBe("מרטין סקורסזה")
+    expect(directorBadgeLabel("Martin Scorsese", tHe, { nameHe: "מרטין סקורסזי", locale: "he" })).toBe("בבימוי מרטין סקורסזה")
   })
 
   it("falls back to Wikidata's Hebrew label when the name is not curated", () => {
-    expect(directorBadgeLabel("John Ford", tHe, { nameHe: "ג'ון פורד", locale: "he" })).toBe("ג'ון פורד")
+    expect(directorBadgeLabel("John Ford", tHe, { nameHe: "ג'ון פורד", locale: "he" })).toBe("בבימוי ג'ון פורד")
   })
 
   // Un nome in latino è meglio di nessun badge.
@@ -36,15 +36,16 @@ describe("directorBadgeLabel", () => {
   })
 
   it("accepts a full locale, not only the two-letter code", () => {
-    expect(directorBadgeLabel("Martin Scorsese", tHe, { nameHe: null, locale: "he-IL" })).toBe("מרטין סקורסזה")
+    expect(directorBadgeLabel("Martin Scorsese", tHe, { nameHe: null, locale: "he-IL" })).toBe("בבימוי מרטין סקורסזה")
   })
 
   it("is null without a director", () => {
     expect(directorBadgeLabel(null, tHe, { nameHe: "מרטין סקורסזה", locale: "he" })).toBeNull()
   })
 
-  it("drops the prefix in Hebrew but keeps it elsewhere", () => {
-    expect(directorBadgeLabel("Tim Burton", tHe, { nameHe: null, locale: "he" })).toBe("טים ברטון")
+  // Formulazione approvata: "בבימוי {name}", ma mai accanto a un nome latino.
+  it("prefixes a Hebrew name, keeps a Latin one bare, and keeps the prefix elsewhere", () => {
+    expect(directorBadgeLabel("Tim Burton", tHe, { nameHe: null, locale: "he" })).toBe("בבימוי טים ברטון")
     expect(directorBadgeLabel("Tim Burton", tEn, { nameHe: null, locale: "en" })).toBe("By Tim Burton")
   })
 
@@ -56,7 +57,7 @@ describe("directorBadgeLabel", () => {
    */
   it("renders the same cached pair differently per language", () => {
     const cached = { director: "Stanley Kubrick", directorHe: "סטנלי קובריק" }
-    expect(directorBadgeLabel(cached.director, tHe, { nameHe: cached.directorHe, locale: "he" })).toBe("סטנלי קובריק")
+    expect(directorBadgeLabel(cached.director, tHe, { nameHe: cached.directorHe, locale: "he" })).toBe("בבימוי סטנלי קובריק")
     expect(directorBadgeLabel(cached.director, tEn, { nameHe: cached.directorHe, locale: "en" })).toBe("By Stanley Kubrick")
   })
 })

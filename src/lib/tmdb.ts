@@ -978,3 +978,53 @@ function resolveFindId(data: { movie_results?: { id?: number }[]; tv_results?: {
     : (data.tv_results?.[0]?.id ?? data.movie_results?.[0]?.id)
   return typeof id === "number" && id > 0 ? id : null
 }
+
+// ---------------------------------------------------------------------------
+// Fork: dati per il catalogo delle tag (stile Tag). Letture leggere senza
+// schema zod: chi le usa (tag-facts.ts) controlla ogni campo e un errore vale
+// "niente tag", mai un poster rotto.
+// ---------------------------------------------------------------------------
+
+export interface TMDBCreditsLite {
+  cast: { id: number; name: string; order?: number }[]
+  crew: { id: number; name: string; job: string }[]
+}
+
+export async function getCreditsLite(mediaType: "movie" | "tv", id: number, apiKey?: string, signal?: AbortSignal, timeoutMs = 30000): Promise<TMDBCreditsLite> {
+  const data = await tmdbFetch(`/${mediaType}/${id}/credits`, apiKey, signal, timeoutMs) as Partial<TMDBCreditsLite> | null
+  return {
+    cast: Array.isArray(data?.cast) ? data!.cast.filter((c) => typeof c?.id === "number" && typeof c?.name === "string") : [],
+    crew: Array.isArray(data?.crew) ? data!.crew.filter((c) => typeof c?.id === "number" && typeof c?.name === "string" && typeof c?.job === "string") : [],
+  }
+}
+
+export async function getPersonAkas(personId: number, apiKey?: string, signal?: AbortSignal, timeoutMs = 30000): Promise<{ name: string; aka: string[] }> {
+  const data = await tmdbFetch(`/person/${personId}`, apiKey, signal, timeoutMs) as { name?: unknown; also_known_as?: unknown } | null
+  return {
+    name: typeof data?.name === "string" ? data.name : "",
+    aka: Array.isArray(data?.also_known_as) ? (data!.also_known_as as unknown[]).filter((a): a is string => typeof a === "string") : [],
+  }
+}
+
+export interface TMDBPersonTvCreditLite {
+  id: number
+  name: string
+  job?: string
+  vote_count?: number
+  popularity?: number
+}
+
+export async function getPersonTvCrew(personId: number, language: string, apiKey?: string, signal?: AbortSignal, timeoutMs = 30000): Promise<TMDBPersonTvCreditLite[]> {
+  const data = await tmdbFetch(`/person/${personId}/tv_credits?language=${language}`, apiKey, signal, timeoutMs) as { crew?: unknown } | null
+  return Array.isArray(data?.crew)
+    ? (data!.crew as TMDBPersonTvCreditLite[]).filter((c) => typeof c?.id === "number" && typeof c?.name === "string")
+    : []
+}
+
+export async function getCollectionLite(collectionId: number, language: string, apiKey?: string, signal?: AbortSignal, timeoutMs = 30000): Promise<{ name: string; parts: { id: number; release_date?: string }[] }> {
+  const data = await tmdbFetch(`/collection/${collectionId}?language=${language}`, apiKey, signal, timeoutMs) as { name?: unknown; parts?: unknown } | null
+  return {
+    name: typeof data?.name === "string" ? data.name : "",
+    parts: Array.isArray(data?.parts) ? (data!.parts as { id: number; release_date?: string }[]).filter((p) => typeof p?.id === "number") : [],
+  }
+}

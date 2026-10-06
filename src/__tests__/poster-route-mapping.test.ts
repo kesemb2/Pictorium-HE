@@ -209,6 +209,28 @@ describe("GET /api/poster/[type]/[id] with saved mappings", () => {
     expect(renderMultiRatings).not.toHaveBeenCalled()
   })
 
+  it("tag style: the daily tag keeps a saved poster cached only until the 02:00 UTC cut", async () => {
+    const savedPoster = await imageBuffer("#101010", 500, 750)
+    const logo = await imageBuffer("#ffffff", 220, 80)
+    mockedGetById.mockResolvedValue({
+      tmdbId: 42, mediaType: "movie", title: "Saved Poster", posterPath: "/saved-choice.jpg", logoPath: "/logo.png",
+      originalPosterPath: null, language: "it", cleanPosters: ["/saved-choice.jpg"], showBadges: false, rankingBadges: false,
+      updatedAt: "2026-07-16T10:15:30.000Z",
+    })
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const body = String(input).includes("/logo.png") ? logo : savedPoster
+      return new Response(new Uint8Array(body), { status: 200, headers: { "content-type": "image/png", "content-length": String(body.length) } })
+    })
+    const { secondsUntilDynamicRotationCut } = await import("@/lib/poster-rotation")
+    const tag = await GET(new NextRequest("http://localhost:3000/api/poster/movie/42?rv=81&mv=1784218530000&pstyle=tag"), { params: Promise.resolve({ type: "movie", id: "42" }) })
+    expect(tag.status).toBe(200)
+    const cc = tag.headers.get("Cache-Control") ?? ""
+    expect(cc).not.toContain("immutable")
+    const maxAge = Number(cc.match(/max-age=(\d+)/)?.[1])
+    // Scade al prossimo cut delle 02:00 UTC, come la rotazione dell'artwork.
+    expect(Math.abs(maxAge - secondsUntilDynamicRotationCut())).toBeLessThanOrEqual(5)
+  })
+
   it("drops the logo when a saved clean fanart base turns out to have text", async () => {
     const { checkPosterText } = await import("@/lib/poster-textless")
     vi.mocked(checkPosterText).mockImplementationOnce(async (url: string) => ({ url, textless: false, score: 1.6 }))

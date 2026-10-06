@@ -94,6 +94,10 @@ export interface ComputedTopBadge {
   readonly awardBadge: string | null
   readonly studioBadge: string | null
   readonly subGenreBadge: string | null
+  /** Fork: pezzi della scala riusati dalla tag giornaliera (stile Tag). */
+  readonly nomination?: string | null
+  readonly directorBadge?: string | null
+  readonly returning?: string | null
 }
 
 export function isNetworkStudio(studioName: string | null): boolean {
@@ -324,6 +328,9 @@ export function computeTopBadge(input: BadgeInput, t: BadgeT, locale?: string, o
     awardBadge,
     studioBadge,
     subGenreBadge,
+    nomination,
+    directorBadge,
+    returning,
   }
 }
 

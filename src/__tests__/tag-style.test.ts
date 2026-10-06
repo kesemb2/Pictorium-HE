@@ -7,6 +7,9 @@ import { resolvePosterRenderConfig } from "@/lib/poster-config"
 import { normalizePosterCacheParams } from "@/lib/poster-runtime-cache"
 import { buildStremioPosterSearchParams } from "@/lib/stremio-poster-params"
 import { buildDefaultsPreviewUrl } from "@/lib/poster-url"
+import heDict from "@/lib/translations/he.json"
+
+const HE_DICT = heDict as Record<string, string>
 
 const W = 500
 const H = 750
@@ -28,7 +31,7 @@ async function whiteLogo(): Promise<Buffer> {
   return sharp(Buffer.from(svg)).png().toBuffer()
 }
 
-async function render(opts: { posterStyle?: "classic" | "tag"; extra?: string | null; logo?: boolean; report?: ReadabilityReport }): Promise<Buffer> {
+async function render(opts: { posterStyle?: "classic" | "tag"; extra?: string | null; logo?: boolean; report?: ReadabilityReport; tagFacts?: unknown; tagBucket?: number | null; releaseDate?: string }): Promise<Buffer> {
   return generatePosterBuffer({
     posterBuf: await poster((x, y) => Math.round(120 + 90 * Math.sin(x / 9) * Math.cos(y / 13))),
     logoFetch: opts.logo === false ? null : await whiteLogo(),
@@ -43,9 +46,10 @@ async function render(opts: { posterStyle?: "classic" | "tag"; extra?: string | 
     posterStyle: opts.posterStyle, title: "כותרת", titleUnderLogo: opts.logo !== false,
     mediaType: "movie", finalRank: null, animeRankResult: null, rankingResult: null, mapping: null,
     tmdbNetworks: [], productionCompanies: [], tmdbStudios: [], tvType: null, tvStatus: null,
-    releaseDate: "2024-01-01", firstAirDate: null, lastAirDate: null, seasonCount: null, originCountries: [],
+    releaseDate: opts.releaseDate ?? "2024-01-01", firstAirDate: null, lastAirDate: null, seasonCount: null, originCountries: [],
     wikidataResult: { awards: [], nominations: [], studios: [], director: null, directorHe: null },
-    tmdbKeywords: [], locale: "he", t: (k: string) => (k === "badge.top" ? "טופ" : k), qLabel: null,
+    tagFacts: opts.tagFacts ?? null, tagBucket: opts.tagBucket ?? null, tmdbId: 27205,
+    tmdbKeywords: [], locale: "he", t: (k: string, p?: Record<string, string | number>) => (k === "badge.top" ? "טופ" : HE_DICT[k] ? Object.entries(p ?? {}).reduce((s, [a, b]) => s.replaceAll(`{${a}}`, String(b)), HE_DICT[k]!) : k), qLabel: null,
     queryExtra: opts.extra ?? null, qNetLogo: null,
     networkLogo: false, sd: { networkLogo: false }, accentOverride: null, imdbTop250: false, preRelease: false,
   } as unknown as GenerationInput)
@@ -192,4 +196,35 @@ describe("tag glass blurs the poster, not the dark fade", () => {
     expect(lum).toBeLessThanOrEqual(GLASS_MAX_LUMINANCE + 0.05)
     expect(lum).toBeGreaterThan(0.25)
   })
+})
+
+describe("daily tag (tag style)", () => {
+  const facts = { mediaType: "movie", genreIds: [28, 878], runtime: 148, releaseDate: "2010-07-15", originCountries: [], keywords: [], productionCompanies: [], networks: [], composer: "Hans Zimmer" }
+  const today = (bucket: number, over: Partial<Parameters<typeof render>[0]> = {}) => {
+    const report: ReadabilityReport = {}
+    return render({ posterStyle: "tag", tagFacts: facts, tagBucket: bucket, report, ...over }).then(() => report)
+  }
+
+  it("a tag-style poster with no news gets a catalogue tag, and it changes by day", async () => {
+    const a = await today(20000)
+    const b = await today(20001)
+    expect(a.dailyTag).toBeTruthy()
+    expect(a.tag?.label).toBeTruthy()
+    expect(a.tag?.label).not.toMatch(/^tag\./)
+    expect(b.dailyTag).not.toBe(a.dailyTag)
+  }, 60000)
+
+  it("news wins over the daily tag", async () => {
+    const recent = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10)
+    const r = await today(20000, { releaseDate: recent })
+    expect(r.dailyTag).toBeUndefined()
+    expect(r.tag?.label).toBe(HE_DICT["badge.newMovie"])
+  }, 60000)
+
+  it("a manual tag wins, and the classic style has no daily tag", async () => {
+    expect((await today(20000, { extra: "שלי" })).tag?.label).toBe("שלי")
+    const classic: ReadabilityReport = {}
+    await render({ posterStyle: "classic", tagFacts: facts, tagBucket: 20000, report: classic })
+    expect(classic.dailyTag).toBeUndefined()
+  }, 60000)
 })
