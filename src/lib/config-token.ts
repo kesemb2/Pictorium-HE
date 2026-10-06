@@ -139,6 +139,8 @@ export const configTokenSchema = z.object({
   // Regione classifiche (codice JW "IT"/"US"... o slug FlixPatrol): validazione
   // lasca di proposito, la normalizzazione fail-closed avviene in risoluzione.
   region: z.string().max(32).optional(),
+  /** Fork: lingua dei contenuti dell'addon (= lingua UI). */
+  language: z.string().max(8).optional(),
 })
 
 export type PictoriumUserConfig = z.infer<typeof configTokenSchema>
@@ -163,6 +165,8 @@ export const partialCatalogTokenSchema = z.object({
   /** Fork: forma dei poster per catalogo (come AIOMetadata). Assente = globale. */
   catalogShapes: z.record(z.string().max(80), z.enum(["poster", "landscape"])).optional(),
   region: z.string().max(32).optional(),
+  /** Fork: lingua dei contenuti dell'addon (= lingua UI). */
+  language: z.string().max(8).optional(),
 }).strict()
 
 export type PartialCatalogUserConfig = z.infer<typeof partialCatalogTokenSchema>

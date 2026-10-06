@@ -311,6 +311,9 @@ export interface PosterEditorCtx {
   /** Formato data badge "in uscita" (default `locale` = segue la lingua). */
   defaultDateFormat: DateFormat
   setDefaultDateFormat: (v: DateFormat | ((prev: DateFormat) => DateFormat)) => void
+  /** Fork: lingua dei contenuti dell'addon (= lingua UI), salvata nello spazio. */
+  defaultLanguage: string | null
+  setDefaultLanguage: (v: string | null) => void
   loadDefaultsToState: () => void
 
   // ---- Blur ----
@@ -497,7 +500,7 @@ export function PosterEditorProvider({
     defaultAccentDominant, defaultBadgeTopScale, defaultBadgeBottomScale, defaultBadgeTopOffset, defaultBadgeBottomOffset, defaultLogoBottomOffset, defaultTextOpacity,
     defaultTextShadowOpacity, defaultTextShadowBlur, defaultTextShadowOffset, defaultRatingStar, defaultAutoDarkText, defaultTextHalo,
     episodeMetadataSource, defaultEpisodeMetadataSource,
-    region, defaultRegion, defaultDateFormat,
+    region, defaultRegion, defaultDateFormat, defaultLanguage,
     loadDefaultsToState, update,
   } = defaults
 
@@ -1191,6 +1194,9 @@ export function PosterEditorProvider({
       const next = typeof v === "function" ? v(defaultDateFormat) : v
       update({ defaultDateFormat: next })
     }, [defaultDateFormat, update])
+  const setDefaultLanguage = useCallback((v: string | null) => {
+    if (v !== defaultLanguage) update({ defaultLanguage: v })
+  }, [defaultLanguage, update])
 
   const applyVisualPreset = useCallback((values: VisualPresetValues) => update(values), [update])
 
@@ -1408,6 +1414,8 @@ export function PosterEditorProvider({
       setDefaultRegion,
       defaultDateFormat,
       setDefaultDateFormat,
+      defaultLanguage,
+      setDefaultLanguage,
       loadDefaultsToState,
 
       // Blur
@@ -1543,6 +1551,7 @@ export function PosterEditorProvider({
       region, setRegion,
       defaultRegion, setDefaultRegion,
       defaultDateFormat, setDefaultDateFormat,
+      defaultLanguage, setDefaultLanguage,
 
       // Defaults
       defaultBadgeStyle, setDefaultBadgeStyle,

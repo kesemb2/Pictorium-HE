@@ -192,6 +192,11 @@ export interface ServerDefaults {
   /** Formato data badge "in uscita" (default `locale` = segue la lingua). */
   dateFormat?: DateFormat
   /**
+   * Fork: lingua dei contenuti dell'addon (poster, loghi, titoli, nomi dei
+   * cataloghi) = lingua scelta nell'interfaccia. Assente → lingua della regione.
+   */
+  language?: string
+  /**
    * Tuning di resa specifico per il canvas landscape 16:9 (default globali
    * orizzontali). I campi flat restano i default portrait E il fallback per
    * ogni chiave landscape assente/undefined. Istanze senza `landscape` si

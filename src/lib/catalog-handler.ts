@@ -22,7 +22,7 @@ import { parseSupportedTmdbRef } from "@/lib/stremio-addon"
 import { buildStremioLogoUrl, buildStremioPosterUrl, stremioPosterShape } from "@/lib/stremio-poster-url"
 import { getOriginFromRequest } from "@/lib/poster-public-url"
 import { getJWRankings, getJWTitles, resolveJWGenreCode, type JWRankEntry } from "@/lib/justwatch"
-import { getRegionDef, normalizeRegion, parseRegion, GLOBAL_REGION_CODE, type RegionDef } from "@/lib/regions"
+import { contentLanguageForUiLang, getRegionDef, normalizeRegion, parseRegion, resolveContentLang, GLOBAL_REGION_CODE, type RegionDef } from "@/lib/regions"
 import { getCatalogEpoch } from "@/lib/catalog-epoch"
 import { createLogger } from "@/lib/logger"
 import { concurrentMap } from "@/lib/episode-ordering"
@@ -500,9 +500,12 @@ export async function pictoriumCatalog(
   // Regione classifiche (JustWatch + FlixPatrol) e lingua titoli: entra in ogni
   // cache key così cataloghi di paesi diversi non si avvelenano a vicenda.
   const region = resolveCatalogRegionWithDefaults(req, userConfig, effectiveDefaults)
-  const tmdbLang = region.lang
-  const posterLang = tmdbLang.slice(0, 2).toLowerCase()
-  const regionFragment = `:r${region.code}`
+  // Fork: lingua dei contenuti = lingua scelta nella UI (salvata nello
+  // spazio), non quella della regione: con regione US/Global i poster e i
+  // loghi restavano in inglese. Le classifiche JustWatch restano per regione.
+  const posterLang = resolveContentLang(req.nextUrl.searchParams.get("lang"), userConfig?.language, effectiveDefaults.language, region)
+  const tmdbLang = contentLanguageForUiLang(posterLang, region.code)
+  const regionFragment = `:r${region.code}:l${posterLang}`
 
   // Global Top 20 ranking source for this slot (movie/series). Platform and
   // anime catalogs never read it, and the cache fragment below applies to
@@ -1025,9 +1028,9 @@ export async function pictoriumCatalog(
               offset: jwSkip,
               genres: [jwGenre],
               sortBy: "POPULAR",
-              language: tmdbLang,
+              language: region.lang,
             })
-          : await getJustWatchRankings(stType === "movie" ? "MOVIE" : "SHOW", region.code, jwFirst, undefined, tmdbLang)
+          : await getJustWatchRankings(stType === "movie" ? "MOVIE" : "SHOW", region.code, jwFirst, undefined, region.lang)
 
         const seenTmdb = new Set<number>()
         uniqueRows = rows.filter((r) => {
@@ -1223,10 +1226,10 @@ export async function pictoriumCatalog(
               packages: pkgs,
               genres: [jwGenre],
               sortBy: "POPULAR",
-              language: tmdbLang,
+              language: region.lang,
             })
           } else {
-            jwRows = await getJustWatchRankings(stType === "movie" ? "MOVIE" : "SHOW", region.code, jwFirst, pkgs, tmdbLang)
+            jwRows = await getJustWatchRankings(stType === "movie" ? "MOVIE" : "SHOW", region.code, jwFirst, pkgs, region.lang)
           }
         }
 

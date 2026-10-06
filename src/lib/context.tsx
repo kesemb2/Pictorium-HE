@@ -924,12 +924,23 @@ export function usePictorium(): PictoriumCtx {
     }
   }, [safeGetItem])
 
+  // Fork: allinea una volta la lingua dei contenuti dello spazio alla lingua
+  // UI già scelta (spazi creati prima di questa impostazione, o lingua
+  // cambiata su un altro dispositivo). Solo con una scelta esplicita salvata.
+  useEffect(() => {
+    if (!safeGetItem("preferred_lang")) return
+    if (editorCtx.defaultLanguage !== lang) editorCtx.setDefaultLanguage(lang)
+  }, [lang, editorCtx.defaultLanguage]) // eslint-disable-line react-hooks/exhaustive-deps -- setter/getter stabili per valore
+
   const pickLang = (l: string) => {
     if (!isSupportedUiLang(l)) return
     const code = l.toLowerCase()
     setLang(code)
     setI18nLang(code)
     safeSetItem("preferred_lang", code)
+    // Fork: la lingua scelta è anche la lingua dei contenuti dell'addon
+    // (poster, loghi, titoli in Nuvio/Stremio), salvata nello spazio.
+    editorCtx.setDefaultLanguage(code)
     const matchingRegion = defaultRegionForLang(code, editorCtx.defaultRegion)
     if (matchingRegion) {
       editorCtx.setDefaultRegion(matchingRegion)
