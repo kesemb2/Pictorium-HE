@@ -91,6 +91,7 @@ export async function saveDefaults(ed: PosterEditorCtx): Promise<boolean> {
     defaultEpisodeMetadataSource: ed.defaultEpisodeMetadataSource,
     region: ed.defaultRegion,
     dateFormat: ed.defaultDateFormat,
+    language: ed.defaultLanguage ?? undefined,
     networkLogo: ed.defaultNetworkLogo,
     ribbonSide: ed.defaultRibbonSide,
     ribbonEnabled: ed.defaultRibbonEnabled,

@@ -21,7 +21,7 @@ import { resolveImdbId } from "@/lib/imdb-cache"
 import { getCatalogEpoch } from "@/lib/catalog-epoch"
 import { buildNoticeDetail, NOTICE_ID_PREFIX } from "@/lib/notice-meta"
 import { resolveCatalogRegionWithDefaults } from "@/lib/catalog-handler"
-import { isSupportedUiLang, contentLanguageForUiLang } from "@/lib/regions"
+import { contentLanguageForUiLang, resolveContentLang } from "@/lib/regions"
 import { getScopedUserId, userExists, userRateLimitKey } from "@/lib/user-auth"
 import { touchUserActivity } from "@/lib/user-activity"
 import { buildStremioLogoUrl, buildStremioPosterUrl, stremioPosterShape } from "@/lib/stremio-poster-url"
@@ -207,8 +207,8 @@ export async function pictoriumMeta(
 
   const episodeMetadataSource = userConfig?.episodeMetadataSource || (tvdbApiKey ? "tvdb" : "tmdb")
   const region = resolveCatalogRegionWithDefaults(req, userConfig, effectiveDefaults)
-  const requestedLang = req.nextUrl.searchParams.get("lang")?.toLowerCase()
-  const posterLang = isSupportedUiLang(requestedLang) ? requestedLang! : region.lang2
+  // Fork: query `lang` > token > lingua dello spazio (= lingua UI) > regione.
+  const posterLang = resolveContentLang(req.nextUrl.searchParams.get("lang"), userConfig?.language, effectiveDefaults.language, region)
   const tmdbLang = contentLanguageForUiLang(posterLang, region.code)
 
   // Risoluzione ID TMDB e IMDb

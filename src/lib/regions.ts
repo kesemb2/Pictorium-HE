@@ -202,3 +202,21 @@ export function regionLabel(region: Pick<RegionDef, "code" | "label">, uiLang: s
   }
   return region.label
 }
+
+/**
+ * Fork: lingua dei contenuti dell'addon (2 lettere): query `lang` > config
+ * token `language` > `language` dello spazio (= lingua scelta nella UI) >
+ * lingua della regione. La regione decide le classifiche, non la lingua.
+ */
+export function resolveContentLang(
+  queryLang: string | null | undefined,
+  configLang: string | null | undefined,
+  defaultsLang: string | null | undefined,
+  region: RegionDef,
+): string {
+  for (const l of [queryLang, configLang, defaultsLang]) {
+    const code = l?.toLowerCase()
+    if (isSupportedUiLang(code)) return code!
+  }
+  return region.lang2
+}

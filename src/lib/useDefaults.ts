@@ -6,6 +6,7 @@ import type { NetworkLogoPosition, PosterShape } from "./types"
 import { isNetworkLogoPosition, isPosterShape } from "./types"
 import type { LandscapeServerDefaults } from "./server-defaults"
 import { parseDateFormat, type DateFormat } from "./release-badge"
+import { isSupportedUiLang } from "./regions"
 import { normalizeRegion } from "./regions"
 import { isProfilelessOnMultiUser, notifyProfilelessOnce, shouldSkipServerSync } from "./guest-guard"
 import { userFetch } from "./http"
@@ -117,6 +118,11 @@ export interface DefaultsState {
   defaultRegion: string
   /** Formato data badge "in uscita" (default `locale` = segue la lingua). */
   defaultDateFormat: DateFormat
+  /**
+   * Fork: lingua dei contenuti dell'addon (poster, loghi, titoli) = lingua
+   * scelta nell'interfaccia, salvata nello spazio. Null = segue la regione.
+   */
+  defaultLanguage: string | null
   region: string
   globalBadges: boolean
   rankingBadges: boolean
@@ -272,6 +278,7 @@ const DEFAULTS: DefaultsState = {
   defaultLogoAlign: null,
   defaultEpisodeMetadataSource: "tmdb",
   defaultDateFormat: "locale",
+  defaultLanguage: null,
   defaultRegion: "IT",
   region: "IT",
   globalBadges: true,
@@ -473,6 +480,7 @@ interface StoredDefaults {
   defaultDateFormat?: DateFormat
   /** Chiave server/local piatta (saveDefaults/defaultsToPayload): fallback di lettura. */
   dateFormat?: DateFormat
+  language?: string | null
   defaultRegion?: string
   region?: string
   autoRotateClean?: boolean
@@ -604,6 +612,7 @@ function buildFromStored(d: StoredDefaults | null): DefaultsState {
     defaultLogoAlign: d.defaultLogoAlign === "left" || d.defaultLogoAlign === "center" ? d.defaultLogoAlign : null,
     defaultEpisodeMetadataSource: d.defaultEpisodeMetadataSource ?? d.episodeMetadataSource ?? "tmdb",
     defaultDateFormat: parseDateFormat(d.defaultDateFormat ?? d.dateFormat) ?? "locale",
+    defaultLanguage: isSupportedUiLang(d.language) ? d.language!.toLowerCase() : null,
     defaultRegion: normalizeRegion(d.defaultRegion ?? d.region),
     region: normalizeRegion(d.region ?? d.defaultRegion),
     globalBadges: d.globalBadges ?? d.defaultGlobalBadges ?? true,
@@ -759,6 +768,7 @@ function defaultsToPayload(d: DefaultsState): Record<string, unknown> {
     episodeMetadataSource: d.defaultEpisodeMetadataSource,
     region: d.defaultRegion,
     dateFormat: d.defaultDateFormat,
+    language: d.defaultLanguage ?? undefined,
     videoFormats: d.defaultVideoFormats,
     logoScale: d.defaultLogoScale ?? null,
     logoOffsetX: d.defaultLogoOffsetX ?? null,

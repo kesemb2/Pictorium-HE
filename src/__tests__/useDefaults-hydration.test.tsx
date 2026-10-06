@@ -222,6 +222,28 @@ describe("useDefaults hydration", () => {
     expect(JSON.parse(storage.getItem("badgeDefaults")!).badgeYear).toBe(true)
   })
 
+  // Fork: la lingua scelta nella UI va allo spazio (lingua dei contenuti
+  // dell'addon in Nuvio/Stremio), e torna indietro all'idratazione.
+  it("saves the content language to the space and reads it back", async () => {
+    const { result } = renderHook(() => useDefaults())
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1200)
+    })
+    act(() => {
+      result.current.update({ defaultLanguage: "he" })
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1200)
+    })
+    const last = putBodies[putBodies.length - 1] as Record<string, unknown>
+    expect(last.language).toBe("he")
+    const again = renderHook(() => useDefaults())
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1200)
+    })
+    expect(again.result.current.defaultLanguage).toBe("he")
+  })
+
   it("migra il vecchio flag unico sui due formati", async () => {
     storage.setItem("badgeDefaults", JSON.stringify({ defaultLogoFitEnabled: false }))
     const { result } = renderHook(() => useDefaults())

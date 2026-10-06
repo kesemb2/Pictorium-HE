@@ -9,7 +9,7 @@ import { rankingSourceCatalogName } from "@/lib/ranking-source"
 import { pictoriumExtraForAddon } from "@/lib/stremio-addon"
 import { getServerDefaultsChecked, getServerDefaultsForUser } from "@/lib/server-defaults"
 import { getScopedUserId } from "@/lib/user-auth"
-import { getRegionDef, normalizeRegion, parseRegion } from "@/lib/regions"
+import { getRegionDef, normalizeRegion, parseRegion, resolveContentLang } from "@/lib/regions"
 import { hubModeSuffix, localizeCatalogName, localizeGenreOptions, manifestDescription, typeSuffix } from "@/lib/stremio-labels"
 
 const MOVIE_GENRES = [
@@ -97,7 +97,9 @@ export async function buildManifestResponse(req: NextRequest, user?: string | nu
   // rinomine utente vincono) e i testi seguono la lingua della regione.
   // (namespaceDefaults già risolto sopra: nessuna seconda lettura.)
   const manifestRegion = getRegionDef(parseRegion(userConfig?.region) ?? normalizeRegion(namespaceDefaults.region))
-  const manifestLang = manifestRegion.lang2
+  // Fork: i nomi dei cataloghi nella lingua scelta nella UI (salvata nello
+  // spazio), non in quella della regione.
+  const manifestLang = resolveContentLang(null, userConfig?.language, namespaceDefaults.language, manifestRegion)
   let catalogs: Array<{ id: string; name: string; type: "movie" | "series"; customBaseId?: string; addonExtra?: ReturnType<typeof pictoriumExtraForAddon> }> =
     PICTORIUM_CATALOGS.map((c) => ({ ...c, name: localizeCatalogName(c.name, manifestLang) }))
   if (userConfig?.disabledCatalogIds && userConfig.disabledCatalogIds.length > 0) {

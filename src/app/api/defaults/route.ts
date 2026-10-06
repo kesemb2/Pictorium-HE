@@ -136,6 +136,8 @@ const defaultsSchema = z.object({
   episodeMetadataSource: z.enum(["tmdb", "tvdb"]).optional(),
   region: z.string().max(32).optional(),
   dateFormat: z.enum(["locale", "dmy", "mdy", "iso"]).optional(),
+  // Fork: lingua dei contenuti dell'addon (= lingua UI); validata in lettura.
+  language: z.string().max(8).optional(),
   // Profilo default landscape (sfumatura/blur + scale/offset badge, come
   // LandscapeServerDefaults): chiavi assenti seguono i flat. Validazione
   // speculare ai flat.
