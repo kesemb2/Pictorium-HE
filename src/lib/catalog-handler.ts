@@ -336,7 +336,7 @@ async function pictoriumPosterAndShape(
   // "חיבור Pictorium": NuvioTV lo mostra nelle pagine dettaglio. In ogni
   // forma, landscape compreso. L'id è quello IMDB quando noto.
   const logoFor = (logoId: string | number) => buildStremioLogoUrl({
-    origin: base.origin, type, id: logoId, lang: posterLang, hebrewFont: defaults.hebrewFont,
+    origin: base.origin, type, id: logoId, lang: posterLang, hebrewFont: defaults.hebrewFont, user: userParam,
   })
   return { poster, banner, landscapePoster, posterShape, logoFor }
 }

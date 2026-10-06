@@ -3,7 +3,7 @@ import sharp from "sharp"
 import { initSharp } from "@/lib/sharp-config"
 import { rateLimit, rateLimitKey, rateLimitResponse } from "@/lib/rate-limit"
 import { resolveImdbToTmdb } from "@/lib/imdb-resolver"
-import { getDetailsWithExternalIds, getImages, resolveRequestApiKey } from "@/lib/tmdb"
+import { getDetailsWithExternalIds, getImages, resolveUserApiKeys } from "@/lib/tmdb"
 import { getFanartMovie, getFanartTv, type FanartImage } from "@/lib/fanart-artwork"
 import { fetchImg, imgSrc, isAllowedImageUrl } from "@/lib/poster-render-helpers"
 import { chooseLogo, composeLogoImage, inkProfiler, localizedTitle, whitenLogo } from "@/lib/logo-image"
@@ -12,7 +12,8 @@ import { RENDER_VERSION } from "@/lib/render-version"
 import { recordPosterUrl } from "@/lib/poster-url-log"
 import { createLogger } from "@/lib/logger"
 import { validatePosterQuery } from "@/lib/validation"
-import { getServerDefaultsChecked } from "@/lib/server-defaults"
+import { getServerDefaultsChecked, getServerDefaultsForUser } from "@/lib/server-defaults"
+import { getScopedUserId, userExists, userRateLimitKey } from "@/lib/user-auth"
 import { DEFAULT_HEBREW_FONT, isHebrewFont } from "@/lib/badge-styles"
 import type { TMDBImage } from "@/lib/types"
 
@@ -27,7 +28,10 @@ function corsHeaders(): Record<string, string> {
   return { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*" }
 }
 
-function logoHeaders(etag: string, contentType: string): Record<string, string> {
+function logoHeaders(etag: string, contentType: string, degraded = false): Record<string, string> {
+  // Logo di ripiego (senza chiave o senza titolo): niente cache, così un
+  // guasto momentaneo non resta in CDN per un giorno.
+  if (degraded) return { ...corsHeaders(), "Content-Type": contentType, "Cache-Control": "no-store", "ETag": etag }
   return {
     ...corsHeaders(),
     "Content-Type": contentType,
@@ -48,8 +52,12 @@ interface RouteParams { type: string; id: string }
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<RouteParams> }) {
   initSharp()
-  const rl = await rateLimit(rateLimitKey(req), "logo")
+  // Fork: spazio utente (`?u=`) come nella route poster: le URL logo che
+  // l'addon serve non portano chiavi, la chiave TMDB arriva dallo spazio.
+  let scopedUser = getScopedUserId(req.nextUrl.searchParams.get("u") ?? req.nextUrl.searchParams.get("user"))
+  const rl = await rateLimit(scopedUser ? userRateLimitKey(req, scopedUser) : rateLimitKey(req), "logo")
   if (!rl.ok) return rateLimitResponse(rl.retAfter)
+  if (scopedUser && !(await userExists(scopedUser))) scopedUser = null
 
   const invalidQuery = validatePosterQuery(req.nextUrl.searchParams)
   if (invalidQuery) return new Response(invalidQuery, { status: 400, headers: corsHeaders() })
@@ -58,7 +66,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   const mediaType = ["series", "tv", "show", "tvshow"].includes(type?.toLowerCase() || "") ? "tv" : "movie"
 
   let tmdbId = Number(id)
-  const apiKey = resolveRequestApiKey(req)
+  // Esplicita (query/header) > spazio > env d'istanza, come il poster.
+  const apiKey = (await resolveUserApiKeys(req, scopedUser)).tmdb.key
   if (isNaN(tmdbId) || tmdbId <= 0) {
     if (typeof id === "string" && id.startsWith("tt")) {
       const resolved = await resolveImdbToTmdb(id, mediaType, apiKey)
@@ -76,8 +85,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
   const contentType = wantsWebp ? "image/webp" : "image/png"
 
   // Fork: font del titolo ebraico, come nel poster: query `hfont` > default
-  // dell'istanza > Rubik. Entra nella chiave cache.
-  const rawHfont = req.nextUrl.searchParams.get("hfont") ?? (await getServerDefaultsChecked().catch(() => null))?.hebrewFont
+  // dello spazio (o dell'istanza) > Rubik. Entra nella chiave cache.
+  const rawHfont = req.nextUrl.searchParams.get("hfont")
+    ?? (await (scopedUser ? getServerDefaultsForUser(scopedUser) : getServerDefaultsChecked()).catch(() => null))?.hebrewFont
   const hebrewFont = isHebrewFont(rawHfont) ? rawHfont : DEFAULT_HEBREW_FONT
   const cacheKey = `logo:${RENDER_VERSION}:${mediaType}:${tmdbId}:${lang}:${wantsWebp ? "webp" : "png"}:${titleOverride || ""}${hebrewFont === DEFAULT_HEBREW_FONT ? "" : `:${hebrewFont}`}`
   const cached = cacheGet<Buffer>(cacheKey)
@@ -137,14 +147,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     }
     const out = wantsWebp ? await sharp(composed).webp({ quality: 90 }).toBuffer() : composed
 
-    cacheSet(cacheKey, out, ["logo"], LOGO_TTL_MS)
+    // Ripiego (nessuna chiave TMDB, o titolo chiesto e non risolto): si serve
+    // ma non si cacha, né qui né in CDN — la prossima richiesta riprova.
+    const degraded = !apiKey || (choice.needsTitle && !title)
+    if (!degraded) cacheSet(cacheKey, out, ["logo"], LOGO_TTL_MS)
     log.info("Logo rendered", {
       mediaType, tmdbId, lang, logoLang: choice.lang,
-      whitened: choice.whitened, titleWanted: !!title, titleRendered, bytes: out.byteLength,
+      whitened: choice.whitened, titleWanted: !!title, titleRendered, bytes: out.byteLength, degraded,
     })
     recordPosterUrl(req.nextUrl)
 
-    return new Response(new Uint8Array(out), { headers: logoHeaders(`"${cacheKey.length}-${out.length}"`, contentType) })
+    return new Response(new Uint8Array(out), { headers: logoHeaders(`"${cacheKey.length}-${out.length}"`, contentType, degraded) })
   } catch (e) {
     log.error("Logo generation failed", { error: e instanceof Error ? e.message : String(e) })
     return new Response("Logo generation failed", { status: 500, headers: corsHeaders() })

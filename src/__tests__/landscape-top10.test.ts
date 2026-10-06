@@ -249,4 +249,27 @@ describe("neon number tint", () => {
     const a = data[((10) * W + (S - 8)) * 4 + 3]!
     expect(a).toBeGreaterThan(8)
   })
+
+  it("the panel shadow falls over the neon number, and fades before the strip's far edge", async () => {
+    const W = 768, H = 432, S = rankStripWidth(W, H, 7)
+    const panel = await sharp({ create: { width: W - S, height: H, channels: 3, background: "#d0d0d0" } }).png().toBuffer()
+    const lit = async (shadowed: boolean) => {
+      const out = await composeRankStrip({ panel, rank: 7, canvasW: W, canvasH: H, stripW: S, transparent: true, tint: "white" })
+      const { data } = await sharp(out).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+      // Il "7": la barra in alto, all'altezza del numero. Luminanza del
+      // tubo vicino al pannello contro quella dello stesso tubo più a sinistra.
+      const y = Math.round(H * 0.51 - (H * 0.41) / 2) + 6
+      let best = { near: 0, far: 0 }
+      for (let dy = -6; dy <= 6; dy++) {
+        const px = (x: number) => { const i = ((y + dy) * W + x) * 4; return data[i]! * (data[i + 3]! / 255) }
+        best = { near: Math.max(best.near, px(S - Math.round(H * 0.03))), far: Math.max(best.far, px(Math.round(S * 0.35))) }
+      }
+      return shadowed ? best.near : best.far
+    }
+    // Il tubo vicino al pannello è nettamente più scuro di quello lontano.
+    expect(await lit(true)).toBeLessThan((await lit(false)) * 0.6)
+    const out = await composeRankStrip({ panel, rank: 7, canvasW: W, canvasH: H, stripW: S, transparent: true, tint: "white" })
+    const { data } = await sharp(out).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    expect(data[(2 * W + 2) * 4 + 3]).toBe(0) // l'ombra non arriva al bordo sinistro
+  })
 })
