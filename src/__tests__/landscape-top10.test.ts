@@ -267,7 +267,7 @@ describe("neon number tint", () => {
       return shadowed ? best.near : best.far
     }
     // Il tubo vicino al pannello è nettamente più scuro di quello lontano.
-    expect(await lit(true)).toBeLessThan((await lit(false)) * 0.6)
+    expect(await lit(true)).toBeLessThan((await lit(false)) * 0.75)
     const out = await composeRankStrip({ panel, rank: 7, canvasW: W, canvasH: H, stripW: S, transparent: true, tint: "white" })
     const { data } = await sharp(out).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
     expect(data[(2 * W + 2) * 4 + 3]).toBe(0) // l'ombra non arriva al bordo sinistro

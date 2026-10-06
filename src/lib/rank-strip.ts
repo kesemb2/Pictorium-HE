@@ -183,9 +183,9 @@ export function rankStripWidth(canvasW: number, canvasH: number, rank: number): 
 }
 
 /** Ombra del pannello: sfocatura e sporgenza (frazioni dell'altezza), opacità. */
-const SHADOW_BLUR = 0.07
-const SHADOW_REACH = 0.09
-const SHADOW_OPACITY = 0.9
+const SHADOW_BLUR = 0.065
+const SHADOW_REACH = 0.05
+const SHADOW_OPACITY = 0.8
 
 export interface RankStripInput {
   /** Poster già composto, largo `canvasW - stripW`, alto `canvasH`. */
