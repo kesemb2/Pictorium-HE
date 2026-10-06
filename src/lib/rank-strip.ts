@@ -182,6 +182,11 @@ export function rankStripWidth(canvasW: number, canvasH: number, rank: number): 
   return numberLayout(canvasW, canvasH, rank).stripW
 }
 
+/** Ombra del pannello: sfocatura e sporgenza (frazioni dell'altezza), opacità. */
+const SHADOW_BLUR = 0.07
+const SHADOW_REACH = 0.09
+const SHADOW_OPACITY = 0.9
+
 export interface RankStripInput {
   /** Poster già composto, largo `canvasW - stripW`, alto `canvasH`. */
   readonly panel: Buffer
@@ -222,9 +227,14 @@ export async function composeRankStrip(input: RankStripInput): Promise<Buffer> {
   const inkRight = S - Math.round(stripMargin(W) * 0.4)
   const numLeft = inkRight - num.inkW - num.inkLeft
   const numTop = Math.round(H * 0.51 - num.height / 2)
-  // Ombra del pannello sulla striscia: uguale anche da trasparente, dove
-  // scurisce il colore del client e stacca il pannello (resa più bella).
-  const shadow = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs><filter id="s" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${Math.max(2, Math.round(H * 0.02))}"/></filter></defs><rect x="${S - 2}" y="0" width="${panelW + r}" height="${H}" rx="${r}" fill="#000" opacity="0.55" filter="url(#s)"/></svg>`
+  // Ombra del pannello sulla striscia: forte e larga, passa SOPRA il numero
+  // (che si disegna prima) e sfuma su gran parte della striscia. Uguale anche
+  // da trasparente, dove scurisce il colore del client e stacca il pannello.
+  // Il rettangolo parte un po' a sinistra del pannello e sborda in alto e in
+  // basso, così l'ombra resta piena per tutta l'altezza.
+  const shadowBlur = Math.max(2, Math.round(H * SHADOW_BLUR))
+  const shadowX = S - Math.round(H * SHADOW_REACH)
+  const shadow = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs><filter id="s" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${shadowBlur}"/></filter></defs><rect x="${shadowX}" y="${-H * 0.2}" width="${W - shadowX + r}" height="${H * 1.4}" rx="${r}" fill="#000" opacity="${SHADOW_OPACITY}" filter="url(#s)"/></svg>`
   // Pannello: angoli sinistri arrotondati (a destra il bordo del canvas).
   const mask = `<svg xmlns="http://www.w3.org/2000/svg" width="${panelW}" height="${H}"><path d="M${r},0 L${panelW},0 L${panelW},${H} L${r},${H} Q0,${H} 0,${H - r} L0,${r} Q0,0 ${r},0 Z" fill="#fff"/></svg>`
   const edge = `<svg xmlns="http://www.w3.org/2000/svg" width="${panelW}" height="${H}"><path d="M${panelW},0.75 L${r},0.75 Q0.75,0.75 0.75,${r} L0.75,${H - r} Q0.75,${H - 0.75} ${r},${H - 0.75} L${panelW},${H - 0.75}" fill="none" stroke="rgba(150,190,255,0.28)" stroke-width="1.5"/></svg>`

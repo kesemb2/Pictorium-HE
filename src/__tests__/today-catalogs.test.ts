@@ -154,6 +154,14 @@ describe("logo URL on catalog metas (as AIOMetadata does with the logo pattern)"
     expect(body.metas[0].logo).not.toContain("api_key")
   })
 
+  it("carries the user space (u) so the logo route finds the TMDB key there", async () => {
+    vi.mocked(getTopToday).mockResolvedValue([30])
+    tmdbByUrl()
+    const { body } = await catalog("movie", "pictorium-today-movies", "&u=space-1")
+    expect(body.metas[0].logo).toBe("http://localhost:3000/api/logo/movie/30?lang=he&u=space-1")
+    expect(body.metas[0].poster).toContain("u=space-1")
+  })
+
   it("series use the series path, and the IMDB id when known", async () => {
     vi.mocked(getTopToday).mockResolvedValue([77])
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {

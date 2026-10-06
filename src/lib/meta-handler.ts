@@ -298,7 +298,7 @@ export async function pictoriumMeta(
     // "חיבור Pictorium" (ebraico, o inglese col titolo tradotto). In ogni
     // forma: è il logo delle pagine dettaglio di NuvioTV, non il baked-in.
     const logo = buildStremioLogoUrl({
-      origin: getOriginFromRequest(req), type: stType, id: imdbId || tmdbId, lang: posterLang, hebrewFont,
+      origin: getOriginFromRequest(req), type: stType, id: imdbId || tmdbId, lang: posterLang, hebrewFont, user: userParam,
     })
 
     const cast = (details.credits?.cast || []).slice(0, 10).map((c) => c.name)

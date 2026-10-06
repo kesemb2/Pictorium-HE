@@ -215,6 +215,8 @@ export interface BuildStremioLogoUrlInput {
   readonly id: string | number
   readonly lang?: string | null
   readonly hebrewFont?: string | null
+  /** Spazio utente (`u`): la route logo ne prende chiave TMDB e default. */
+  readonly user?: string | null
 }
 
 /**
@@ -222,13 +224,16 @@ export interface BuildStremioLogoUrlInput {
  * del pattern "חיבור Pictorium" (`buildLogoUrlPattern`) che AIOMetadata
  * riempie per ogni meta. Così NuvioTV mostra il nostro logo nelle pagine
  * dettaglio anche con l'addon installato direttamente. Niente chiavi: come
- * il poster, l'URL finisce nel DB del client.
+ * il poster, l'URL finisce nel DB del client; porta invece lo spazio `u`,
+ * da cui la route logo risolve la chiave TMDB (senza, logo inglese e niente
+ * titolo ebraico).
  */
 export function buildStremioLogoUrl(input: BuildStremioLogoUrlInput): string {
   const url = buildPosterPublicUrl(`/api/logo/${input.type}/${encodeURIComponent(String(input.id))}`, {
     origin: input.origin,
   })
   url.searchParams.set("lang", input.lang || "it")
+  if (input.user) url.searchParams.set("u", input.user)
   // La route logo legge solo i default globali: il font dello spazio va
   // esplicito, e solo quando non è quello di default.
   if (input.hebrewFont && input.hebrewFont !== DEFAULT_HEBREW_FONT) url.searchParams.set("hfont", input.hebrewFont)
