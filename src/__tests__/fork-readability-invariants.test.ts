@@ -130,3 +130,24 @@ describe("fork readability invariants", () => {
     expect(band.final).toBe(band.retreated)
   })
 })
+
+describe("dark single-colour logos render white", () => {
+  async function flatLogo(fill: string): Promise<Buffer> {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="180"><rect x="20" y="30" width="560" height="120" rx="20" fill="${fill}"/></svg>`
+    return sharp(Buffer.from(svg)).png().toBuffer()
+  }
+
+  it("a flat black or navy logo is whitened; a coloured one is not", async () => {
+    const dark = await poster(() => 40)
+    expect((await render(dark, await flatLogo("#050505"), true)).logoWhitened).toBe(true)
+    expect((await render(dark, await flatLogo("#14213d"), true)).logoWhitened).toBe(true)
+    expect((await render(dark, await flatLogo("#d4382c"), true)).logoWhitened).toBeUndefined()
+    expect((await render(dark, await whiteLogo(), true)).logoWhitened).toBeUndefined()
+  }, 60000)
+
+  it("once whitened, the logo needs no veil on a dark poster", async () => {
+    const report = await render(await poster(() => 30), await flatLogo("#050505"), true)
+    expect(report.logoWhitened).toBe(true)
+    expect(report.logoScrim ?? 0).toBe(0)
+  }, 60000)
+})

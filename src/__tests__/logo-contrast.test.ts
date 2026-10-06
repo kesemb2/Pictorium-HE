@@ -66,6 +66,24 @@ describe("logoInkProfile", () => {
     expect((await logoInkProfile(await logo("#ffffff")))!.flatBlack).toBe(false)
   }, 20000)
 
+  it("calls a single dark tint flatDark (black, smoke grey, navy, burgundy), anything else not", async () => {
+    for (const dark of ["#000000", "#3a3a3a", "#1a2a4a", "#5a0f14"]) {
+      expect((await logoInkProfile(await logo(dark)))!.flatDark, dark).toBe(true)
+    }
+    for (const other of ["#c81e1e", "#ffffff", "#808080", "#2266cc"]) {
+      expect((await logoInkProfile(await logo(other)))!.flatDark, other).toBe(false)
+    }
+  }, 20000)
+
+  it("a dark logo with a light part (outline, emblem) is not flat", async () => {
+    const dark = await sharp({ create: { width: 300, height: 60, channels: 4, background: "#000000" } }).png().toBuffer()
+    const light = await sharp({ create: { width: 60, height: 60, channels: 4, background: "#e8c040" } }).png().toBuffer()
+    const two = await sharp({ create: { width: 400, height: 200, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .composite([{ input: dark, top: 70, left: 50 }, { input: light, top: 70, left: 290 }])
+      .png().toBuffer()
+    expect((await logoInkProfile(two))!.flatDark).toBe(false)
+  }, 20000)
+
   it("returns null on an empty or unreadable buffer", async () => {
     const empty = await sharp({ create: { width: 400, height: 200, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
       .png().toBuffer()

@@ -24,7 +24,8 @@ import {
 } from "./poster-render-helpers"
 import { LAND_W, LAND_H } from "./image-utils"
 import { renderGenreBadge, renderRankingBadge, renderExtraBadge, renderQualityBadge, renderQualityBadgeUpstream, renderTitleText, renderComingSoonRibbon, comingSoonRibbonLayout, renderSVG, buildCustomPresetBadgeSVG, buildHousePresetBadgeSVG } from "./svg-badge"
-import { buildLogoHalo, buildLogoScrim, logoContrast, logoInkLuminance, logoScrimStrength, posterLogoZoneLuminance, posterZoneStats, zoneTextTreatment } from "./logo-contrast"
+import { buildLogoHalo, buildLogoScrim, logoContrast, logoInkProfile, logoScrimStrength, posterLogoZoneLuminance, posterZoneStats, zoneTextTreatment, type InkProfile } from "./logo-contrast"
+import { whitenLogo } from "./logo-image"
 import { renderFirstMatchingNetworkLogoBadge, renderFirstMatchingNetworkRawBadge, renderFirstMatchingNetworkLogoBadgeHybrid, renderFirstMatchingNetworkRawBadgeHybrid, type NetworkCandidate } from "./network-svgs"
 import { computeLogoLayout, logoAlignPadX, PORTRAIT_LOGO_MAX_HEIGHT_PCT, PORTRAIT_LOGO_TOP_OFFSET, LANDSCAPE_LOGO_MAX_WIDTH_PCT, LANDSCAPE_LOGO_MAX_HEIGHT_PCT, LANDSCAPE_LOGO_BOTTOM_MARGIN_PCT, LANDSCAPE_LOGO_TOP_OFFSET, LANDSCAPE_LOGO_SHIFT_X, LANDSCAPE_LOGO_SHIFT_Y } from "./logo-layout"
 import { logoDefaultScaleFromAspect } from "./logo-selection"
@@ -918,6 +919,16 @@ export async function resizeLogoCached(
   return result
 }
 
+/** Fork: profilo d'inchiostro del logo, cachato per logoSrc (null = non misurabile). */
+async function logoInkProfileCached(logoFetch: Buffer, logoSrc?: string | null): Promise<InkProfile | null> {
+  const key = logoSrc ? `logo-ink:${logoSrc}` : null
+  const cached = key ? cacheGet<{ p: InkProfile | null }>(key) : null
+  if (cached) return cached.p
+  const p = await logoInkProfile(logoFetch)
+  if (key) cacheSet(key, { p }, [IMAGE_CACHE_TAG], IMAGE_CACHE_TTL)
+  return p
+}
+
 /** Dimensioni originali del backdrop, cachate per src (salta il metadata() ripetuto). */
 export async function backdropMetaCached(
   backdropFetch: Buffer,
@@ -957,6 +968,8 @@ export interface ReadabilityReport {
   meta?: { lum: number | null; std: number | null; dark: boolean; halo: number }
   title?: { lum: number | null; std: number | null; dark: boolean; halo: number } | null
   logoScrim?: number
+  /** Logo in tinta unica scura ricolorato di bianco. */
+  logoWhitened?: boolean
   logoHalo?: number
   /** Altezza della fascia in %: chiesta, dopo la ritirata, finale (pavimento logo). */
   band?: { requested: number; retreated: number; final: number; logoTop: number | null; logoH: number | null }
@@ -1248,10 +1261,18 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     logoLayout
       ? (async () => {
           const layout = logoLayout
-          const resized = await resizeLogoCached(logoFetch!, layout.width, layout.height, logoSrc)
+          const [resized, ink] = await Promise.all([
+            resizeLogoCached(logoFetch!, layout.width, layout.height, logoSrc),
+            logoInkProfileCached(logoFetch!, logoSrc),
+          ])
+          // Fork: logo in una sola tinta scura → bianco. Sul fondo scuro del
+          // poster (fascia, dissolvenza) un logo nero o blu notte sparisce; in
+          // tinta unita non ha niente dentro da perdere, quindi si ricolora.
+          const whitened = ink?.flatDark === true
+          if (readabilityReport && whitened) readabilityReport.logoWhitened = true
           const aW = resized.w
           const aH = resized.h
-          return { input: resized.input, top: Math.max(0, Math.round(layout.top + (layout.height - aH))), left: Math.round(layout.left + ((layout.width - aW) / 2)), w: aW, h: aH } as const
+          return { input: whitened ? await whitenLogo(resized.input) : resized.input, inkLum: whitened ? 1 : (ink?.luminance ?? null), top: Math.max(0, Math.round(layout.top + (layout.height - aH))), left: Math.round(layout.left + ((layout.width - aW) / 2)), w: aW, h: aH } as const
         })()
       : Promise.resolve(null),
   ])
@@ -1320,8 +1341,8 @@ export async function generatePosterBuffer(input: GenerationInput): Promise<Buff
     // manca alla soglia: sopra 3:1 non dipinge nemmeno un pixel.
     const scrim = await (async () => {
       if (logoScrimDisabled) return null
-      const [inkLum, zoneLum] = await Promise.all([
-        logoInkLuminance(logoFetch!),
+      const inkLum = logoResult.inkLum
+      const [zoneLum] = await Promise.all([
         // La zona si misura CON la fascia sopra: è quella che il logo vedrà davvero.
         posterLogoZoneLuminance(
           posterBuf,
