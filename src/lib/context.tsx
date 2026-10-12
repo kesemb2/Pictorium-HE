@@ -18,7 +18,7 @@ import { currentPathUuid, fetchWithUserAuthRetry, userAuthHeaders, USER_UNLOCK_E
 import { copyText } from "./clipboard"
 import { useRootColors } from "./useRootColors"
 import { normalizeGenreName } from "./genre-normalize"
-import { buildUrlPattern, buildLogoUrlPattern, buildPreviewUrl } from "./poster-url"
+import { buildUrlPattern, buildLogoUrlPattern, buildPreviewUrl, buildThumbnailUrlPattern } from "./poster-url"
 import { selectBestLogo, autoLogoSelection, logoDefaultScale } from "./logo-selection"
 import { useTrending } from "./useTrending"
 import { useSearch } from "./useSearch"
@@ -103,6 +103,8 @@ export interface PictoriumCtx {
   urlPatternAuto: string
   /** Fork: template dell'endpoint logo (titolo ebraico sotto il logo inglese). */
   logoUrlPattern: string
+  /** Fork: template thumbnail episodi pulite (AIOMetadata). */
+  thumbnailUrlPattern: string
   /** Template Nuvio a formato automatico (`shape={shape}`): stessa base dei
    *  tre sopra ma con placeholder shape (Nuvio sceglie poster/landscape per
    *  vista; square ricade sul verticale). */
@@ -602,6 +604,7 @@ export function usePictorium(): PictoriumCtx {
   const [urlPatternImdb, setUrlPatternImdb] = useState("")
   const [urlPatternAuto, setUrlPatternAuto] = useState("")
   const [logoUrlPattern, setLogoUrlPattern] = useState("")
+  const [thumbnailUrlPattern, setThumbnailUrlPattern] = useState("")
   const [urlPatternNuvio, setUrlPatternNuvio] = useState("")
   const [urlPatternNuvioImdb, setUrlPatternNuvioImdb] = useState("")
   const [urlPatternNuvioAuto, setUrlPatternNuvioAuto] = useState("")
@@ -1052,6 +1055,7 @@ export function usePictorium(): PictoriumCtx {
     setUrlPatternImdb(buildUrlPattern({ ...base, idPlaceholder: "{imdb_id}" }))
     setUrlPatternAuto(buildUrlPattern({ ...base, idPlaceholder: "{tmdb_id|imdb_id}" }))
     setLogoUrlPattern(buildLogoUrlPattern({ lang, tmdbKey }))
+    setThumbnailUrlPattern(buildThumbnailUrlPattern({ tmdbKey }))
     setUrlPatternNuvio(buildUrlPattern({ ...base, idPlaceholder: "{tmdb_id}", shapePlaceholder: "{shape}" }))
     setUrlPatternNuvioImdb(buildUrlPattern({ ...base, idPlaceholder: "{imdb_id}", shapePlaceholder: "{shape}" }))
     setUrlPatternNuvioAuto(buildUrlPattern({ ...base, idPlaceholder: "{tmdb_id|imdb_id}", shapePlaceholder: "{shape}" }))
@@ -2019,7 +2023,7 @@ export function usePictorium(): PictoriumCtx {
     selectedLogo: navigation.selectedLogo, setSelectedLogo: navigation.setSelectedLogo,
     logos: navigation.logos,
     posterActivePath: posterActivePath ?? null,
-    previewUrl, stremioPreview, setStremioPreview, stremioPreviewUrl, urlPattern, urlPatternImdb, urlPatternAuto, logoUrlPattern, urlPatternNuvio, urlPatternNuvioImdb, urlPatternNuvioAuto, linkMode, setLinkMode: setLinkModeTracked, lang,
+    previewUrl, stremioPreview, setStremioPreview, stremioPreviewUrl, urlPattern, urlPatternImdb, urlPatternAuto, logoUrlPattern, thumbnailUrlPattern, urlPatternNuvio, urlPatternNuvioImdb, urlPatternNuvioAuto, linkMode, setLinkMode: setLinkModeTracked, lang,
     openSections, toggleSection: (key: string) => setOpenSections((prev) => ({ ...prev, [key]: !(prev[key] ?? true) })),
     posterScrollRef, posterScrollInfo, setPosterScrollInfo,
     selectPoster, selectLogo, removeLogo,
@@ -2073,7 +2077,7 @@ export function usePictorium(): PictoriumCtx {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- context value deps intentionally stable to prevent re-render cascades
   }), [
     navigation.selected, navigation.view, navigation.posters, loadingImages, navigation.previewPoster, navigation.selectedLogo,
-    navigation.logos, posterActivePath, previewUrl, stremioPreview, stremioPreviewUrl, urlPattern, logoUrlPattern, lang,
+    navigation.logos, posterActivePath, previewUrl, stremioPreview, stremioPreviewUrl, urlPattern, logoUrlPattern, thumbnailUrlPattern, lang,
     openSections, posterScrollInfo, logoBounds,
     trendRank, mdblistMatch, imdbTop250, metaInfo, navigation.previewId,
     selectPoster, selectLogo, saveConfig, removeLogo, goHomeAbort,

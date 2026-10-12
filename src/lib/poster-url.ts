@@ -310,6 +310,22 @@ export function buildLogoUrlPattern(input: { lang: string; tmdbKey?: string }): 
   return str ? `${url}?${str}` : url
 }
 
+/**
+ * Fork: pattern "Episode Thumbnail URL Pattern" di AIOMetadata. AIOMetadata
+ * riempie gli id della SERIE più `{season}`/`{episode}`, e `{thumbnail}` con
+ * l'immagine che userebbe da sé (ripiego quando TMDB non ha still). Niente
+ * ritocchi: l'immagine dell'episodio alla risoluzione originale.
+ */
+export function buildThumbnailUrlPattern(input: { tmdbKey?: string }): string {
+  const url = `${getPosterPublicBaseUrl()}/api/thumbnail/{imdb_id|tmdb_id}/S{season}E{episode}`
+  const params = new URLSearchParams()
+  // Stessa ragione del pattern logo: la chiave viaggia in query su un
+  // template che l'utente copia per sé.
+  if (input.tmdbKey) params.set("api_key", input.tmdbKey)
+  params.set("fallback", "{thumbnail}")
+  return `${url}?${params.toString().replace("%7Bthumbnail%7D", "{thumbnail}")}`
+}
+
 export function buildPreviewUrl(ps: PosterState, bp: BadgeParams, configToken?: string | null): string {
   if (!ps.selected) return ""
   const params: string[] = [`rv=${RENDER_VERSION}`]

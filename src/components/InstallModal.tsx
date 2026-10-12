@@ -20,6 +20,8 @@ interface InstallModalProps {
   posterUrlPatternAuto?: string
   /** Fork: template dell'endpoint logo (`/api/logo/{type}/{id}`). */
   logoUrlPattern?: string
+  /** Fork: template thumbnail episodi pulite (AIOMetadata "Episode Thumbnail URL Pattern"). */
+  thumbnailUrlPattern?: string
   /** Varianti Nuvio a formato automatico (`shape={shape}`): combinano il
    *  placeholder id scelto con il placeholder shape (Nuvio sceglie
    *  poster/landscape per vista; square ricade sul verticale). */
@@ -114,6 +116,7 @@ export function InstallModal({
   posterUrlPatternImdb,
   posterUrlPatternAuto,
   logoUrlPattern,
+  thumbnailUrlPattern,
   posterUrlPatternNuvio,
   posterUrlPatternNuvioImdb,
   posterUrlPatternNuvioAuto,
@@ -540,6 +543,17 @@ export function InstallModal({
                     </div>
                     <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed">{t("ui.logoLinkDesc")}</p>
                     <PatternRow value={logoUrlPattern} copyLabel={t("ui.logoLinkTitle")} />
+                  </div>
+                )}
+
+                {thumbnailUrlPattern && (
+                  <div className="pt-3 border-t border-white/10 space-y-2">
+                    <div className="flex items-center gap-1.5 text-zinc-300 text-xs sm:text-sm font-semibold">
+                      <ImageIcon className="w-3.5 h-3.5 text-accent-orange" />
+                      <span>{t("ui.thumbnailLinkTitle")}</span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed">{t("ui.thumbnailLinkDesc")}</p>
+                    <PatternRow value={thumbnailUrlPattern} copyLabel={t("ui.thumbnailLinkTitle")} />
                   </div>
                 )}
               </div>

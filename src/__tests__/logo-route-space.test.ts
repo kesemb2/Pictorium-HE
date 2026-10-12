@@ -92,3 +92,41 @@ describe("logo route with the user space (u)", () => {
     }
   })
 })
+
+describe("title under the logo: only when it is really in the requested language", () => {
+  async function titleDrawn(query: string, details: Record<string, unknown>) {
+    vi.mocked(getDetailsWithExternalIds).mockImplementationOnce(async (_t, id) => ({ id, external_ids: {}, ...details }) as never)
+    const spy = vi.spyOn(await import("@/lib/logo-image"), "composeLogoImage")
+    const res = await logo(query)
+    const title = spy.mock.calls[0]?.[0]?.title ?? null
+    spy.mockRestore()
+    return { res, title }
+  }
+
+  it("English logo + Hebrew translation → the Hebrew title is drawn", async () => {
+    const { title } = await titleDrawn("lang=he&u=space-1", { title: "מועדון קרב", original_title: "Fight Club", original_language: "en" })
+    expect(title).toBe("מועדון קרב")
+  })
+
+  it("no Hebrew translation (TMDB returns the English title) → logo alone, and still cached", async () => {
+    const { res, title } = await titleDrawn("lang=he&u=space-1", { title: "Fight Club", original_title: "Fight Club", original_language: "en" })
+    expect(title).toBeNull()
+    expect(res.headers.get("Cache-Control")).toContain("s-maxage=86400")
+  })
+
+  it("no Hebrew translation of a non-English film (original title) → logo alone", async () => {
+    const { title } = await titleDrawn("lang=he&u=space-1", { title: "La casa de papel", original_title: "La casa de papel", original_language: "es" })
+    expect(title).toBeNull()
+  })
+
+  it("other languages: a title equal to the original is not drawn, a translated one is", async () => {
+    expect((await titleDrawn("lang=it&u=space-1", { title: "Fight Club", original_title: "Fight Club", original_language: "en" })).title).toBeNull()
+    cacheClear()
+    expect((await titleDrawn("lang=it&u=space-1", { title: "Il club della lotta", original_title: "Fight Club", original_language: "en" })).title).toBe("Il club della lotta")
+  })
+
+  it("an explicit title= is drawn as given", async () => {
+    const { title } = await titleDrawn("lang=he&u=space-1&title=Fight%20Club", { title: "Fight Club", original_title: "Fight Club", original_language: "en" })
+    expect(title).toBe("Fight Club")
+  })
+})

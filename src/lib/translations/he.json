@@ -807,7 +807,7 @@
   "ui.logoFitEnabled": "התאמת לוגו אוטומטית",
   "ui.allSystemsOperational": "כל המערכות פועלות",
   "ui.logoLinkTitle": "כתובת לוגו",
-  "ui.logoLinkDesc": "אותה תבנית ללוגו: עברית כשיש, אחרת אנגלית עם השם בעברית מתחת - תמיד בהיר, בשביל ממשק כהה.",
+  "ui.logoLinkDesc": "אותה תבנית ללוגו: עברית כשיש, אחרת אנגלית עם השם בעברית מתחת כשקיים תרגום - תמיד בהיר, בשביל ממשק כהה.",
   "badge.nextEpisode": "פרק חדש ב-{date}",
   "badge.highlyRated": "מדורג גבוה",
   "ui.accentDominant": "צבע הדגשה מהפוסטר",
@@ -1202,5 +1202,7 @@
   "tag.bollywood": "בוליווד",
   "tag.nordic": "דרמה סקנדינבית",
   "tag.family": "לכל המשפחה",
-  "tag.kids": "לילדים"
+  "tag.kids": "לילדים",
+  "ui.thumbnailLinkTitle": "כתובת תמונות פרקים",
+  "ui.thumbnailLinkDesc": "בשביל \"Episode Thumbnail URL Pattern\" ב-AIOMetadata: תמונת הפרק נקייה, ברזולוציה הגבוהה ביותר, בלי ציונים ובלי לוגו."
 }

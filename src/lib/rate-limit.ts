@@ -47,6 +47,9 @@ const limits: Record<string, BucketConfig> = {
   // Logo: stessa forma d'uso del poster (una griglia ne chiede molti insieme),
   // ma il render è molto più leggero — nessun motivo per un tetto più basso.
   logo:    { maxTokens: POSTER_MAX_TOKENS, refillRate: 20, refillWindow: 1000 },
+  // Fork: thumbnail episodi (AIOMetadata ne chiede una per episodio): un
+  // redirect leggero, stessa forma del logo.
+  thumbnail: { maxTokens: POSTER_MAX_TOKENS, refillRate: 20, refillWindow: 1000 },
   search:  { maxTokens: 30,  refillRate: 3,  refillWindow: 1000 },
   mappings: { maxTokens: 120, refillRate: 10, refillWindow: 1000 },
   // Resolve-image: oracolo di fetch su host esterni — burst contenuto e
