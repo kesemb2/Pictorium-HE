@@ -18,7 +18,7 @@ import sharp, { type OverlayOptions } from "sharp"
 import { logoInkProfile, type InkProfile } from "./logo-contrast"
 import { pickReadableLogo, selectLogoTier } from "./logo-selection"
 import { withHebrewFont, type HebrewFont } from "./badge-styles"
-import { buildTitleTextSvg, titleStripHeight, titleTextFontSize, titleTextMaxW } from "./badge-svg-shared"
+import { buildTitleTextSvg, containsHebrew, titleStripHeight, titleTextFontSize, titleTextMaxW } from "./badge-svg-shared"
 import { renderSVG } from "./svg-badge"
 import type { TMDBImage } from "./types"
 
@@ -227,6 +227,29 @@ export function inkProfiler(
 /** Titolo tradotto: `title` di un film, `name` di una serie. */
 export function localizedTitle(details: { title?: string | null; name?: string | null } | null | undefined): string | null {
   return details?.title?.trim() || details?.name?.trim() || null
+}
+
+/**
+ * Fork: il titolo da scrivere sotto un logo in un'altra lingua, SOLO se è
+ * davvero nella lingua richiesta. Senza traduzione TMDB restituisce il titolo
+ * originale (o inglese): scriverlo sotto il logo inglese ripete il logo
+ * ("Fight Club" sotto "FIGHT CLUB"), e allora meglio il logo da solo.
+ * - ebraico: servono lettere ebraiche (stessa regola del poster);
+ * - altre lingue: deve differire dal titolo originale, salvo che la lingua
+ *   originale sia proprio quella richiesta.
+ */
+export function titleInLanguage(
+  details: { title?: string | null; name?: string | null; original_language?: string | null } | null | undefined,
+  lang: string,
+): string | null {
+  const title = localizedTitle(details)
+  if (!title) return null
+  const code = lang.slice(0, 2).toLowerCase()
+  if (code === "he") return containsHebrew(title) ? title : null
+  const raw = details as { original_title?: unknown; original_name?: unknown } | null | undefined
+  const original = typeof raw?.original_title === "string" ? raw.original_title : typeof raw?.original_name === "string" ? raw.original_name : ""
+  if (details?.original_language === code) return title
+  return original && original.trim().toLowerCase() === title.toLowerCase() ? null : title
 }
 
 export { titleStripHeight }

@@ -1028,3 +1028,29 @@ export async function getCollectionLite(collectionId: number, language: string, 
     parts: Array.isArray(data?.parts) ? (data!.parts as { id: number; release_date?: string }[]).filter((p) => typeof p?.id === "number") : [],
   }
 }
+
+// ---------------------------------------------------------------------------
+// Fork: immagini di un episodio (thumbnail pulita per AIOMetadata).
+// ---------------------------------------------------------------------------
+
+export interface TMDBStillLite {
+  file_path: string
+  width: number
+  height: number
+  iso_639_1: string | null
+  vote_average: number
+}
+
+export async function getEpisodeStills(tvId: number, season: number, episode: number, apiKey?: string, signal?: AbortSignal, timeoutMs = 30000): Promise<TMDBStillLite[]> {
+  const data = await tmdbFetch(`/tv/${tvId}/season/${season}/episode/${episode}/images`, apiKey, signal, timeoutMs) as { stills?: unknown } | null
+  if (!Array.isArray(data?.stills)) return []
+  return (data!.stills as Partial<TMDBStillLite>[])
+    .filter((s): s is Partial<TMDBStillLite> & { file_path: string } => typeof s?.file_path === "string" && s.file_path.startsWith("/"))
+    .map((s) => ({
+      file_path: s.file_path,
+      width: typeof s.width === "number" ? s.width : 0,
+      height: typeof s.height === "number" ? s.height : 0,
+      iso_639_1: typeof s.iso_639_1 === "string" && s.iso_639_1 ? s.iso_639_1 : null,
+      vote_average: typeof s.vote_average === "number" ? s.vote_average : 0,
+    }))
+}

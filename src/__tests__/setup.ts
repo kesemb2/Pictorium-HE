@@ -409,6 +409,8 @@ const itDict: Record<string, string> = {
   "tag.nordic": "Dramma scandinavo",
   "tag.family": "Per tutta la famiglia",
   "tag.kids": "Per bambini",
+  "ui.thumbnailLinkTitle": "URL miniature episodi",
+  "ui.thumbnailLinkDesc": "Per \"Episode Thumbnail URL Pattern\" di AIOMetadata: l'immagine dell'episodio pulita, alla risoluzione più alta, senza voti né logo.",
 }
 
 function mockT(key: string, params?: Record<string, string | number>): string {

@@ -882,7 +882,7 @@
   "ui.logoFitEnabled": "Auto logo compatibility",
   "ui.allSystemsOperational": "All systems operational",
   "ui.logoLinkTitle": "Logo URL",
-  "ui.logoLinkDesc": "Same template for the logo: Hebrew when it exists, otherwise English with the Hebrew title beneath - always light, for a dark interface.",
+  "ui.logoLinkDesc": "Same template for the logo: Hebrew when it exists, otherwise English with the Hebrew title beneath when a translation exists - always light, for a dark interface.",
   "badge.nextEpisode": "New episode {date}",
   "badge.highlyRated": "Highly rated",
   "ui.accentDominant": "Poster colour accent",
@@ -1202,5 +1202,7 @@
   "tag.bollywood": "Bollywood",
   "tag.nordic": "Nordic drama",
   "tag.family": "For the whole family",
-  "tag.kids": "For kids"
+  "tag.kids": "For kids",
+  "ui.thumbnailLinkTitle": "Episode thumbnail URL",
+  "ui.thumbnailLinkDesc": "For AIOMetadata's \"Episode Thumbnail URL Pattern\": a clean episode image at the highest resolution, with no ratings or logo."
 }

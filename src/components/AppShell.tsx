@@ -35,6 +35,7 @@ export function AppShell() {
   const showLangPicker = usePSelector((v) => v.showLangPicker)
   const urlPattern = usePSelector((v) => v.urlPattern)
   const logoUrlPattern = usePSelector((v) => v.logoUrlPattern)
+  const thumbnailUrlPattern = usePSelector((v) => v.thumbnailUrlPattern)
   const urlPatternImdb = usePSelector((v) => v.urlPatternImdb)
   const urlPatternAuto = usePSelector((v) => v.urlPatternAuto)
   const urlPatternNuvio = usePSelector((v) => v.urlPatternNuvio)
@@ -426,7 +427,7 @@ export function AppShell() {
         )}
 
         <ProxyModal isOpen={proxyOpen} onClose={() => setProxyOpen(false)} />
-        <InstallModal isOpen={installOpen} onClose={() => setInstallOpen(false)} posterUrlPattern={urlPattern} posterUrlPatternImdb={urlPatternImdb} posterUrlPatternAuto={urlPatternAuto} logoUrlPattern={logoUrlPattern} posterUrlPatternNuvio={urlPatternNuvio} posterUrlPatternNuvioImdb={urlPatternNuvioImdb} posterUrlPatternNuvioAuto={urlPatternNuvioAuto} linkMode={linkMode} onLinkModeChange={setLinkMode} hasUserSpace={!!currentUserId} />
+        <InstallModal isOpen={installOpen} onClose={() => setInstallOpen(false)} posterUrlPattern={urlPattern} posterUrlPatternImdb={urlPatternImdb} posterUrlPatternAuto={urlPatternAuto} logoUrlPattern={logoUrlPattern} thumbnailUrlPattern={thumbnailUrlPattern} posterUrlPatternNuvio={urlPatternNuvio} posterUrlPatternNuvioImdb={urlPatternNuvioImdb} posterUrlPatternNuvioAuto={urlPatternNuvioAuto} linkMode={linkMode} onLinkModeChange={setLinkMode} hasUserSpace={!!currentUserId} />
         <div key={view} className="animate-view-enter">
           {view === "search" ? <SearchView /> : view === "myposters" ? <MyPostersView /> : view === "cataloghi" ? <CataloghiView /> : <EditView />}
         </div>

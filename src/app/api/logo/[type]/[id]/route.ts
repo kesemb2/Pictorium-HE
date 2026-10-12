@@ -6,7 +6,7 @@ import { resolveImdbToTmdb } from "@/lib/imdb-resolver"
 import { getDetailsWithExternalIds, getImages, resolveUserApiKeys } from "@/lib/tmdb"
 import { getFanartMovie, getFanartTv, type FanartImage } from "@/lib/fanart-artwork"
 import { fetchImg, imgSrc, isAllowedImageUrl } from "@/lib/poster-render-helpers"
-import { chooseLogo, composeLogoImage, inkProfiler, localizedTitle, whitenLogo } from "@/lib/logo-image"
+import { chooseLogo, composeLogoImage, inkProfiler, titleInLanguage, whitenLogo } from "@/lib/logo-image"
 import { cacheGet, cacheSet } from "@/lib/cache"
 import { RENDER_VERSION } from "@/lib/render-version"
 import { recordPosterUrl } from "@/lib/poster-url-log"
@@ -130,12 +130,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
 
     const raw = await fetchLogo(choice.logo.file_path)
     const logoBuf = choice.whitened ? await whitenLogo(raw) : raw
-    const title = choice.needsTitle ? (titleOverride?.trim() || localizedTitle(details)) : null
-    // Il logo non è nella lingua preferita e nemmeno il titolo si è potuto
-    // risolvere (dettagli TMDB falliti, o titolo vuoto): l'utente resta con un
-    // logo inglese e basta, ed è bene che si veda nei log.
+    // Sotto il logo solo un titolo DAVVERO nella lingua richiesta: senza
+    // traduzione TMDB dà il titolo originale/inglese, che ripeterebbe il logo.
+    // Il `title=` esplicito vale com'è.
+    const title = choice.needsTitle ? (titleOverride?.trim() || titleInLanguage(details, lang)) : null
     if (choice.needsTitle && !title) {
-      log.warn("Logo not in the preferred language and no title to render under it", {
+      log.info("Logo not in the preferred language and no translated title: logo alone", {
         mediaType, tmdbId, lang, logoLang: choice.lang, hasDetails: !!details,
       })
     }
@@ -147,9 +147,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
     }
     const out = wantsWebp ? await sharp(composed).webp({ quality: 90 }).toBuffer() : composed
 
-    // Ripiego (nessuna chiave TMDB, o titolo chiesto e non risolto): si serve
-    // ma non si cacha, né qui né in CDN — la prossima richiesta riprova.
-    const degraded = !apiKey || (choice.needsTitle && !title)
+    // Ripiego (nessuna chiave TMDB, o dettagli TMDB falliti quando serviva il
+    // titolo): si serve ma non si cacha, né qui né in CDN — la prossima
+    // richiesta riprova. Un titolo senza traduzione NON è un ripiego: il logo
+    // da solo è il risultato giusto, e si cacha.
+    const degraded = !apiKey || (choice.needsTitle && !details && !titleOverride?.trim())
     if (!degraded) cacheSet(cacheKey, out, ["logo"], LOGO_TTL_MS)
     log.info("Logo rendered", {
       mediaType, tmdbId, lang, logoLang: choice.lang,

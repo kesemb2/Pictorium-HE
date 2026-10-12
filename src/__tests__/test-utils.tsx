@@ -27,6 +27,7 @@ export const MOCK_CTX: PictoriumCtx = {
   previewUrl: "",
   urlPattern: "",
   logoUrlPattern: "",
+  thumbnailUrlPattern: "",
   urlPatternImdb: "",
   urlPatternAuto: "",
   urlPatternNuvio: "",

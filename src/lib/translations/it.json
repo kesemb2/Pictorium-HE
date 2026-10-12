@@ -807,7 +807,7 @@
   "ui.logoFitEnabled": "Compatibilità logo automatica",
   "ui.allSystemsOperational": "Tutti i sistemi operativi",
   "ui.logoLinkTitle": "Logo URL",
-  "ui.logoLinkDesc": "Same template for the logo: Hebrew when it exists, otherwise English with the Hebrew title beneath - always light, for a dark interface.",
+  "ui.logoLinkDesc": "Same template for the logo: Hebrew when it exists, otherwise English with the Hebrew title beneath when a translation exists - always light, for a dark interface.",
   "badge.nextEpisode": "Nuovo episodio {date}",
   "badge.highlyRated": "Molto votato",
   "ui.accentDominant": "Accento dal colore del poster",
@@ -1202,5 +1202,7 @@
   "tag.bollywood": "Bollywood",
   "tag.nordic": "Dramma scandinavo",
   "tag.family": "Per tutta la famiglia",
-  "tag.kids": "Per bambini"
+  "tag.kids": "Per bambini",
+  "ui.thumbnailLinkTitle": "URL miniature episodi",
+  "ui.thumbnailLinkDesc": "Per \"Episode Thumbnail URL Pattern\" di AIOMetadata: l'immagine dell'episodio pulita, alla risoluzione più alta, senza voti né logo."
 }
