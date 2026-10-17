@@ -1,5 +1,6 @@
 import crypto from "node:crypto"
 import sharp from "sharp"
+import { smartCropToPortrait } from "@/lib/smart-crop"
 import { cacheGet, cacheSet } from "./cache"
 import { findAccentColor, findBandTint, type AccentHueMode } from "@/lib/accent-color"
 import { FANART_ASSET_PREFIX } from "./fanart-artwork"
@@ -120,6 +121,22 @@ export async function fetchLogoImg(path: string, signal?: AbortSignal): Promise<
   return fetchImg(imgSrc(path, "w500"), signal)
 }
 
+/**
+ * Fork: backdrop da ritagliare in poster. `original` perché la cornice 2:3 ne
+ * usa un terzo scarso della larghezza: da `w1280` (720px di altezza) il
+ * poster da 750px veniva ingrandito e sfocato. Sul cap anti-OOM (e solo lì)
+ * ripiega su `w1280`. Gli URL esterni (fanart) passano come sono.
+ */
+export async function fetchBackdropImg(path: string, signal?: AbortSignal): Promise<Buffer> {
+  if (path.startsWith("http")) return fetchImg(imgSrc(path), signal)
+  try {
+    return await fetchImg(imgSrc(path, "original"), signal)
+  } catch (e) {
+    if (!isImageTooLargeError(e)) throw e
+  }
+  return fetchImg(imgSrc(path, "w1280"), signal)
+}
+
 export function imgSrc(path: string, size = "w500"): string {
   if (path.startsWith("http")) {
     // SSRF protection: solo i CDN immagine noti (TMDB, TVDB artworks e, nel
@@ -136,15 +153,11 @@ export function imgSrc(path: string, size = "w500"): string {
 
 /**
  * Riquadra un'immagine qualsiasi al formato poster 2:3. Serve ai livelli di
- * fallback che usano un backdrop (16:9) al posto di un poster mancante:
- * `position: "attention"` tiene la zona con più dettaglio invece del centro
- * geometrico, che su un 16:9 tagliato a 2:3 spesso è cielo o sfondo vuoto.
+ * fallback che usano un backdrop (16:9) al posto di un poster mancante. Fork:
+ * la cornice cade sulle persone e sui volti (`smart-crop.ts`).
  */
 export async function cropToPoster(buf: Buffer): Promise<Buffer> {
-  return sharp(buf)
-    .resize(STD_W, STD_H, { fit: "cover", position: "attention" })
-    .jpeg({ quality: 92 })
-    .toBuffer()
+  return smartCropToPortrait(buf, STD_W, STD_H, 92)
 }
 
 export async function fitBadgeToCanvas<T extends BadgeRender>(badge: T, maxW: number, maxH: number): Promise<T> {

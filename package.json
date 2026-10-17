@@ -26,7 +26,11 @@
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
+    "@tensorflow/tfjs-backend-wasm": "4.22.0",
+    "@tensorflow/tfjs-converter": "4.22.0",
+    "@tensorflow/tfjs-core": "4.22.0",
     "@vercel/kv": "^3.0.0",
+    "@vladmandic/human": "3.3.6",
     "ioredis": "^6.0.0",
     "lucide-react": "^1.35.0",
     "next": "^16.3.8",

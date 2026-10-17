@@ -22,7 +22,13 @@ const nextConfig: NextConfig = {
   // `npm run dev` attivo su .next.
   distDir: process.env.NEXT_DIST_DIR || ".next",
   allowedDevOrigins: ["127.0.0.1"],
-  serverExternalPackages: ["@resvg/resvg-js", "sharp", "ioredis"],
+  // Fork: riconoscimento di volti/persone per il ritaglio dei backdrop
+  // (src/lib/subject-detect.ts) — tfjs + WASM, caricati a runtime da
+  // node_modules, mai nel bundle.
+  serverExternalPackages: [
+    "@resvg/resvg-js", "sharp", "ioredis",
+    "@vladmandic/human", "@tensorflow/tfjs-core", "@tensorflow/tfjs-converter", "@tensorflow/tfjs-backend-wasm",
+  ],
   // I font vivono su disco e resvg li carica per path assoluto
   // (src/lib/fonts.ts). Ogni route che rasterizza testo SVG deve quindi
   // tracciarseli nella PROPRIA lambda: su Vercel il filesystem è per-route.
@@ -33,7 +39,18 @@ const nextConfig: NextConfig = {
   // non si vedeva nulla. `src/__tests__/font-tracing.test.ts` tiene questa
   // mappa allineata alle route che arrivano a `src/lib/fonts.ts`.
   outputFileTracingIncludes: {
-    "/api/poster/**/*": ["src/assets/fonts/**/*"],
+    // Il riconoscimento (subject-detect.ts) carica per percorso la build
+    // node-wasm di human, i due modelli usati e i .wasm di tfjs: il tracing
+    // non li vede da solo. Senza, il ritaglio ripiega sul profilo visivo.
+    "/api/poster/**/*": [
+      "src/assets/fonts/**/*",
+      "node_modules/@vladmandic/human/dist/human.node-wasm.js",
+      "node_modules/@vladmandic/human/models/blazeface.*",
+      "node_modules/@vladmandic/human/models/centernet.*",
+      "node_modules/@tensorflow/tfjs-backend-wasm/dist/*.wasm",
+      // Richiesto da tfjs-core a runtime, ma il tracing non lo vede.
+      "node_modules/seedrandom/**/*",
+    ],
     "/api/logo/**/*": ["src/assets/fonts/**/*"],
   },
   outputFileTracingExcludes: {
