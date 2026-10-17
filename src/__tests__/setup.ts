@@ -27,6 +27,10 @@ vi.mock("next/font/google", () => {
 // I test simulano un'istanza pubblica (route admin aperte senza ADMIN_TOKEN):
 // la modalità deve essere esplicita via POSTERIUM_PUBLIC_INSTANCE=1 (vedi auth.ts).
 process.env.POSTERIUM_PUBLIC_INSTANCE = "1"
+// Il riconoscimento di volti/persone (subject-detect.ts) carica tfjs + WASM:
+// spento per default, così ogni test che ritaglia un backdrop resta veloce e
+// deterministico. I test del riconoscimento lo riaccendono (vi.stubEnv).
+process.env.PICTORIUM_SUBJECT_DETECT = "0"
 
 afterEach(() => {
   cleanup()

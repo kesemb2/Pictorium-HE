@@ -13,6 +13,7 @@
  */
 
 import sharp from "sharp"
+import { smartCropToPortrait, type CropAnalysis } from "@/lib/smart-crop"
 import { LAND_W, LAND_H } from "./constants"
 
 // ---- Standard poster dimensions (single source of truth) ----
@@ -74,17 +75,13 @@ export async function pillarboxLandscapeBase(portraitBuf: Buffer): Promise<Buffe
 }
 
 /**
- * Base 2:3 di fallback quando il titolo non ha alcun poster TMDB utilizzabile
- * ma ha un backdrop: cover-crop del backdrop sul canvas portrait con focus
- * sul soggetto (`sharp.strategy.attention` — salienza visiva/volti, non mero
- * dettaglio come `entropy`). Nessun titolo orfano resta mai con un 404.
- * Trigger SOLO in sostituzione del 404, mai su poster esistenti.
+ * Base 2:3 ricavata da un backdrop: quando il titolo non ha un poster
+ * utilizzabile (o non ne ha uno senza testo). Fork: la cornice cade sulle
+ * persone e sui volti (`smart-crop.ts`), non sulla zona più luminosa.
+ * `analysis` riusa un'analisi già fatta (scelta del backdrop migliore).
  */
-export async function cropBackdropToPortrait(backdropBuf: Buffer): Promise<Buffer> {
-  return sharp(backdropBuf)
-    .resize(STD_W, STD_H, { fit: "cover", position: sharp.strategy.attention })
-    .jpeg({ quality: 90 })
-    .toBuffer()
+export async function cropBackdropToPortrait(backdropBuf: Buffer, analysis?: CropAnalysis): Promise<Buffer> {
+  return smartCropToPortrait(backdropBuf, STD_W, STD_H, 90, analysis)
 }
 
 // ---- Math utilities ----

@@ -75,6 +75,7 @@ import {
   STD_W,
   fetchImg,
   fetchLogoImg,
+  fetchBackdropImg,
   hashKey,
   imgSrc,
   isValidHex,
@@ -85,6 +86,7 @@ import { computeBottomLight } from "@/lib/accent-color"
 import { normalizeGenreName } from "@/lib/genre-normalize"
 import { NON_CLEAN_BLUR_FADE, NON_CLEAN_GRADIENT_HEIGHT } from "@/lib/gradient-defaults"
 import { LAND_W, LAND_H, landscapeBackdropUrl, pillarboxLandscapeBase, cropBackdropToPortrait } from "@/lib/image-utils"
+import { analyzeForCrop, hasClearSubject, type CropAnalysis } from "@/lib/smart-crop"
 import { generatePosterBuffer, type GenerationInput, type ReadabilityReport } from "@/lib/poster-service"
 import { computeTopBadge } from "@/lib/poster-badge"
 import { containsHebrew } from "@/lib/badge-svg-shared"
@@ -141,6 +143,10 @@ const LOGO_ZONE = { left: 0, top: Math.round(STD_H * 0.52), width: STD_W, height
 // (fetch immagini + TMDB + composizione sharp). Oltre il tempo massimo il
 // watchdog abbandona il render e libera slot + inflight map. Lettura a module
 // level: un cambio env richiede restart, non hot-reload.
+// Fork: quanti backdrop esaminare (scaricati e analizzati) per trovarne uno
+// con qualcuno riconoscibile, prima di ripiegare sul primo.
+const RESCUE_BACKDROP_CANDIDATES = 3
+
 const RENDER_TIMEOUT_MS = (() => {
   const raw = envWithFallback("RENDER_TIMEOUT_MS")
   // Vercel Hobby: 10s di limite funzione — con 30s di deadline la piattaforma
@@ -1390,24 +1396,43 @@ export async function GET(req: NextRequest, { params }: { params: Promise<RouteP
         // Fork: senza textless, un backdrop ritagliato a 2:3 (TMDB senza testo,
         // poi sfondi fanart.tv) batte un poster con il titolo stampato — ma
         // solo se c'è un logo da appoggiarci sopra, altrimenti resta
-        // un'immagine senza titolo. Il ritaglio usa `attention`, non il centro.
+        // un'immagine senza titolo. La cornice cade su persone e volti
+        // (`smart-crop.ts`); tra i primi backdrop si preferisce il primo con
+        // qualcuno riconoscibile, così un paesaggio vuoto non batte una scena
+        // con i protagonisti. Senza riconoscimento disponibile: il primo.
         let backdropRescue = false
         if (!fanartPoster && !tvdbRescue && !isLandscape && logoPath && cleanEnabled) {
           const backdropCandidates: string[] = [
             ...images.backdrops.filter((b: TMDBImage) => b.iso_639_1 === null).map((b: TMDBImage) => b.file_path),
             ...(fanart?.backgrounds ?? []).map((b: FanartImage) => b.url),
           ]
+          type RescuePick = { candidate: string; raw: Buffer; analysis: CropAnalysis }
+          let first: RescuePick | null = null
+          let chosen: RescuePick | null = null
+          let analyzed = 0
           for (const candidate of backdropCandidates) {
+            if (renderAbort.signal.aborted) break
             try {
-              const raw = await fetchImg(imgSrc(candidate, "w1280"), renderAbort.signal)
-              posterPathBuffer = await cropBackdropToPortrait(raw)
-              posterPath = candidate
-              backdropRescue = true
-              log.info("Fallback: backdrop cropped to poster", { mediaType, tmdbId, backdrop: candidate })
-              recordBackdropCropRescue()
-              break
+              const raw = await fetchBackdropImg(candidate, renderAbort.signal)
+              const analysis = await analyzeForCrop(raw)
+              if (hasClearSubject(analysis)) { chosen = { candidate, raw, analysis }; break }
+              first ??= { candidate, raw, analysis }
+              // Riconoscimento non disponibile: inutile scaricarne altri.
+              if (!analysis.subjects || ++analyzed >= RESCUE_BACKDROP_CANDIDATES) break
             } catch (e) {
               log.info("Fallback: backdrop candidate failed", { mediaType, tmdbId, error: e instanceof Error ? e.message : String(e) })
+            }
+          }
+          const pick = chosen ?? first
+          if (pick) {
+            try {
+              posterPathBuffer = await cropBackdropToPortrait(pick.raw, pick.analysis)
+              posterPath = pick.candidate
+              backdropRescue = true
+              log.info("Fallback: backdrop cropped to poster", { mediaType, tmdbId, backdrop: pick.candidate, subject: !!chosen })
+              recordBackdropCropRescue()
+            } catch (e) {
+              log.info("Fallback: backdrop crop failed", { mediaType, tmdbId, error: e instanceof Error ? e.message : String(e) })
             }
           }
         }
