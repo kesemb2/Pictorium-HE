@@ -30,6 +30,16 @@ describe("poster render helpers", () => {
     // Sharp's native .composite() handles overflow clipping — the helper just validates
   })
 
+  it("rounds fractional offsets so libvips accepts the layer", async () => {
+    const input = await solidPng(24, 24, "#ff0000")
+    const layer = await fitCompositeToCanvas({ input, left: 10.6, top: 19.4 }, STD_W, STD_H)
+    expect(layer).toMatchObject({ left: 11, top: 19 })
+    const base = await solidPng(STD_W, STD_H, "#000000")
+    const out = await sharp(base).composite([layer!]).png().toBuffer()
+    const pixel = await sharp(out).extract({ left: 11, top: 19, width: 1, height: 1 }).raw().toBuffer()
+    expect(pixel[0]).toBe(255)
+  })
+
   it("returns null for zero-size layer", async () => {
     const input = Buffer.from([])
     const result = await fitCompositeToCanvas({ input, left: 0, top: 0 }, 30, 30)
