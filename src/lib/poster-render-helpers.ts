@@ -167,7 +167,12 @@ export async function fitCompositeToCanvas(
   if (!layer.input || layer.input.length < 100) return null
   const meta = await sharp(layer.input).metadata()
   if ((meta.width || 0) <= 0 || (meta.height || 0) <= 0) return null
-  // Sharp's .composite() handles out-of-bounds clipping natively — no sub-extract needed
+  // Sharp's .composite() handles out-of-bounds clipping natively — no sub-extract needed.
+  // sharp accetta solo coordinate intere ("Expected integer … for left"): una
+  // frazione da un layout in percentuale farebbe fallire tutto il poster.
+  // Upstream cfafe0f.
+  layer.top = Math.round(layer.top)
+  layer.left = Math.round(layer.left)
   return layer
 }
 
