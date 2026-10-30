@@ -89,6 +89,17 @@ export function rtlSafe(text: string): string {
   return needsRubik(text) ? text + RLM : text
 }
 
+/**
+ * Fork: una riga ebraica intera (tag) in una direzione RTL tutta sua. resvg
+ * impagina in LTR, e il solo RLM finale di `rtlSafe` non basta quando la
+ * frase finisce con una parola latina o un numero: "פרק ביקום DC" usciva
+ * "DC פרק ביקום". RIGHT-TO-LEFT ISOLATE…PDI (larghezza zero) fissa la base
+ * RTL; senza ebraico il testo resta identico.
+ */
+export function rtlIsolate(text: string): string {
+  return needsRubik(text) ? "\u2067" + text + "\u2069" : text
+}
+
 /** FIRST STRONG ISOLATE e POP DIRECTIONAL ISOLATE: larghezza zero. */
 const FSI = "\u2068"
 const PDI = "\u2069"

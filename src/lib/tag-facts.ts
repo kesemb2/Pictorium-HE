@@ -74,9 +74,15 @@ async function creatorOtherTitle(creatorId: number, input: LoadTagFactsInput): P
   })
 }
 
-/** "הארי פוטר - סדרת הסרטים" → "הארי פוטר"; "Alien Collection" → "Alien". */
+/**
+ * "הארי פוטר - סדרת הסרטים" → "הארי פוטר"; "פארק היורה - אוסף" → "פארק
+ * היורה"; "Alien Collection" → "Alien". TMDB chiama le saghe ebraiche quasi
+ * sempre "<nome> - אוסף": sulla tag ("חלק 6 בסאגת …") è rumore.
+ */
 export function trimCollectionName(name: string): string {
   return name
+    .replace(/\s*[-–—:]?\s*אוסף\s*$/u, "")
+    .replace(/^\s*אוסף\s+/u, "")
     .replace(/\s*[-–—]\s*סדרת הסרטים\s*$/u, "")
     .replace(/\s*סדרת הסרטים\s*$/u, "")
     .replace(/\s*\(?\bcollection\)?\s*$/i, "")
@@ -85,7 +91,7 @@ export function trimCollectionName(name: string): string {
 
 async function collectionPart(collectionId: number, input: LoadTagFactsInput): Promise<{ name: string; part: number } | null> {
   const lang2 = input.locale.slice(0, 2)
-  return cached(`tagfacts:collection:${collectionId}:${input.tmdbId}:${lang2}`, LOOKUP_TTL_MS, async () => {
+  return cached(`tagfacts:v2:collection:${collectionId}:${input.tmdbId}:${lang2}`, LOOKUP_TTL_MS, async () => {
     const c = await getCollectionLite(collectionId, input.tmdbLang, input.apiKey, input.signal, input.timeoutMs).catch(() => null)
     if (!c || c.parts.length < 2) return null
     const ordered = [...c.parts].sort((a, b) => (a.release_date || "9999").localeCompare(b.release_date || "9999"))
@@ -152,7 +158,7 @@ async function buildFacts(input: LoadTagFactsInput): Promise<TagFacts | null> {
 
 /** Fatti del titolo per le tag, cachati 12 ore per (tipo, id, lingua). Null su errore. */
 export async function loadTagFacts(input: LoadTagFactsInput): Promise<TagFacts | null> {
-  const key = `tagfacts:v1:${input.mediaType}:${input.tmdbId}:${input.locale.slice(0, 2)}`
+  const key = `tagfacts:v2:${input.mediaType}:${input.tmdbId}:${input.locale.slice(0, 2)}`
   const hit = cacheGet<{ v: TagFacts | null }>(key)
   if (hit) return hit.v
   let p = inflight.get(key)
