@@ -15,7 +15,7 @@
  */
 import sharp from "sharp"
 import type { BadgeFontSpec } from "./badge-styles"
-import { escSvg, estimateTextWidth, fontFamilyFor, rtlSafe } from "./badge-svg-shared"
+import { escSvg, estimateTextWidth, fontFamilyFor, rtlIsolate } from "./badge-svg-shared"
 import { renderSVG } from "./svg-badge"
 
 export type TagLayer = { input: Buffer; top: number; left: number }
@@ -143,7 +143,7 @@ async function tagText(label: string, maxW: number, m: TagMetrics, font?: BadgeF
   const textW = Math.round(estimateTextWidth(label, fs, font))
   const w = Math.min(Math.round(maxW), Math.max(textW + padX * 2, m.minW))
   const h = m.h
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><text x="${w / 2}" y="${h / 2 + h * 0.03}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(label, font)}" font-weight="700" font-size="${fs}" fill="#ffffff">${escSvg(rtlSafe(label))}</text></svg>`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><text x="${w / 2}" y="${h / 2 + h * 0.03}" text-anchor="middle" dominant-baseline="central" font-family="${fontFamilyFor(label, font)}" font-weight="700" font-size="${fs}" fill="#ffffff">${escSvg(rtlIsolate(label))}</text></svg>`
   return { png: await renderSVG(svg, w), w, h, padX }
 }
 

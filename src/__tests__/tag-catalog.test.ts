@@ -158,5 +158,11 @@ describe("collection names", () => {
   it("drops the generic suffix", () => {
     expect(trimCollectionName("הארי פוטר - סדרת הסרטים")).toBe("הארי פוטר")
     expect(trimCollectionName("Alien Collection")).toBe("Alien")
+    expect(trimCollectionName("פארק היורה - אוסף")).toBe("פארק היורה")
+    expect(trimCollectionName("קפטן מארוול - אוסף")).toBe("קפטן מארוול")
+    expect(trimCollectionName("משחקי הרעב: אוסף")).toBe("משחקי הרעב")
+    expect(trimCollectionName("אוסף הארי פוטר")).toBe("הארי פוטר")
+    // "אוסף" dentro il nome resta.
+    expect(trimCollectionName("האוספים")).toBe("האוספים")
   })
 })

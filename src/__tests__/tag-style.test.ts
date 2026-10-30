@@ -101,6 +101,29 @@ describe("tag poster style", () => {
     expect(noTag.logoTop! + 60).toBeGreaterThan(withTag.logoTop! + 60)
   })
 
+  it("keeps an English word in its place inside a Hebrew tag (RTL line)", async () => {
+    // Profilo dell'inchiostro bianco della tag, colonna per colonna.
+    const inkProfile = async (label: string) => {
+      const base = await sharp({ create: { width: W, height: H, channels: 3, background: "#000" } }).jpeg().toBuffer()
+      const out = await composeTagStyle({ base, canvasW: W, canvasH: H, logo: null, title: null, tagLabel: label, fade: false, card: false })
+      const img = await sharp(base).composite(out.layers).greyscale().raw().toBuffer({ resolveWithObject: true })
+      const r = out.tagRect!
+      const cols: number[] = []
+      for (let x = r.left; x < r.left + r.width; x++) {
+        let n = 0
+        for (let y = r.top; y < r.top + r.height; y++) if (img.data[y * img.info.width + x] > 200) n++
+        cols.push(n)
+      }
+      const first = cols.findIndex((n) => n > 0), last = cols.length - 1 - [...cols].reverse().findIndex((n) => n > 0)
+      return cols.slice(first, last + 1)
+    }
+    const hebrew = await inkProfile("פרק ביקום")
+    const mixed = await inkProfile("פרק ביקום DC")
+    const diff = (offset: number) => hebrew.reduce((s, n, i) => s + Math.abs(n - (mixed[offset + i] ?? 0)), 0)
+    // Riga RTL: l'ebraico apre a destra, "DC" chiude a sinistra.
+    expect(diff(mixed.length - hebrew.length)).toBeLessThan(diff(0))
+  })
+
   it("without the card: same logo position, no card glass, fade forced on", async () => {
     const base = await poster(() => 128)
     const logo = { input: await sharp({ create: { width: 200, height: 60, channels: 4, background: "#fff" } }).png().toBuffer(), w: 200, h: 60, left: 150, top: 500 }
